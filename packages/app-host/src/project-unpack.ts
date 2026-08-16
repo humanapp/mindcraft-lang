@@ -1,4 +1,5 @@
-import type { MindcraftProjectDocument } from "@mindcraft-lang/service-api";
+import type { FileContent, MindcraftProjectDocument } from "@mindcraft-lang/service-api";
+import { fileContentFromWire } from "@mindcraft-lang/service-api";
 import { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
 import type { ProjectContentManifest } from "./project-content-manifest.js";
 import { serializeProjectContentManifest, validateProjectContentManifest } from "./project-content-manifest.js";
@@ -27,7 +28,7 @@ export interface UnpackedTree {
   /** Serialized `mindcraft.json` of the unpacked project. */
   manifestText: string;
   /** Every non-manifest document file, in document order. */
-  files: readonly { path: string; content: string }[];
+  files: readonly { path: string; content: FileContent }[];
   /** True when the files list came from the embedded manifest's own declaration. */
   declaredFilesList: boolean;
 }
@@ -59,7 +60,10 @@ export function buildUnpackedTree(
 
   const files = Object.entries(document.contents)
     .filter(([filePath]) => filePath !== MINDCRAFT_JSON_PATH)
-    .map(([filePath, content]) => ({ path: filePath, content }));
+    .map(([filePath, content]) => ({
+      path: filePath,
+      content: typeof content === "string" ? content : fileContentFromWire(content),
+    }));
 
   const declaredFilesList = validated.manifest.files !== undefined;
   const manifest: ProjectContentManifest = {

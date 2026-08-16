@@ -1,7 +1,9 @@
-import type { ProjectFileChange, ProjectFileSnapshot, ProjectStore } from "@mindcraft-lang/app-host";
+import type { FileContent, ProjectFileChange, ProjectFileSnapshot, ProjectStore } from "@mindcraft-lang/app-host";
+import { fileContentFromWire, fileContentText, fileContentToWire } from "@mindcraft-lang/app-host";
 import type {
   CompileDiagnosticEntry,
   CompileDiagnosticsPayload,
+  FileContentPayload,
   FileSystemNotification,
   FolderAppMessage,
   FolderHostMessage,
@@ -73,7 +75,7 @@ export interface FolderHostSession {
    * provenance of its fetched dependencies to the host.
    */
   publishCompilerControlledFiles(
-    files: ReadonlyMap<string, string>,
+    files: ReadonlyMap<string, FileContent>,
     installedExtensions: Readonly<Record<string, FolderInstalledExtensionMetadata>>
   ): void;
   /**
@@ -176,12 +178,15 @@ export async function connectFolderHostSession(options: FolderHostSessionOptions
       options.port.postMessage({ type: "folder:diagnostics", payload });
     },
     publishCompilerControlledFiles(
-      files: ReadonlyMap<string, string>,
+      files: ReadonlyMap<string, FileContent>,
       installedExtensions: Readonly<Record<string, FolderInstalledExtensionMetadata>>
     ): void {
       options.port.postMessage({
         type: "folder:compilerFiles",
-        payload: { files: [...files], installedExtensions },
+        payload: {
+          files: [...files].map(([path, content]) => [path, fileContentToWire(content)]),
+          installedExtensions,
+        },
       });
     },
     async writeRemovableVolumeFile(volumeName: string, filename: string, contents: string): Promise<void> {
@@ -252,16 +257,17 @@ export function createFolderCompileDiagnosticsPublisher(
  * installed-extensions tree offer. Returns `undefined` when the offer is
  * absent or carries no metadata record.
  */
-function reconstructSnapshotsFromWelcome(extensionsCache: ReadonlyArray<[string, string]> | undefined) {
+function reconstructSnapshotsFromWelcome(extensionsCache: ReadonlyArray<[string, FileContentPayload]> | undefined) {
   if (!extensionsCache) {
     return undefined;
   }
-  const metadataEntry = extensionsCache.find(([path]) => path === INSTALLED_EXTENSIONS_METADATA_PATH);
-  const metadata = parseInstalledExtensionMetadata(metadataEntry?.[1]);
+  const files = extensionsCache.map(([path, payload]) => [path, fileContentFromWire(payload)] as [string, FileContent]);
+  const metadataEntry = files.find(([path]) => path === INSTALLED_EXTENSIONS_METADATA_PATH);
+  const metadata = parseInstalledExtensionMetadata(fileContentText(metadataEntry?.[1] ?? ""));
   if (Object.keys(metadata).length === 0) {
     return undefined;
   }
-  return reconstructInstalledSnapshotsFromTree(metadata, extensionsCache);
+  return reconstructInstalledSnapshotsFromTree(metadata, files);
 }
 
 /** Request/reply and event demultiplexer over a {@link FolderHostPort}. */

@@ -1,3 +1,4 @@
+import { fileContentByteLength, fileContentFromBytes, fileContentToBytes } from "@mindcraft-lang/app-host";
 import { ErrorCode, type IFileSystem, ProtocolError } from "@mindcraft-lang/bridge-client";
 import * as vscode from "vscode";
 import { MINDCRAFT_JSON } from "../mindcraft-json";
@@ -74,7 +75,7 @@ export class MindcraftFileSystemProvider implements vscode.FileSystemProvider, v
         type: vscode.FileType.File,
         ctime: 0,
         mtime: Date.now(),
-        size: new TextEncoder().encode(content).byteLength,
+        size: fileContentByteLength(content),
         permissions: isReadonly ? vscode.FilePermission.Readonly : undefined,
       };
     } catch (e) {
@@ -108,7 +109,7 @@ export class MindcraftFileSystemProvider implements vscode.FileSystemProvider, v
   readFile(uri: vscode.Uri): Uint8Array {
     const fs = this.requireReadFs();
     try {
-      return new TextEncoder().encode(fs.read(toFsPath(uri)));
+      return fileContentToBytes(fs.read(toFsPath(uri)));
     } catch (e) {
       if (e instanceof ProtocolError) {
         throw vscode.FileSystemError.FileNotFound(uri);
@@ -121,7 +122,7 @@ export class MindcraftFileSystemProvider implements vscode.FileSystemProvider, v
     const fs = this.requireWriteFs();
     const path = toFsPath(uri);
     try {
-      fs.write(path, new TextDecoder().decode(content));
+      fs.write(path, fileContentFromBytes(content));
     } catch (e) {
       if (e instanceof ProtocolError) {
         // Etag mismatch means another client modified the file since we last

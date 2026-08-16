@@ -11,6 +11,8 @@ import {
   mkParameterTileId,
   Op,
 } from "@mindcraft-lang/core/runtime";
+import type { FileContent } from "@mindcraft-lang/service-api";
+import { fileContentText } from "@mindcraft-lang/service-api";
 import ts from "typescript";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { collectModifiers, collectParams } from "./arg-spec-utils.js";
@@ -229,7 +231,7 @@ export function isCompilerControlledPath(path: string, mounts: readonly Mount[])
  * and emits bytecode.
  */
 export class UserTileProject {
-  private _files = new Map<string, string>();
+  private _files = new Map<string, FileContent>();
   private readonly _ambientFiles: readonly AmbientFile[];
   private readonly _stdlibFiles: readonly StdlibSourceFile[];
   private readonly _services: BrainServices;
@@ -269,14 +271,14 @@ export class UserTileProject {
     this._dependencyMounts = dependencyMounts;
   }
 
-  setFiles(files: ReadonlyMap<string, string>): void {
+  setFiles(files: ReadonlyMap<string, FileContent>): void {
     this._files.clear();
     for (const [path, content] of files) {
       this._files.set(path, content);
     }
   }
 
-  updateFile(path: string, content: string): void {
+  updateFile(path: string, content: FileContent): void {
     this._files.set(path, content);
   }
 
@@ -323,7 +325,8 @@ export class UserTileProject {
    * when neither spelling is present.
    */
   private _getProjectFile(vfsPath: string): string | undefined {
-    return this._files.get(vfsPath) ?? this._files.get(`/${vfsPath}`);
+    const content = this._files.get(vfsPath) ?? this._files.get(`/${vfsPath}`);
+    return content === undefined ? undefined : fileContentText(content);
   }
 
   /** True when {@link _getProjectFile} would resolve `vfsPath` to content. */
@@ -389,8 +392,12 @@ export class UserTileProject {
         if (normalizeWorkspacePath(path) === COMPILER_CONTROLLED_TSCONFIG_PATH) {
           continue;
         }
+        const text = fileContentText(content);
+        if (text === undefined) {
+          continue;
+        }
         const compilerPath = extensionFilePath(mount.namespace, path);
-        compilerFiles.set(compilerPath, content);
+        compilerFiles.set(compilerPath, text);
         if (ambientRelativePaths.has(normalizeWorkspacePath(path))) {
           ambientCompilerPaths.add(compilerPath);
         }
@@ -406,8 +413,12 @@ export class UserTileProject {
       if (isCompilerSuppliedPath(vfsPath) || isExtensionWorkspacePath(vfsPath)) {
         continue;
       }
+      const text = fileContentText(content);
+      if (text === undefined) {
+        continue;
+      }
       const cp = toCompilerPath(vfsPath);
-      compilerFiles.set(cp, content);
+      compilerFiles.set(cp, text);
       if (isUserTsFile(vfsPath)) {
         userRootFiles.push(cp);
       }

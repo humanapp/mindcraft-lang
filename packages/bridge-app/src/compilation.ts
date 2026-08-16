@@ -1,3 +1,5 @@
+import type { FileContent } from "@mindcraft-lang/app-host";
+import { fileContentEquals } from "@mindcraft-lang/app-host";
 import type { AppClientMessage, CompileDiagnosticEntry, FileSystemNotification } from "@mindcraft-lang/bridge-protocol";
 import type { MindcraftEnvironment } from "@mindcraft-lang/core";
 import {
@@ -437,14 +439,15 @@ function ensureSnapshotDirectory(snapshot: ProjectFileSnapshot, dirPath: string)
 
 /** True when the two compiler-controlled file maps carry a different set of paths or content. */
 function compilerControlledFilesChanged(
-  previous: ReadonlyMap<string, string>,
-  current: ReadonlyMap<string, string>
+  previous: ReadonlyMap<string, FileContent>,
+  current: ReadonlyMap<string, FileContent>
 ): boolean {
   if (previous.size !== current.size) {
     return true;
   }
   for (const [path, content] of current) {
-    if (previous.get(path) !== content) {
+    const before = previous.get(path);
+    if (before === undefined || !fileContentEquals(before, content)) {
       return true;
     }
   }
@@ -457,7 +460,7 @@ export interface AugmentProjectFileSystemOptions {
    * Invoked with the full compiler-controlled file set whenever a compile
    * changes that set.
    */
-  onCompilerControlledFilesChanged?: (files: ReadonlyMap<string, string>) => void;
+  onCompilerControlledFilesChanged?: (files: ReadonlyMap<string, FileContent>) => void;
 }
 
 /**

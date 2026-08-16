@@ -1,4 +1,12 @@
+import type { FileContent } from "@mindcraft-lang/app-host";
+import {
+  fileContentFromBytes,
+  fileContentFromWire,
+  fileContentToBytes,
+  fileContentToWire,
+} from "@mindcraft-lang/app-host";
 import type {
+  FileContentPayload,
   FileSystemNotification,
   FolderAppMessage,
   FolderCompilerFilesPayload,
@@ -26,7 +34,10 @@ import { DEFAULT_REMOVABLE_VOLUME_ROOTS, writeFileToRemovableVolume } from "./re
 /** Marks a path in the self-write log whose latest host-side operation was a delete. */
 const SELF_DELETED = "__self-deleted__";
 
-type FolderFileEntry = [string, { kind: "file"; content: string; etag: string; isReadonly: boolean }];
+type FolderFileEntry = [
+  string,
+  { kind: "file"; content: string; encoding?: "base64"; etag: string; isReadonly: boolean },
+];
 type FolderDirectoryEntry = [string, { kind: "directory" }];
 
 /**
@@ -136,13 +147,13 @@ export class FolderStoreHost {
     if (this.selfWriteLog.get(path) === etag) {
       return;
     }
-    const content = await this.readTextFile(uri, stat);
+    const content = await this.readFileContent(uri, stat);
     if (content === undefined) {
       return;
     }
     this.postToApp({
       type: "folder:externalChange",
-      payload: { action: "write", path, content, newEtag: etag },
+      payload: { action: "write", path, ...fileContentToWire(content), newEtag: etag },
     });
   }
 
@@ -183,17 +194,17 @@ export class FolderStoreHost {
     this.onHandshakeComplete?.();
   }
 
-  /** The on-disk installed-extensions tree's text files, as project-relative path/content pairs. */
-  private async collectExtensionsCacheEntries(): Promise<Array<[string, string]>> {
-    const entries: Array<[string, string]> = [];
-    await this.collectTreeTextFiles(this.toUri(EXTENSIONS_TREE_PATH), EXTENSIONS_TREE_PATH, entries);
+  /** The on-disk installed-extensions tree's files, as project-relative path/content pairs. */
+  private async collectExtensionsCacheEntries(): Promise<Array<[string, FileContentPayload]>> {
+    const entries: Array<[string, FileContentPayload]> = [];
+    await this.collectTreeFiles(this.toUri(EXTENSIONS_TREE_PATH), EXTENSIONS_TREE_PATH, entries);
     return entries;
   }
 
-  private async collectTreeTextFiles(
+  private async collectTreeFiles(
     directory: vscode.Uri,
     prefix: string,
-    entries: Array<[string, string]>
+    entries: Array<[string, FileContentPayload]>
   ): Promise<void> {
     let children: Array<[string, vscode.FileType]>;
     try {
@@ -205,7 +216,7 @@ export class FolderStoreHost {
       const path = `${prefix}/${name}`;
       const uri = vscode.Uri.joinPath(directory, name);
       if (type === vscode.FileType.Directory) {
-        await this.collectTreeTextFiles(uri, path, entries);
+        await this.collectTreeFiles(uri, path, entries);
         continue;
       }
       if (type !== vscode.FileType.File) {
@@ -217,9 +228,9 @@ export class FolderStoreHost {
       } catch {
         continue;
       }
-      const content = await this.readTextFile(uri, stat);
+      const content = await this.readFileContent(uri, stat);
       if (content !== undefined) {
-        entries.push([path, content]);
+        entries.push([path, fileContentToWire(content)]);
       }
     }
   }
@@ -261,11 +272,14 @@ export class FolderStoreHost {
       } catch {
         continue;
       }
-      const content = await this.readTextFile(uri, stat);
+      const content = await this.readFileContent(uri, stat);
       if (content === undefined) {
         continue;
       }
-      entries.push([path, { kind: "file", content, etag: etagFromStat(stat), isReadonly: false }]);
+      entries.push([
+        path,
+        { kind: "file", ...fileContentToWire(content), etag: etagFromStat(stat), isReadonly: false },
+      ]);
     }
   }
 
@@ -312,7 +326,7 @@ export class FolderStoreHost {
         if (parent) {
           await vscode.workspace.fs.createDirectory(this.toUri(parent));
         }
-        await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(change.content));
+        await vscode.workspace.fs.writeFile(uri, fileContentToBytes(fileContentFromWire(change)));
         await this.recordSelfWrite(change.path, uri);
         return;
       }
@@ -479,7 +493,7 @@ export class FolderStoreHost {
   /** The affordance writer's file operations, over the project folder. */
   private createAffordanceFileAccess(): AffordanceFileAccess {
     return {
-      readTextFile: async (path) => {
+      readFile: async (path) => {
         const uri = this.toUri(path);
         let stat: vscode.FileStat;
         try {
@@ -487,14 +501,14 @@ export class FolderStoreHost {
         } catch {
           return undefined;
         }
-        return this.readTextFile(uri, stat);
+        return this.readFileContent(uri, stat);
       },
-      writeTextFile: async (path, content) => {
+      writeFile: async (path, content) => {
         const parent = parentDirectoryPath(path);
         if (parent) {
           await vscode.workspace.fs.createDirectory(this.toUri(parent));
         }
-        await vscode.workspace.fs.writeFile(this.toUri(path), new TextEncoder().encode(content));
+        await vscode.workspace.fs.writeFile(this.toUri(path), fileContentToBytes(content));
       },
       deleteFile: async (path) => {
         await this.deleteIgnoringMissing(this.toUri(path), false);
@@ -550,7 +564,12 @@ export class FolderStoreHost {
     }
   }
 
-  private async readTextFile(uri: vscode.Uri, stat: vscode.FileStat): Promise<string | undefined> {
+  /**
+   * Read the file at `uri` as project file content: its text when the bytes are
+   * UTF-8 text, and the raw bytes otherwise. Undefined when the file exceeds
+   * {@link MAX_FILE_CONTENT_BYTES} or cannot be read.
+   */
+  private async readFileContent(uri: vscode.Uri, stat: vscode.FileStat): Promise<FileContent | undefined> {
     if (stat.size > MAX_FILE_CONTENT_BYTES) {
       return undefined;
     }
@@ -560,10 +579,7 @@ export class FolderStoreHost {
     } catch {
       return undefined;
     }
-    if (bytes.includes(0)) {
-      return undefined;
-    }
-    return new TextDecoder().decode(bytes);
+    return fileContentFromBytes(bytes);
   }
 
   private toUri(path: string): vscode.Uri {

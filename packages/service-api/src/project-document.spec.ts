@@ -1,11 +1,18 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import type { WireFileContent } from "./file-content";
+import { bytesToBase64, fileContentFromWire, fileContentToBytes } from "./file-content";
 import {
   MINDCRAFT_PROJECT_FORMAT,
   MindcraftProjectDocumentValidationCode,
   parseMindcraftProjectDocument,
   validateMindcraftProjectDocument,
 } from "./project-document";
+
+/** The first bytes of a real PNG: signature plus the IHDR chunk header. */
+const PNG_BYTES = new Uint8Array([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+]);
 
 /** Minimal well-formed document fields. */
 function baseDocumentFields(): Record<string, unknown> {
@@ -69,9 +76,26 @@ describe("MindcraftProjectDocument validation", () => {
     }
   });
 
-  it("rejects non-string content values", () => {
-    const codes = errorCodes({ ...baseDocumentFields(), contents: { "src/main.ts": 42 } });
-    assert.deepEqual(codes, [MindcraftProjectDocumentValidationCode.INVALID_FILE_CONTENT]);
+  it("rejects content values that are neither text nor a base64 entry", () => {
+    for (const content of [42, {}, { content: 42, encoding: "base64" }, { content: "AA==", encoding: "hex" }]) {
+      const codes = errorCodes({ ...baseDocumentFields(), contents: { "src/main.ts": content } });
+      assert.deepEqual(codes, [MindcraftProjectDocumentValidationCode.INVALID_FILE_CONTENT], JSON.stringify(content));
+    }
+  });
+
+  it("accepts a base64 entry and carries it through as binary content", () => {
+    const entry = { content: bytesToBase64(PNG_BYTES), encoding: "base64" };
+
+    const result = validateMindcraftProjectDocument({
+      ...baseDocumentFields(),
+      contents: { "tiles/icon.png": entry, "src/main.ts": "hello" },
+    });
+
+    assert.ok(result.ok);
+    const carried = result.document.contents["tiles/icon.png"];
+    assert.notEqual(typeof carried, "string", "a base64 entry stays an entry, not text");
+    assert.deepEqual([...fileContentToBytes(fileContentFromWire(carried as WireFileContent))], [...PNG_BYTES]);
+    assert.equal(result.document.contents["src/main.ts"], "hello", "text files stay bare strings");
   });
 
   it("parses a document from JSON text and rejects invalid JSON", () => {

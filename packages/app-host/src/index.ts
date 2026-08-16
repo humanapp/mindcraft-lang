@@ -1,4 +1,17 @@
-export { LOWEST_CONTENT_VERSION } from "@mindcraft-lang/service-api";
+export type { FileContent, WireFileContent } from "@mindcraft-lang/service-api";
+export {
+  base64ToBytes,
+  bytesToBase64,
+  fileContentByteLength,
+  fileContentEquals,
+  fileContentFromBytes,
+  fileContentFromWire,
+  fileContentText,
+  fileContentToBytes,
+  fileContentToWire,
+  isBinaryFileContent,
+  LOWEST_CONTENT_VERSION,
+} from "@mindcraft-lang/service-api";
 export { AppHostError, AppHostErrorCode, appHostError } from "./app-host-error.js";
 export type { DependencyPinProbe, UnstableDependency } from "./dependency-stability.js";
 export { collectUnstableDependencies, UnstableDependencyCode } from "./dependency-stability.js";

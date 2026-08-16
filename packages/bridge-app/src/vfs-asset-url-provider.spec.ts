@@ -8,10 +8,11 @@ const ICON_PATH = "tiles/icon.svg";
 const ICON_SVG = '<svg id="icon"></svg>';
 const ICON_SVG_V2 = '<svg id="icon-v2"></svg>';
 
-// A PNG-signature byte string: exercises non-ASCII content through the
-// string-typed VFS entries.
 const PNG_PATH = "tiles/icon.png";
-const PNG_BYTES = "\x89PNG\r\n\x1a\n\x00tail";
+/** The first bytes of a real PNG: signature plus the IHDR chunk header. */
+const PNG_BYTES = new Uint8Array([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+]);
 
 function createFixture() {
   const filesystem = createInMemoryProjectFileSystem();
@@ -31,10 +32,10 @@ function createFixture() {
   };
 }
 
-async function readObjectUrl(url: string): Promise<{ type: string; text: string }> {
+async function readObjectUrl(url: string): Promise<{ type: string; text: string; bytes: Uint8Array }> {
   const blob = resolveObjectURL(url);
   assert.ok(blob, `object URL ${url} must resolve to a blob`);
-  return { type: blob.type, text: await blob.text() };
+  return { type: blob.type, text: await blob.text(), bytes: new Uint8Array(await blob.arrayBuffer()) };
 }
 
 describe("createVfsAssetUrlProvider", () => {
@@ -72,13 +73,13 @@ describe("createVfsAssetUrlProvider", () => {
     assert.equal(resolveObjectURL(stale), undefined, "the superseded generation's URL is revoked");
   });
 
-  it("round-trips a png byte string without text mangling", async () => {
+  it("mints a png object URL whose bytes are the file's bytes", async () => {
     const { provider } = createFixture();
 
     const url = provider.resolveAssetUrl(`/vfs/${PNG_PATH}`);
-    const { type, text } = await readObjectUrl(url);
+    const { type, bytes } = await readObjectUrl(url);
     assert.equal(type, "image/png");
-    assert.equal(text, PNG_BYTES);
+    assert.deepEqual([...bytes], [...PNG_BYTES], "the blob carries the source bytes, not a UTF-8 re-encoding");
   });
 
   it("returns non-vfs URLs and unknown vfs paths unchanged", () => {

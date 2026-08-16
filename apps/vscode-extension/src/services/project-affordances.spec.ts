@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import type { FileContent } from "@mindcraft-lang/app-host";
+import { fileContentText, fileContentToWire } from "@mindcraft-lang/app-host";
 import type { FolderCompilerFilesPayload } from "@mindcraft-lang/bridge-protocol";
-import { INSTALLED_EXTENSIONS_METADATA_PATH } from "@mindcraft-lang/bridge-protocol";
+import { EXTENSIONS_TREE_PATH, INSTALLED_EXTENSIONS_METADATA_PATH } from "@mindcraft-lang/bridge-protocol";
 import type { AffordanceFileAccess } from "./project-affordances";
 import {
   GENERATED_TSCONFIG_MARKER,
@@ -12,22 +14,22 @@ import {
 } from "./project-affordances";
 
 /** In-memory file access over a flat path->content map, tracking write and delete order. */
-function memoryFileAccess(initial?: Record<string, string>): AffordanceFileAccess & {
-  files: Map<string, string>;
+function memoryFileAccess(initial?: Record<string, FileContent>): AffordanceFileAccess & {
+  files: Map<string, FileContent>;
   writes: string[];
   deletes: string[];
 } {
-  const files = new Map<string, string>(Object.entries(initial ?? {}));
+  const files = new Map<string, FileContent>(Object.entries(initial ?? {}));
   const writes: string[] = [];
   const deletes: string[] = [];
   return {
     files,
     writes,
     deletes,
-    async readTextFile(path) {
+    async readFile(path) {
       return files.get(path);
     },
-    async writeTextFile(path, content) {
+    async writeFile(path, content) {
       files.set(path, content);
       writes.push(path);
     },
@@ -44,11 +46,17 @@ function memoryFileAccess(initial?: Record<string, string>): AffordanceFileAcces
 
 const ORIGIN = "example-org/position-ext";
 
+/** The text of `path` in a memory file map, or undefined when absent or binary. */
+function textOf(files: Map<string, FileContent>, path: string): string | undefined {
+  const content = files.get(path);
+  return content === undefined ? undefined : fileContentText(content);
+}
+
 function payload(
-  files: Array<[string, string]>,
+  files: Array<[string, FileContent]>,
   installedExtensions: FolderCompilerFilesPayload["installedExtensions"] = {}
 ): FolderCompilerFilesPayload {
-  return { files, installedExtensions };
+  return { files: files.map(([path, content]) => [path, fileContentToWire(content)]), installedExtensions };
 }
 
 describe("updatedGitignoreContent", () => {
@@ -113,9 +121,9 @@ describe("ProjectAffordanceWriter", () => {
     );
 
     assert.equal(access.files.get("tsconfig.json"), renderGeneratedTsconfig('{ "compilerOptions": {} }'));
-    assert.ok(access.files.get("tsconfig.json")?.startsWith(GENERATED_TSCONFIG_MARKER));
+    assert.ok(textOf(access.files, "tsconfig.json")?.startsWith(GENERATED_TSCONFIG_MARKER));
     assert.equal(access.files.get(`.libraries/${ORIGIN}/index.ts`), "export const p = 1;");
-    const metadata = JSON.parse(access.files.get(INSTALLED_EXTENSIONS_METADATA_PATH) ?? "{}") as Record<
+    const metadata = JSON.parse(textOf(access.files, INSTALLED_EXTENSIONS_METADATA_PATH) ?? "{}") as Record<
       string,
       { reference: string; specifier: string }
     >;
@@ -202,5 +210,47 @@ describe("ProjectAffordanceWriter", () => {
     assert.equal(writer.isAffordancePath(`.libraries/${ORIGIN}/index.ts`), true);
     assert.equal(writer.isAffordancePath("main.ts"), false);
     assert.equal(writer.isAffordancePath("nested/tsconfig.json"), false);
+  });
+
+  it("materializes a library's binary asset byte for byte", async () => {
+    const pngBytes = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+    ]);
+    const access = memoryFileAccess();
+    const writer = new ProjectAffordanceWriter(access);
+
+    await writer.apply(
+      payload([
+        ["tsconfig.json", "{}"],
+        [`${EXTENSIONS_TREE_PATH}/${ORIGIN}/icon.png`, pngBytes],
+      ])
+    );
+
+    const written = access.files.get(`${EXTENSIONS_TREE_PATH}/${ORIGIN}/icon.png`);
+    assert.ok(written instanceof Uint8Array, "the icon lands on disk as bytes");
+    assert.deepEqual([...written], [...pngBytes]);
+  });
+
+  it("rewrites a binary asset only when its bytes change", async () => {
+    const first = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    const access = memoryFileAccess();
+    const writer = new ProjectAffordanceWriter(access);
+    const assetPath = `${EXTENSIONS_TREE_PATH}/${ORIGIN}/icon.png`;
+
+    await writer.apply(
+      payload([
+        ["tsconfig.json", "{}"],
+        [assetPath, first],
+      ])
+    );
+    access.writes.length = 0;
+    await writer.apply(
+      payload([
+        ["tsconfig.json", "{}"],
+        [assetPath, new Uint8Array(first)],
+      ])
+    );
+
+    assert.deepEqual(access.writes, [], "equal bytes in a fresh array are not a change");
   });
 });

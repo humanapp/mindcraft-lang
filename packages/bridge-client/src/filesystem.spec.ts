@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
+import { filesystemNotificationSchema, MAX_FILE_CONTENT_BYTES } from "@mindcraft-lang/bridge-protocol";
 import { ErrorCode } from "./error-codes.js";
 import { FileSystem, type FileSystemNotification, type FileSystemSnapshot, NotifyingFileSystem } from "./filesystem.js";
 
@@ -716,5 +717,101 @@ describe("FileSystem", () => {
       assert.throws(() => pf.write("d/f.txt", "v3", false, staleEtag), { code: ErrorCode.ETAG_MISMATCH });
       assert.equal(pf.read("d/f.txt"), "v2");
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Binary file contents
+// ---------------------------------------------------------------------------
+
+describe("binary file contents", () => {
+  /** The first bytes of a real PNG: signature plus the IHDR chunk header. */
+  const PNG_BYTES = new Uint8Array([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+  ]);
+
+  it("reads back the bytes a write stored", () => {
+    const fs = make();
+    fs.mkdir("tiles");
+
+    fs.write("tiles/icon.png", PNG_BYTES);
+
+    assert.deepEqual([...(fs.read("tiles/icon.png") as Uint8Array)], [...PNG_BYTES]);
+  });
+
+  it("emits a base64-tagged notification and restores the bytes on the receiving side", () => {
+    const notifications: FileSystemNotification[] = [];
+    const sender = new NotifyingFileSystem(make(), (notification) => notifications.push(notification));
+    sender.mkdir("tiles");
+    notifications.length = 0;
+
+    sender.write("tiles/icon.png", PNG_BYTES);
+
+    const [notification] = notifications;
+    assert.equal(notification.action, "write");
+    assert.ok(notification.action === "write");
+    assert.equal(notification.encoding, "base64", "binary content is tagged for the JSON transport");
+    assert.equal(typeof notification.content, "string", "the wire carries a string");
+
+    // The wire is JSON; the receiver sees only what survives serialization.
+    const overWire = JSON.parse(JSON.stringify(notification)) as FileSystemNotification;
+    const receiver = new NotifyingFileSystem(make(), () => {});
+    receiver.mkdir("tiles");
+    receiver.applyNotification(overWire);
+
+    assert.deepEqual([...(receiver.read("tiles/icon.png") as Uint8Array)], [...PNG_BYTES]);
+  });
+
+  it("leaves text content untagged and unencoded", () => {
+    const notifications: FileSystemNotification[] = [];
+    const sender = new NotifyingFileSystem(make(), (notification) => notifications.push(notification));
+
+    sender.mkdir("src");
+    notifications.length = 0;
+    sender.write("src/main.ts", "hello");
+
+    const [notification] = notifications;
+    assert.ok(notification.action === "write");
+    assert.equal(notification.encoding, undefined);
+    assert.equal(notification.content, "hello");
+  });
+
+  it("carries binary content through export and import", () => {
+    const fs = make();
+    fs.mkdir("tiles");
+    fs.write("tiles/icon.png", PNG_BYTES);
+
+    const restored = make(fs.export());
+
+    assert.deepEqual([...(restored.read("tiles/icon.png") as Uint8Array)], [...PNG_BYTES]);
+  });
+});
+
+describe("the per-file size cap over the wire", () => {
+  it("accepts a binary file whose byte length is within the cap", () => {
+    // Base64 is 4/3 the size of the bytes it carries, so a file comfortably
+    // under the cap in bytes overshoots it as a string.
+    const bytes = new Uint8Array(MAX_FILE_CONTENT_BYTES - 1024);
+    for (let index = 0; index < bytes.length; index++) {
+      bytes[index] = index % 256;
+    }
+    bytes[0] = 0x89;
+
+    const notifications: FileSystemNotification[] = [];
+    const sender = new NotifyingFileSystem(make(), (notification) => notifications.push(notification));
+    sender.write("icon.png", bytes);
+
+    assert.equal(notifications.length, 1, "a file within the byte cap is published, not dropped as oversized");
+    const parsed = filesystemNotificationSchema.safeParse(notifications[0]);
+    assert.equal(parsed.success, true, parsed.success ? "" : JSON.stringify(parsed.error.issues[0]));
+  });
+
+  it("rejects a binary file whose byte length exceeds the cap", () => {
+    const bytes = new Uint8Array(MAX_FILE_CONTENT_BYTES + 1);
+    bytes[0] = 0x89;
+
+    const result = new NotifyingFileSystem(make(), () => {}).write("icon.png", bytes);
+
+    assert.equal(result.oversized, true);
   });
 });

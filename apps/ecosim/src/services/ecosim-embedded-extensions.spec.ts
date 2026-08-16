@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { fileContentText } from "@mindcraft-lang/app-host";
 import type { EmbeddedExtension } from "@mindcraft-lang/bridge-app";
 import { CORE_LIB_COORDINATE, resolveProjectExtensions } from "@mindcraft-lang/bridge-app";
 import { buildEmbeddedExtensionFromDir } from "@mindcraft-lang/bridge-app/node";
@@ -49,8 +50,14 @@ describe("sim embedded layers -- transitive resolution of the core <- sim stack"
     // Each layer carries its own ambient `.d.ts` as extension content and declares it in its manifest.
     assert.deepEqual(mountFor(CORE_LIB_COORDINATE).ambient, ["mindcraft.core.d.ts"]);
     assert.deepEqual(mountFor(ECOSIM_LIB_COORDINATE).ambient, ["mindcraft.ecosim.d.ts"]);
-    assert.match(mountFor(CORE_LIB_COORDINATE).files.get("/mindcraft.core.d.ts") ?? "", /declare var Buffer/);
-    assert.match(mountFor(ECOSIM_LIB_COORDINATE).files.get("/mindcraft.ecosim.d.ts") ?? "", /interface Vector2/);
+    assert.match(
+      fileContentText(mountFor(CORE_LIB_COORDINATE).files.get("/mindcraft.core.d.ts") ?? "") ?? "",
+      /declare var Buffer/
+    );
+    assert.match(
+      fileContentText(mountFor(ECOSIM_LIB_COORDINATE).files.get("/mindcraft.ecosim.d.ts") ?? "") ?? "",
+      /interface Vector2/
+    );
   });
 });
 

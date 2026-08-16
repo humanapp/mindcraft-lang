@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, test } from "node:test";
 import { coreModule, createMindcraftEnvironment } from "@mindcraft-lang/core";
+import type { FileContent } from "@mindcraft-lang/service-api";
+import { fileContentToBytes } from "@mindcraft-lang/service-api";
 import ts from "typescript";
 import type { DependencyMount, ProjectDependency } from "./compiler/extension-mounts.js";
 import { declarationMount } from "./compiler/mounts.js";
@@ -30,20 +32,20 @@ import { createWorkspaceCompiler } from "./workspace-compiler.js";
  * dot-directory handling.
  */
 function editorDiagnostics(
-  workspaceFiles: ReadonlyMap<string, string>,
+  workspaceFiles: ReadonlyMap<string, FileContent>,
   targets: readonly string[]
 ): { config: string[]; byTarget: Map<string, string[]> } {
   return withWorkspaceOnDisk(workspaceFiles, (root) => projectDiagnostics(root, "tsconfig.json", targets));
 }
 
 /** Materialize `workspaceFiles` into a temp directory, run `fn` against it, and clean up. */
-function withWorkspaceOnDisk<T>(workspaceFiles: ReadonlyMap<string, string>, fn: (root: string) => T): T {
+function withWorkspaceOnDisk<T>(workspaceFiles: ReadonlyMap<string, FileContent>, fn: (root: string) => T): T {
   const root = mkdtempSync(path.join(tmpdir(), "mc-editor-tsconfig-"));
   try {
     for (const [relative, content] of workspaceFiles) {
       const absolute = path.join(root, relative);
       mkdirSync(path.dirname(absolute), { recursive: true });
-      writeFileSync(absolute, content);
+      writeFileSync(absolute, fileContentToBytes(content));
     }
     return fn(root);
   } finally {

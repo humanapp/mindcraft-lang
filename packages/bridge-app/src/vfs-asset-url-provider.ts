@@ -1,3 +1,4 @@
+import { fileContentToBytes } from "@mindcraft-lang/app-host";
 import type { ProjectFileSnapshot, ProjectFileSystem } from "./app-bridge.js";
 
 const VFS_PREFIX = "/vfs/";
@@ -5,6 +6,10 @@ const VFS_PREFIX = "/vfs/";
 const MIME_TYPES: Record<string, string> = {
   ".svg": "image/svg+xml",
   ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
 };
 
 function mimeForPath(path: string): string {
@@ -67,7 +72,8 @@ export function createVfsAssetUrlProvider(options: VfsAssetUrlProviderOptions): 
         return url;
       }
 
-      const minted = URL.createObjectURL(new Blob([entry.content], { type: mimeForPath(path) }));
+      const bytes = new Uint8Array(fileContentToBytes(entry.content));
+      const minted = URL.createObjectURL(new Blob([bytes], { type: mimeForPath(path) }));
       urlsByPath.set(path, minted);
       return minted;
     },

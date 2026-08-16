@@ -2,19 +2,24 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import type { FileContent } from "@mindcraft-lang/service-api";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { CompileDiagCode, DescriptorDiagCode } from "./diag-codes.js";
+import type { DependencyMount } from "./extension-mounts.js";
 import { UserTileProject } from "./project.js";
 
 let services: BrainServices;
 
-function compileProject(files: Record<string, string>) {
+function compileProject(files: Record<string, FileContent>, dependencyMounts?: readonly DependencyMount[]) {
   const ambientSource = buildAmbientDeclarations(services.runtime.types);
   const project = new UserTileProject({
     projectNamespace: TEST_PROJECT_NAMESPACE,
     ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
     services,
+    ...(dependencyMounts
+      ? { dependencies: dependencyMounts.map((mount) => ({ coordinate: mount.namespace })), dependencyMounts }
+      : {}),
   });
   project.setFiles(new Map(Object.entries(files)));
   return project.compileAll();
@@ -135,6 +140,95 @@ export default Sensor({
     const entry = result.results.get("tiles/sub-sensor.ts");
     assert.ok(entry?.program, "expected a compiled program");
     assert.equal(entry.program.iconUrl, "/vfs/tiles/assets/icon.png");
+  });
+
+  test("an icon whose bytes are a real png resolves and is kept out of the TypeScript program", () => {
+    const sensorSource = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "png-sensor",
+  icon: "./icon.png",
+  onExecute(ctx: Context): boolean {
+    return true;
+  },
+});
+`;
+    // The first bytes of a real PNG: signature plus the IHDR chunk header.
+    const pngBytes = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+    ]);
+
+    const result = compileProject({
+      "tiles/png-sensor.ts": sensorSource,
+      "tiles/icon.png": pngBytes,
+    });
+
+    const entry = result.results.get("tiles/png-sensor.ts");
+    assert.ok(entry?.program, "expected a compiled program");
+    assert.equal(entry.program.iconUrl, "/vfs/tiles/icon.png");
+    assert.deepEqual(
+      entry.diagnostics.filter((d) => d.code === CompileDiagCode.MetadataFileNotFound),
+      [],
+      "a binary icon that is present on disk is found"
+    );
+    assert.deepEqual([...result.tsErrors.keys()], [], "the png is never handed to TypeScript as source");
+  });
+
+  test("a dependency mount's binary asset is materialized-but-uncompiled and its source still resolves", () => {
+    const pngBytes = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+    ]);
+    const mount: DependencyMount = {
+      namespace: "acme/widget",
+      files: new Map<string, FileContent>([
+        ["/index.ts", "export const widgetRate = 2;\n"],
+        ["/icon.png", pngBytes],
+      ]),
+    };
+    const sensorSource = `
+import { Sensor, type Context } from "mindcraft";
+import { widgetRate } from "@lib/acme/widget";
+
+export default Sensor({
+  name: "mounted-asset-sensor",
+  onExecute(ctx: Context): boolean {
+    return widgetRate > 1;
+  },
+});
+`;
+
+    const result = compileProject({ "tiles/mounted.ts": sensorSource }, [mount]);
+
+    const entry = result.results.get("tiles/mounted.ts");
+    assert.ok(entry?.program, "the mount's TypeScript source still compiles");
+    assert.deepEqual([...result.tsErrors.keys()], [], "the mount's png is never handed to TypeScript as source");
+  });
+
+  test("a docs reference naming a binary file reports the metadata-not-found warning", () => {
+    const sensorSource = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "binary-docs-sensor",
+  docs: "./docs.md",
+  onExecute(ctx: Context): boolean {
+    return true;
+  },
+});
+`;
+    const result = compileProject({
+      "tiles/binary-docs-sensor.ts": sensorSource,
+      "tiles/docs.md": new Uint8Array([0x00, 0xff, 0xfe]),
+    });
+
+    const entry = result.results.get("tiles/binary-docs-sensor.ts");
+    assert.ok(entry?.program);
+    assert.equal(entry.program.docsMarkdown, undefined);
+    assert.ok(
+      entry.diagnostics.some((d) => d.code === CompileDiagCode.MetadataFileNotFound),
+      "docs that are not text are reported, never silently dropped"
+    );
   });
 
   test("read-only extension root resolves leading-slash asset keys to a namespace-aware icon URL", () => {

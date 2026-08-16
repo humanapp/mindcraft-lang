@@ -1,3 +1,4 @@
+import { fileContentText } from "@mindcraft-lang/service-api";
 import { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
 import type { ExtensionTarget, ProjectContentManifest } from "./project-content-manifest.js";
 import {
@@ -87,8 +88,9 @@ export function syncManifestToMindcraftJson(filesystem: ProjectFileSystem, manif
 
   const snapshot = filesystem.exportSnapshot();
   const existing = snapshot.get(MINDCRAFT_JSON_PATH);
-  if (existing && existing.kind === "file") {
-    const parsed = parseProjectContentManifest(existing.content);
+  const existingText = existing?.kind === "file" ? fileContentText(existing.content) : undefined;
+  if (existingText !== undefined) {
+    const parsed = parseProjectContentManifest(existingText);
     if (parsed.ok && contentManifestsEqual(desired, parsed.manifest)) {
       return;
     }

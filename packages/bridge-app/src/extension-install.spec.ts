@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { ExtensionFetchResult } from "@mindcraft-lang/app-host";
-import { ExtensionFetchErrorCode } from "@mindcraft-lang/app-host";
+import { bytesToBase64, ExtensionFetchErrorCode } from "@mindcraft-lang/app-host";
 import type { WorkspaceDiagnosticEntry } from "@mindcraft-lang/ts-compiler";
 import type { EmbeddedExtension } from "./embedded-extensions.js";
 import {
@@ -10,7 +10,6 @@ import {
   movedClosureHasMissingContent,
 } from "./extension-install.js";
 import { appendExtensionInstallLog, parseExtensionInstallLog } from "./extension-install-log.js";
-import { bytesToBase64 } from "./fetched-extension-snapshots.js";
 
 function entry(message: string, severity: "error" | "warning" = "error"): WorkspaceDiagnosticEntry {
   return {

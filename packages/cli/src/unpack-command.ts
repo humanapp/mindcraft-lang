@@ -4,6 +4,7 @@ import path from "node:path";
 import type { UnpackRefusal } from "@mindcraft-lang/app-host";
 import {
   buildUnpackedTree,
+  fileContentToBytes,
   isExtensionCoordinate,
   isUnpackRefusal,
   MINDCRAFT_JSON_PATH,
@@ -153,7 +154,7 @@ export async function runUnpackCommand(args: readonly string[]): Promise<number>
   for (const file of tree.files) {
     const target = path.join(parsed.dir, file.path);
     await mkdir(path.dirname(target), { recursive: true });
-    await writeFile(target, file.content, "utf8");
+    await writeFile(target, fileContentToBytes(file.content));
   }
   const manifestText = seedProjectTargets(tree.manifestText, loadTargetRegistry().entries);
   await writeFile(path.join(parsed.dir, MINDCRAFT_JSON_PATH), manifestText, "utf8");

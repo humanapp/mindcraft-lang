@@ -1,4 +1,5 @@
 import type { BrainServices } from "@mindcraft-lang/core/brain";
+import type { FileContent } from "@mindcraft-lang/service-api";
 import { buildAmbientDeclarations } from "./ambient.js";
 import type { DependencyMount, ProjectDependency } from "./extension-mounts.js";
 import {
@@ -17,7 +18,7 @@ export interface ProjectRoot {
   /** The root's project namespace: a host project's store id or an extension's `<owner>/<repo>` coordinate. */
   namespace: string;
   /** The root's source files, keyed by workspace path. */
-  files: ReadonlyMap<string, string>;
+  files: ReadonlyMap<string, FileContent>;
   /**
    * The root's extensions list. Each entry's coordinate must match a root in
    * the resolved set (a root's namespace) and names the dependency in the

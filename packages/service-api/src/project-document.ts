@@ -1,3 +1,5 @@
+import type { WireFileContent } from "./file-content.js";
+
 /** Shared Mindcraft project document format identifier. */
 export const MINDCRAFT_PROJECT_FORMAT = "mindcraft.project/2";
 
@@ -27,6 +29,12 @@ export type MindcraftProjectDocumentValidationCode =
 export type MindcraftProjectExtensions = Readonly<Record<string, string>>;
 
 /**
+ * One file's contents inside a project document: its text as a bare string, or
+ * a base64 entry for a file whose bytes are not UTF-8 text.
+ */
+export type MindcraftProjectFileContent = string | WireFileContent;
+
+/**
  * Shared Mindcraft project document: a single-file container for one project.
  * The project's content manifest (its `mindcraft.json` object) is embedded
  * verbatim; the document adds only the format marker and the project's file
@@ -39,8 +47,8 @@ export interface MindcraftProjectDocument {
   /** The project's content manifest object, embedded verbatim. */
   readonly manifest: Readonly<Record<string, unknown>>;
 
-  /** UTF-8 file contents keyed by project-relative path. */
-  readonly contents: Readonly<Record<string, string>>;
+  /** File contents keyed by project-relative path. */
+  readonly contents: Readonly<Record<string, MindcraftProjectFileContent>>;
 }
 
 /** Validation diagnostic for a rejected shared project document. */
@@ -157,11 +165,11 @@ export function validateMindcraftProjectDocument(value: unknown): MindcraftProje
         });
         continue;
       }
-      if (typeof content !== "string") {
+      if (!isMindcraftProjectFileContent(content)) {
         errors.push({
           code: MindcraftProjectDocumentValidationCode.INVALID_FILE_CONTENT,
           path,
-          message: "Project file content must be a string.",
+          message: 'Project file content must be text or a { content, encoding: "base64" } entry.',
         });
       }
     }
@@ -176,10 +184,21 @@ export function validateMindcraftProjectDocument(value: unknown): MindcraftProje
     document: {
       format: MINDCRAFT_PROJECT_FORMAT,
       manifest: value.manifest as Readonly<Record<string, unknown>>,
-      contents: value.contents as Readonly<Record<string, string>>,
+      contents: value.contents as Readonly<Record<string, MindcraftProjectFileContent>>,
     },
     errors: [],
   };
+}
+
+/** Tests whether a value is a valid entry of a project document's `contents` map. */
+export function isMindcraftProjectFileContent(value: unknown): value is MindcraftProjectFileContent {
+  if (typeof value === "string") {
+    return true;
+  }
+  if (!isRecord(value)) {
+    return false;
+  }
+  return typeof value.content === "string" && value.encoding === "base64";
 }
 
 /** Tests whether a value is a valid shared-project file path. */

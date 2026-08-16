@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
+import type { FileContent } from "@mindcraft-lang/app-host";
 import {
   type ActiveProject,
   createInMemoryProjectFileSystem,
@@ -235,7 +236,7 @@ describe("AppEnvironmentHost served file system", () => {
 
     try {
       await host.initialize("p1");
-      const sets: ReadonlyMap<string, string>[] = [];
+      const sets: ReadonlyMap<string, FileContent>[] = [];
       const unsubscribe = host.onCompilerControlledFilesChanged((files) => {
         sets.push(new Map(files));
       });

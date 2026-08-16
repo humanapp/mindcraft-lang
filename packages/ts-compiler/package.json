@@ -78,6 +78,7 @@
   },
   "dependencies": {
     "@mindcraft-lang/core": "file:../core",
+    "@mindcraft-lang/service-api": "file:../service-api",
     "typescript": "~5.9.3"
   },
   "devDependencies": {

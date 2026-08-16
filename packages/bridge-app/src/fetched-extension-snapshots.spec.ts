@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { FetchedExtensionSnapshot } from "@mindcraft-lang/app-host";
+import { base64ToBytes, bytesToBase64 } from "@mindcraft-lang/app-host";
 import {
-  base64ToBytes,
-  bytesToBase64,
   decodeInstalledSnapshotFiles,
   fetchedContentFromSnapshots,
   installedExtensionMetadataFromSnapshots,
@@ -59,6 +58,19 @@ describe("fetched extension snapshot records", () => {
 
     const content = fetchedContentFromSnapshots({ "example-org/position-ext": record });
     assert.equal(content.get(record.reference)?.get("/index.ts"), "export const p = 1;");
+  });
+
+  it("decodes a stored binary file back to its bytes", () => {
+    const record = {
+      reference: "gh:example-org/position-ext@v0.1.0",
+      specifier: "v0.1.0",
+      files: { "assets/icon.png": bytesToBase64(ICON_BYTES) },
+    };
+
+    const decoded = decodeInstalledSnapshotFiles(record).get("/assets/icon.png");
+
+    assert.ok(decoded instanceof Uint8Array, "a library's png icon decodes to bytes, never to mangled text");
+    assert.deepStrictEqual([...decoded], [...ICON_BYTES]);
   });
 
   it("parses absent or malformed app-data text as an empty record and drops malformed entries", () => {

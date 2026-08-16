@@ -1,5 +1,7 @@
 import type { FileSystemNotification } from "@mindcraft-lang/bridge-protocol";
 import { MAX_FILE_CONTENT_BYTES } from "@mindcraft-lang/bridge-protocol";
+import type { FileContent } from "@mindcraft-lang/service-api";
+import { fileContentByteLength, fileContentFromWire, fileContentToWire } from "@mindcraft-lang/service-api";
 import { ErrorCode, ProtocolError } from "./error-codes.js";
 
 export type { FileSystemNotification };
@@ -16,15 +18,15 @@ export interface WriteResult {
 export interface IFileSystem {
   /** List the immediate children of `path`, or the root when omitted. */
   list(path?: string): FileTreeEntry[];
-  /** Read a file's UTF-8 contents. */
-  read(path: string): string;
+  /** Read a file's contents: text, or raw bytes for a file that is not UTF-8 text. */
+  read(path: string): FileContent;
   /**
    * Write `content` to `path`. When `expectedEtag` is provided and disagrees
    * with the current etag, throws {@link ProtocolError} with `ETAG_MISMATCH`.
    */
-  write(path: string, content: string, isReadonly?: boolean, etag?: string): WriteResult;
+  write(path: string, content: FileContent, isReadonly?: boolean, etag?: string): WriteResult;
   /** Restore a file with a known etag (used by sync), bypassing optimistic-concurrency checks. */
-  writeRestore(path: string, content: string, isReadonly: boolean, etag: string): void;
+  writeRestore(path: string, content: FileContent, isReadonly: boolean, etag: string): void;
   delete(path: string): void;
   rename(oldPath: string, newPath: string): void;
   stat(path: string): StatResult;
@@ -51,11 +53,11 @@ export class NotifyingFileSystem implements IFileSystem {
     return this._fs.list(path);
   }
 
-  read(path: string): string {
+  read(path: string): FileContent {
     return this._fs.read(path);
   }
 
-  write(path: string, content: string, isReadonly?: boolean, expectedEtag?: string): WriteResult {
+  write(path: string, content: FileContent, isReadonly?: boolean, expectedEtag?: string): WriteResult {
     // Capture the etag before writing so the notification carries the "old" etag.
     // Receivers use this to detect concurrent modifications (optimistic concurrency).
     let preWriteEtag: string | undefined;
@@ -68,19 +70,26 @@ export class NotifyingFileSystem implements IFileSystem {
       // File doesn't exist yet
     }
     const { etag: newEtag } = this._fs.write(path, content, isReadonly, expectedEtag);
-    if (content.length > MAX_FILE_CONTENT_BYTES) {
+    if (fileContentByteLength(content) > MAX_FILE_CONTENT_BYTES) {
       return { etag: newEtag, oversized: true };
     }
-    this._onChange({ action: "write", path, content, isReadonly, newEtag, expectedEtag: preWriteEtag });
+    this._onChange({
+      action: "write",
+      path,
+      ...fileContentToWire(content),
+      isReadonly,
+      newEtag,
+      expectedEtag: preWriteEtag,
+    });
     return { etag: newEtag };
   }
 
-  writeRestore(path: string, content: string, isReadonly: boolean, etag: string): void {
+  writeRestore(path: string, content: FileContent, isReadonly: boolean, etag: string): void {
     this._fs.writeRestore(path, content, isReadonly, etag);
-    if (content.length > MAX_FILE_CONTENT_BYTES) {
+    if (fileContentByteLength(content) > MAX_FILE_CONTENT_BYTES) {
       return;
     }
-    this._onChange({ action: "write", path, content, isReadonly, newEtag: etag });
+    this._onChange({ action: "write", path, ...fileContentToWire(content), isReadonly, newEtag: etag });
   }
 
   delete(path: string): void {
@@ -131,7 +140,7 @@ export class NotifyingFileSystem implements IFileSystem {
 
   import(entries: FileSystemSnapshot): void {
     this._fs.import(entries);
-    this._onChange({ action: "import", entries: [...entries] });
+    this._onChange({ action: "import", entries: [...entries].map(toWireEntry) });
   }
 
   applyNotification(ev: FileSystemNotification): void {
@@ -143,7 +152,7 @@ export class NotifyingFileSystem implements IFileSystem {
     switch (ev.action) {
       case "write":
         this.checkEtag(ev.path, ev.expectedEtag);
-        this._fs.writeRestore(ev.path, ev.content, ev.isReadonly ?? false, ev.newEtag);
+        this._fs.writeRestore(ev.path, fileContentFromWire(ev), ev.isReadonly ?? false, ev.newEtag);
         break;
       case "delete":
         this.checkEtag(ev.path, ev.expectedEtag);
@@ -160,7 +169,7 @@ export class NotifyingFileSystem implements IFileSystem {
         this._fs.rmdir(ev.path);
         break;
       case "import":
-        this._fs.import(new Map(ev.entries));
+        this._fs.import(new Map(ev.entries.map(fromWireEntry)));
         break;
     }
   }
@@ -195,15 +204,15 @@ export class FileSystem implements IFileSystem {
     return this._root.list(path);
   }
 
-  read(path: string): string {
+  read(path: string): FileContent {
     return this._root.read(path);
   }
 
-  write(path: string, content: string, isReadonly?: boolean, expectedEtag?: string): WriteResult {
+  write(path: string, content: FileContent, isReadonly?: boolean, expectedEtag?: string): WriteResult {
     return { etag: this._root.write(path, content, isReadonly, expectedEtag) };
   }
 
-  writeRestore(path: string, content: string, isReadonly: boolean, etag: string): void {
+  writeRestore(path: string, content: FileContent, isReadonly: boolean, etag: string): void {
     this._root.writeRestore(path, content, isReadonly, etag);
   }
 
@@ -259,7 +268,7 @@ export class FileSystem implements IFileSystem {
 /** A regular file entry in an {@link FileSystemSnapshot}. */
 export type FileSystemSnapshotFileEntry = {
   kind: "file";
-  content: string;
+  content: FileContent;
   etag: string;
   isReadonly: boolean;
 };
@@ -291,7 +300,7 @@ export type TreeFileEntry = {
 
 /** A file entry that also carries its content. */
 export type TreeFileEntryWithContent = TreeFileEntry & {
-  content: string;
+  content: FileContent;
 };
 
 /** A directory entry returned by {@link IFileSystem.list}. */
@@ -313,7 +322,7 @@ class FileTree {
     public name: string
   ) {}
 
-  read(fullPath: string): string {
+  read(fullPath: string): FileContent {
     fullPath = normalizePath(fullPath);
     const segs = fullPath.split("/").filter((s) => s.length > 0);
     if (segs.length === 0) {
@@ -324,7 +333,7 @@ class FileTree {
     return this.readInternal(dirSegs, fullPath, name);
   }
 
-  write(fullPath: string, content: string, isReadonly?: boolean, expectedEtag?: string): string {
+  write(fullPath: string, content: FileContent, isReadonly?: boolean, expectedEtag?: string): string {
     fullPath = normalizePath(fullPath);
     const segs = fullPath.split("/").filter((s) => s.length > 0);
     if (segs.length === 0) {
@@ -337,7 +346,7 @@ class FileTree {
     return newEtag;
   }
 
-  writeRestore(fullPath: string, content: string, isReadonly: boolean, etag: string): void {
+  writeRestore(fullPath: string, content: FileContent, isReadonly: boolean, etag: string): void {
     fullPath = normalizePath(fullPath);
     const segs = fullPath.split("/").filter((s) => s.length > 0);
     if (segs.length === 0) {
@@ -551,7 +560,7 @@ class FileTree {
     }
   }
 
-  private readInternal(segs: string[], fullPath: string, name: string): string {
+  private readInternal(segs: string[], fullPath: string, name: string): FileContent {
     return this.readEntryInternal(segs, fullPath, name).content;
   }
 
@@ -579,7 +588,7 @@ class FileTree {
     segs: string[],
     fullPath: string,
     name: string,
-    content: string,
+    content: FileContent,
     isReadonly: boolean,
     newEtag: string,
     expectedEtag?: string
@@ -688,6 +697,27 @@ class FileTree {
     }
     return false;
   }
+}
+
+/** One entry of a filesystem notification's `import` snapshot, as the protocol carries it. */
+type WireSnapshotEntry = Extract<FileSystemNotification, { action: "import" }>["entries"][number][1];
+
+/** Encode a snapshot entry for the wire. */
+function toWireEntry([path, entry]: [string, FileSystemSnapshotEntry]): [string, WireSnapshotEntry] {
+  if (entry.kind === "directory") {
+    return [path, entry];
+  }
+  const { content, ...rest } = entry;
+  return [path, { ...rest, ...fileContentToWire(content) }];
+}
+
+/** Decode a wire entry back into a snapshot entry. */
+function fromWireEntry([path, entry]: [string, WireSnapshotEntry]): [string, FileSystemSnapshotEntry] {
+  if (entry.kind === "directory") {
+    return [path, entry];
+  }
+  const { encoding, ...rest } = entry;
+  return [path, { ...rest, content: fileContentFromWire(entry) }];
 }
 
 function normalizePath(path?: string): string {

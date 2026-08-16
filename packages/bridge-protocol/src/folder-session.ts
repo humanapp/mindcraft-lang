@@ -1,12 +1,12 @@
 import type { CompileDiagnosticsPayload } from "./messages/compile.js";
-import type { FileSystemNotification, FilesystemSyncPayload } from "./notifications.js";
+import type { FileContentPayload, FileSystemNotification, FilesystemSyncPayload } from "./notifications.js";
 
 /**
  * Wire-format version of the folder-session protocol spoken between a host
  * (for example a VS Code extension owning a workspace folder) and an embedded
  * app. Bumped on incompatible changes.
  */
-export const FOLDER_SESSION_PROTOCOL_VERSION = 2;
+export const FOLDER_SESSION_PROTOCOL_VERSION = 3;
 
 /** Project-relative directory holding the materialized installed-extensions tree. */
 export const EXTENSIONS_TREE_PATH = ".libraries";
@@ -84,12 +84,12 @@ export interface FolderWelcomePayload {
     etag: string;
   };
   /**
-   * Text files currently on disk under the project's installed-extensions
-   * tree, as project-relative path/content pairs (including
+   * Files currently on disk under the project's installed-extensions tree, as
+   * project-relative path/content pairs (including
    * {@link INSTALLED_EXTENSIONS_METADATA_PATH} when present). Absent when the
    * tree is absent or empty.
    */
-  extensionsCache?: ReadonlyArray<[string, string]>;
+  extensionsCache?: ReadonlyArray<[string, FileContentPayload]>;
 }
 
 /** Handshake confirmation: delivers the project identity and its manifest. */
@@ -224,7 +224,7 @@ export interface FolderCompilerFilesPayload {
    * `tsconfig.json`, ambient declarations, and the materialized
    * installed-extensions tree -- as project-relative path/content pairs.
    */
-  files: ReadonlyArray<[string, string]>;
+  files: ReadonlyArray<[string, FileContentPayload]>;
   /**
    * Install provenance of every installed fetched dependency, keyed by
    * `<owner>/<repo>` origin. The host stores it at

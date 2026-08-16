@@ -1,3 +1,5 @@
+import type { FileContent } from "@mindcraft-lang/app-host";
+import { fileContentText } from "@mindcraft-lang/app-host";
 import { renameBrainNamespaces } from "@mindcraft-lang/core/app";
 import { EXTENSION_IMPORT_PREFIX } from "@mindcraft-lang/ts-compiler";
 import type { EmbeddedExtension, FetchedExtensionContentMap } from "./embedded-extensions.js";
@@ -83,7 +85,7 @@ export function collectLibraryUninstallImpact(options: {
   embedded: readonly EmbeddedExtension[];
   fetched?: FetchedExtensionContentMap;
   brains: readonly UninstallGuardBrain[];
-  files?: ReadonlyMap<string, string>;
+  files?: ReadonlyMap<string, FileContent>;
 }): LibraryUninstallImpact {
   const current = options.extensions ?? {};
   const next: Record<string, string> = {};
@@ -113,7 +115,11 @@ export function collectLibraryUninstallImpact(options: {
 
   const filePaths: string[] = [];
   for (const [path, content] of options.files ?? []) {
-    const imported = collectFileImportCoordinates(content);
+    const text = fileContentText(content);
+    if (text === undefined) {
+      continue;
+    }
+    const imported = collectFileImportCoordinates(text);
     for (const namespace of leavingNamespaces) {
       if (imported.has(namespace)) {
         filePaths.push(path);

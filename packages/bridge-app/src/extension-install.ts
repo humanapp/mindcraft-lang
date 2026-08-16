@@ -4,9 +4,11 @@ import type {
   ExtensionFetchError,
   ExtensionFetchResult,
   ExtensionVersionListResult,
+  FileContent,
 } from "@mindcraft-lang/app-host";
 import {
   applyCatalogMove,
+  fileContentText,
   highestListedRelease,
   MINDCRAFT_JSON_PATH,
   parseCatalogMoveReference,
@@ -247,8 +249,8 @@ export type ExtensionFetchClosureResult =
     };
 
 /** Read the extensions map an origin's own content manifest declares. */
-function ownExtensions(files: ReadonlyMap<string, string>): Readonly<Record<string, string>> {
-  const manifestContent = files.get(`/${MINDCRAFT_JSON_PATH}`) ?? files.get(MINDCRAFT_JSON_PATH);
+function ownExtensions(files: ReadonlyMap<string, FileContent>): Readonly<Record<string, string>> {
+  const manifestContent = manifestTextOf(files);
   if (manifestContent === undefined) return {};
   const parsed = parseProjectContentManifest(manifestContent);
   return parsed.ok ? parsed.manifest.extensions : {};
@@ -261,15 +263,20 @@ function ownExtensions(files: ReadonlyMap<string, string>): Readonly<Record<stri
  * as missing.
  */
 function isUsableSnapshotRecord(record: InstalledExtensionSnapshot): boolean {
-  const files = decodeInstalledSnapshotFiles(record);
-  const manifestContent = files.get(`/${MINDCRAFT_JSON_PATH}`) ?? files.get(MINDCRAFT_JSON_PATH);
+  const manifestContent = manifestTextOf(decodeInstalledSnapshotFiles(record));
   if (manifestContent === undefined) return false;
   return parseProjectContentManifest(manifestContent).ok;
 }
 
-/** Build the leading-slash text file map of an embedded extension. */
-function embeddedContent(extension: EmbeddedExtension): Map<string, string> {
-  const files = new Map<string, string>();
+/** The text of an origin's own `mindcraft.json`, at either path spelling. */
+function manifestTextOf(files: ReadonlyMap<string, FileContent>): string | undefined {
+  const entry = files.get(`/${MINDCRAFT_JSON_PATH}`) ?? files.get(MINDCRAFT_JSON_PATH);
+  return entry === undefined ? undefined : fileContentText(entry);
+}
+
+/** Build the leading-slash file map of an embedded extension. */
+function embeddedContent(extension: EmbeddedExtension): Map<string, FileContent> {
+  const files = new Map<string, FileContent>();
   for (const file of extension.files) {
     files.set(file.path.startsWith("/") ? file.path : `/${file.path}`, file.content);
   }
@@ -500,7 +507,7 @@ async function walkExtensionClosure(options: ClosureWalkOptions): Promise<Closur
       const parsed = parseExtensionReference(item.reference);
       if (parsed === undefined) continue;
 
-      let files: ReadonlyMap<string, string> | undefined;
+      let files: ReadonlyMap<string, FileContent> | undefined;
       if (parsed.transport === "embedded") {
         const extension = embeddedByCoordinate.get(parsed.coordinate);
         if (extension === undefined) continue;

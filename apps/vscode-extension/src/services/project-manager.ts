@@ -1,3 +1,4 @@
+import { fileContentText } from "@mindcraft-lang/app-host";
 import { type ConnectionStatus, type FileSystemNotification, Project } from "@mindcraft-lang/bridge-client";
 import type { ExtensionClientMessage, ExtensionServerMessage } from "@mindcraft-lang/bridge-protocol";
 
@@ -417,8 +418,8 @@ export class ProjectManager implements vscode.Disposable {
 
   private updateFolderNameFromProject(project: ExtensionProject): void {
     try {
-      const content = project.files.raw.read(MINDCRAFT_JSON);
-      const json = JSON.parse(content);
+      const content = fileContentText(project.files.raw.read(MINDCRAFT_JSON));
+      const json = content === undefined ? undefined : JSON.parse(content);
       if (json?.name) {
         this.renameWorkspaceFolder(json.name);
       }

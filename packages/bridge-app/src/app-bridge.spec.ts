@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
+import type { FileContent } from "@mindcraft-lang/app-host";
 import type { DiagnosticEntry } from "@mindcraft-lang/bridge-app";
 import {
   type AppBridgeFeature,
@@ -98,7 +99,7 @@ class MemoryProjectFileSystem implements ProjectFileSystem {
     }
   }
 
-  read(path: string): string {
+  read(path: string): FileContent {
     return this._fs.read(path);
   }
 

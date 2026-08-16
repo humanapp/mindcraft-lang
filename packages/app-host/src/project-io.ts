@@ -3,8 +3,15 @@ import type {
   MindcraftProjectDocumentValidationCode,
   MindcraftProjectDocumentValidationError,
   MindcraftProjectExtensions,
+  MindcraftProjectFileContent,
 } from "@mindcraft-lang/service-api";
-import { MINDCRAFT_PROJECT_FORMAT, parseMindcraftProjectDocument } from "@mindcraft-lang/service-api";
+import {
+  fileContentFromWire,
+  fileContentToWire,
+  isBinaryFileContent,
+  MINDCRAFT_PROJECT_FORMAT,
+  parseMindcraftProjectDocument,
+} from "@mindcraft-lang/service-api";
 import { AppHostErrorCode, appHostError } from "./app-host-error.js";
 import { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
 import { contentManifestFromManifest } from "./mindcraft-json-sync.js";
@@ -125,12 +132,12 @@ export async function buildProjectExportDocument(
   }
 ): Promise<MindcraftProjectDocument> {
   const snapshot = filesystem.exportSnapshot();
-  const contents: Record<string, string> = {};
+  const contents: Record<string, MindcraftProjectFileContent> = {};
   for (const [path, entry] of snapshot) {
     if (entry.kind !== "file") continue;
     if (entry.isReadonly) continue;
     if (path === MINDCRAFT_JSON_PATH) continue;
-    contents[path] = entry.content;
+    contents[path] = isBinaryFileContent(entry.content) ? fileContentToWire(entry.content) : entry.content;
   }
 
   const brains = await loadAppDataRecord(loadAppData, BRAINS_APP_DATA_KEY);
@@ -205,13 +212,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function buildSnapshotFromContents(contents: Readonly<Record<string, string>>): Map<string, ProjectFileSystemEntry> {
+function buildSnapshotFromContents(
+  contents: Readonly<Record<string, MindcraftProjectFileContent>>
+): Map<string, ProjectFileSystemEntry> {
   const snapshot = new Map<string, ProjectFileSystemEntry>();
   for (const [path, content] of Object.entries(contents)) {
     if (path === MINDCRAFT_JSON_PATH) continue;
     snapshot.set(path, {
       kind: "file",
-      content,
+      content: typeof content === "string" ? content : fileContentFromWire(content),
       etag: crypto.randomUUID(),
       isReadonly: false,
     });

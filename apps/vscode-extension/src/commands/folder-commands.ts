@@ -2,6 +2,7 @@ import {
   buildUnpackedTree,
   DEFAULT_MAX_FILE_SIZE,
   type ExtensionCatalogDocumentEntry,
+  fileContentToBytes,
   isUnpackRefusal,
   parseExtensionReference,
   seedProjectTargets,
@@ -499,10 +500,7 @@ async function importProject(context: vscode.ExtensionContext): Promise<void> {
     if (slash > 0) {
       await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(folder.uri, file.path.slice(0, slash)));
     }
-    await vscode.workspace.fs.writeFile(
-      vscode.Uri.joinPath(folder.uri, file.path),
-      new TextEncoder().encode(file.content)
-    );
+    await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(folder.uri, file.path), fileContentToBytes(file.content));
   }
   const manifestText = seedProjectTargets(tree.manifestText, targetRegistryEntries());
   await vscode.workspace.fs.writeFile(manifestUri, new TextEncoder().encode(manifestText));

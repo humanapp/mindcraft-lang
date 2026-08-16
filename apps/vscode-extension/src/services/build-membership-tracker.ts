@@ -1,3 +1,4 @@
+import { fileContentText } from "@mindcraft-lang/app-host";
 import {
   findMissingListedFiles,
   isFileInBuild,
@@ -68,7 +69,7 @@ export class BuildMembershipTracker implements vscode.Disposable {
     let manifestText: string | undefined;
     if (readFs) {
       try {
-        manifestText = readFs.read(MINDCRAFT_JSON);
+        manifestText = fileContentText(readFs.read(MINDCRAFT_JSON));
       } catch {
         manifestText = undefined;
       }

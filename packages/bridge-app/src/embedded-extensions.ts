@@ -1,7 +1,13 @@
-import type { CatalogMoveVersionLookup, ExtensionCatalogMoves, ExtensionTarget } from "@mindcraft-lang/app-host";
+import type {
+  CatalogMoveVersionLookup,
+  ExtensionCatalogMoves,
+  ExtensionTarget,
+  FileContent,
+} from "@mindcraft-lang/app-host";
 import {
   applyCatalogMove,
   CatalogMoveApplyErrorCode,
+  fileContentText,
   isAbbreviatedCommitPin,
   LOWEST_CONTENT_VERSION,
   MINDCRAFT_JSON_PATH,
@@ -165,7 +171,7 @@ export class ExtensionResolutionCycleError extends Error {
  * reference string, as written in an extensions map, to the snapshot's
  * origin-relative text files (leading-slash paths).
  */
-export type FetchedExtensionContentMap = ReadonlyMap<string, ReadonlyMap<string, string>>;
+export type FetchedExtensionContentMap = ReadonlyMap<string, ReadonlyMap<string, FileContent>>;
 
 /** The content sources a project's extension references resolve against. */
 export interface ExtensionResolutionSources {
@@ -244,7 +250,7 @@ export interface OriginCandidate {
   /** The distance from the host project (0 for a direct dependency) at which this candidate was reached. */
   depth: number;
   /** The candidate's origin-relative file map, with leading-slash paths. */
-  files: ReadonlyMap<string, string>;
+  files: ReadonlyMap<string, FileContent>;
   /** The candidate's own extensions list, resolving its `@lib/<owner>/<repo>` imports. */
   extensions: ExtensionsMap;
   /** The `<owner>/<repo>` coordinates of the candidate's declared compatibility targets, each recursed as a platform edge; empty when it declares none. */
@@ -270,8 +276,8 @@ function compareSemver(a: string, b: string): number {
 }
 
 /** Build the origin-relative file map for an embedded extension, with leading-slash paths. */
-function embeddedFiles(extension: EmbeddedExtension): Map<string, string> {
-  const files = new Map<string, string>();
+function embeddedFiles(extension: EmbeddedExtension): Map<string, FileContent> {
+  const files = new Map<string, FileContent>();
   for (const file of extension.files) {
     files.set(file.path.startsWith("/") ? file.path : `/${file.path}`, file.content);
   }
@@ -287,7 +293,7 @@ function embeddedFiles(extension: EmbeddedExtension): Map<string, string> {
  */
 function readOwnManifest(
   origin: string,
-  files: ReadonlyMap<string, string>
+  files: ReadonlyMap<string, FileContent>
 ): {
   name: string;
   version: string;
@@ -296,7 +302,8 @@ function readOwnManifest(
   ambient: readonly string[];
   identity?: string;
 } {
-  const manifestContent = files.get(`/${MINDCRAFT_JSON_PATH}`) ?? files.get(MINDCRAFT_JSON_PATH);
+  const manifestEntry = files.get(`/${MINDCRAFT_JSON_PATH}`) ?? files.get(MINDCRAFT_JSON_PATH);
+  const manifestContent = manifestEntry === undefined ? undefined : fileContentText(manifestEntry);
   if (manifestContent === undefined) {
     return { name: origin, version: LOWEST_CONTENT_VERSION, extensions: {}, targets: [], ambient: [] };
   }
@@ -319,7 +326,7 @@ function candidateFromFiles(
   origin: string,
   reference: string,
   depth: number,
-  files: ReadonlyMap<string, string>
+  files: ReadonlyMap<string, FileContent>
 ): OriginCandidate {
   const own = readOwnManifest(origin, files);
   return {
@@ -349,12 +356,13 @@ function candidateFromFiles(
  */
 export function createCatalogMoveVersionLookup(options: {
   embedded: readonly EmbeddedExtension[];
-  contentForReference: (reference: string) => ReadonlyMap<string, string> | undefined;
+  contentForReference: (reference: string) => ReadonlyMap<string, FileContent> | undefined;
 }): CatalogMoveVersionLookup {
   const byCoordinate = new Map(options.embedded.map((extension) => [extension.canonicalOrigin, extension]));
   const cache = new Map<string, string>();
-  const manifestVersion = (files: ReadonlyMap<string, string>): string | undefined => {
-    const manifestContent = files.get(`/${MINDCRAFT_JSON_PATH}`) ?? files.get(MINDCRAFT_JSON_PATH);
+  const manifestVersion = (files: ReadonlyMap<string, FileContent>): string | undefined => {
+    const entry = files.get(`/${MINDCRAFT_JSON_PATH}`) ?? files.get(MINDCRAFT_JSON_PATH);
+    const manifestContent = entry === undefined ? undefined : fileContentText(entry);
     if (manifestContent === undefined) {
       return undefined;
     }

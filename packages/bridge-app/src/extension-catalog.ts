@@ -1,6 +1,8 @@
 import {
   type ExtensionCatalogDocument,
   type ExtensionTarget,
+  type FileContent,
+  fileContentText,
   LOWEST_CONTENT_VERSION,
   MINDCRAFT_JSON_PATH,
   parseExtensionReference,
@@ -159,8 +161,9 @@ function resolvedOrigins(
 }
 
 /** Read a fetched extension's manifest identity from its snapshot content. */
-function readFetchedManifest(files: ReadonlyMap<string, string>): EmbeddedManifest | undefined {
-  const manifestContent = files.get(`/${MINDCRAFT_JSON_PATH}`) ?? files.get(MINDCRAFT_JSON_PATH);
+function readFetchedManifest(files: ReadonlyMap<string, FileContent>): EmbeddedManifest | undefined {
+  const entry = files.get(`/${MINDCRAFT_JSON_PATH}`) ?? files.get(MINDCRAFT_JSON_PATH);
+  const manifestContent = entry === undefined ? undefined : fileContentText(entry);
   if (manifestContent === undefined) {
     return undefined;
   }

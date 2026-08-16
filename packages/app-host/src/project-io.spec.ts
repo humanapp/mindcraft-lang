@@ -23,7 +23,13 @@ import {
   parseProjectContentManifest,
   syncManifestToMindcraftJson,
 } from "@mindcraft-lang/app-host";
-import { MINDCRAFT_PROJECT_FORMAT, MindcraftProjectDocumentValidationCode } from "@mindcraft-lang/service-api";
+import type { MindcraftProjectFileContent } from "@mindcraft-lang/service-api";
+import {
+  fileContentToBytes,
+  fileContentToWire,
+  MINDCRAFT_PROJECT_FORMAT,
+  MindcraftProjectDocumentValidationCode,
+} from "@mindcraft-lang/service-api";
 import { assertRejectsWithCode } from "./test-support/error-assertions.js";
 import { MemoryProjectStore } from "./test-support/memory-project-store.js";
 
@@ -87,7 +93,7 @@ function makeManifest(overrides?: Partial<ProjectManifest>): ProjectManifest {
 /** A well-formed v2 document with overridable manifest fields and contents. */
 function makeDocument(
   manifestOverrides?: Record<string, unknown>,
-  contents?: Record<string, string>
+  contents?: Record<string, MindcraftProjectFileContent>
 ): Record<string, unknown> {
   return {
     format: MINDCRAFT_PROJECT_FORMAT,
@@ -680,7 +686,7 @@ describe("project extensions interchange", () => {
     syncManifestToMindcraftJson(active.filesystem, active.manifest);
 
     const entry = active.filesystem.exportSnapshot().get(MINDCRAFT_JSON_PATH);
-    assert.ok(entry && entry.kind === "file");
+    assert.ok(entry && entry.kind === "file" && typeof entry.content === "string");
     const parsed = parseProjectContentManifest(entry.content);
     assert.ok(parsed.ok);
     assert.deepStrictEqual(parsed.manifest.extensions, EXTENSIONS);
@@ -801,7 +807,7 @@ describe("project targets interchange", () => {
     syncManifestToMindcraftJson(active.filesystem, active.manifest);
 
     const entry = active.filesystem.exportSnapshot().get(MINDCRAFT_JSON_PATH);
-    assert.ok(entry && entry.kind === "file");
+    assert.ok(entry && entry.kind === "file" && typeof entry.content === "string");
     const parsed = parseProjectContentManifest(entry.content);
     assert.ok(parsed.ok);
     assert.deepStrictEqual(parsed.manifest.targets, TARGETS);
@@ -815,6 +821,38 @@ describe("project targets interchange", () => {
     const exported = await buildActiveProjectExportDocument(pm);
 
     assert.deepStrictEqual(exported.manifest.targets, TARGETS);
+  });
+
+  it("round-trips a binary file through import and export byte for byte", async () => {
+    const pngBytes = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+    ]);
+    const document = makeDocument(
+      {},
+      {
+        "tiles/icon.png": fileContentToWire(pngBytes),
+        "src/main.ts": "hello",
+      }
+    );
+
+    const imported = await importProjectDocument(makeFile(document), "test-app", pm);
+    assert.strictEqual(imported.success, true);
+
+    const active = await pm.open(imported.projectId!);
+    const stored = active.filesystem.exportSnapshot().get("tiles/icon.png");
+    assert.ok(stored && stored.kind === "file");
+    assert.deepStrictEqual([...fileContentToBytes(stored.content)], [...pngBytes], "the icon survives import");
+
+    const exported = await buildActiveProjectExportDocument(pm);
+    const roundTripped = exported.contents["tiles/icon.png"];
+    assert.notStrictEqual(typeof roundTripped, "string", "binary content exports as a base64 entry");
+    const reimported = await importProjectDocument(makeFile({ ...exported }), "test-app", pm);
+    assert.strictEqual(reimported.success, true);
+    const reopened = await pm.open(reimported.projectId!);
+    const again = reopened.filesystem.exportSnapshot().get("tiles/icon.png");
+    assert.ok(again && again.kind === "file");
+    assert.deepStrictEqual([...fileContentToBytes(again.content)], [...pngBytes], "and survives a second trip");
+    assert.strictEqual(exported.contents["src/main.ts"], "hello", "text files stay bare strings");
   });
 
   it("round-trips a project without targets with the field absent", async () => {

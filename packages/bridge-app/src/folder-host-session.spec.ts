@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { fileContentToWire } from "@mindcraft-lang/app-host";
 import type {
+  FileContentPayload,
   FolderAppMessage,
   FolderCompilerFilesMessage,
   FolderHostMessage,
@@ -18,6 +20,11 @@ import type { FolderHostPort } from "./folder-host-session.js";
 import { connectFolderHostSession, FolderSessionError } from "./folder-host-session.js";
 
 const PROJECT_ID = "the-folder-project";
+
+/** The first bytes of a real PNG: signature plus the IHDR chunk header. */
+const ICON_BYTES = new Uint8Array([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+]);
 const MANIFEST_TEXT = JSON.stringify({ name: "Hosted Project", version: "0.1.0" });
 
 const POSITION_ORIGIN = "example-org/position-ext";
@@ -28,7 +35,7 @@ const POSITION_REFERENCE = `gh:${POSITION_ORIGIN}@v0.1.0`;
  * optionally offering an on-disk installed-extensions tree with the welcome.
  */
 function fakeHostPort(options?: {
-  extensionsCache?: ReadonlyArray<[string, string]>;
+  extensionsCache?: ReadonlyArray<[string, FileContentPayload]>;
   volumeWriteErrorCode?: FolderSessionErrorCodeType;
   openExternalDocumentErrorCode?: FolderSessionErrorCodeType;
 }): FolderHostPort & {
@@ -106,8 +113,8 @@ describe("folder session compiler-controlled files publication", () => {
     );
     assert.ok(message);
     assert.deepStrictEqual(message.payload.files, [
-      ["tsconfig.json", "{}"],
-      [`.libraries/${POSITION_ORIGIN}/index.ts`, "export const position = 42;\n"],
+      ["tsconfig.json", { content: "{}" }],
+      [`.libraries/${POSITION_ORIGIN}/index.ts`, { content: "export const position = 42;\n" }],
     ]);
     assert.deepStrictEqual(message.payload.installedExtensions, {
       [POSITION_ORIGIN]: { reference: POSITION_REFERENCE, specifier: "v0.1.0" },
@@ -182,10 +189,14 @@ describe("folder session installed-extensions cache seeding", () => {
       extensionsCache: [
         [
           INSTALLED_EXTENSIONS_METADATA_PATH,
-          JSON.stringify({ [POSITION_ORIGIN]: { reference: POSITION_REFERENCE, specifier: "v0.1.0" } }),
+          { content: JSON.stringify({ [POSITION_ORIGIN]: { reference: POSITION_REFERENCE, specifier: "v0.1.0" } }) },
         ],
-        [`.libraries/${POSITION_ORIGIN}/mindcraft.json`, JSON.stringify({ name: "Position", version: "0.1.0" })],
-        [`.libraries/${POSITION_ORIGIN}/index.ts`, "export const position = 42;\n"],
+        [
+          `.libraries/${POSITION_ORIGIN}/mindcraft.json`,
+          { content: JSON.stringify({ name: "Position", version: "0.1.0" }) },
+        ],
+        [`.libraries/${POSITION_ORIGIN}/index.ts`, { content: "export const position = 42;\n" }],
+        [`.libraries/${POSITION_ORIGIN}/icon.png`, fileContentToWire(ICON_BYTES)],
       ],
     });
     const session = await connectFolderHostSession({ port, appName: "test-app" });
@@ -199,6 +210,11 @@ describe("folder session installed-extensions cache seeding", () => {
     const files = decodeInstalledSnapshotFiles(record);
     assert.equal(files.get("/index.ts"), "export const position = 42;\n");
     assert.equal(files.get("/mindcraft.json"), JSON.stringify({ name: "Position", version: "0.1.0" }));
+    assert.deepEqual(
+      [...(files.get("/icon.png") as Uint8Array)],
+      [...ICON_BYTES],
+      "a library's binary icon survives the welcome tree offer"
+    );
     session.dispose();
   });
 
@@ -209,7 +225,7 @@ describe("folder session installed-extensions cache seeding", () => {
 
     const treeOnly = await connectFolderHostSession({
       port: fakeHostPort({
-        extensionsCache: [[`.libraries/${POSITION_ORIGIN}/index.ts`, "export const position = 42;\n"]],
+        extensionsCache: [[`.libraries/${POSITION_ORIGIN}/index.ts`, { content: "export const position = 42;\n" }]],
       }),
       appName: "test-app",
     });

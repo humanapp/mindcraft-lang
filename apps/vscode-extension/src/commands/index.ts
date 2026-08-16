@@ -1,3 +1,4 @@
+import { fileContentText } from "@mindcraft-lang/app-host";
 import { addManifestFilesEntry, removeManifestFilesEntry } from "@mindcraft-lang/bridge-app/manifest-files";
 import * as vscode from "vscode";
 import { MINDCRAFT_JSON } from "../mindcraft-json";
@@ -107,10 +108,13 @@ function toggleFileInBuild(projectManager: ProjectManager, uri: vscode.Uri): voi
     return;
   }
 
-  let manifestText: string;
+  let manifestText: string | undefined;
   try {
-    manifestText = project.files.raw.read(MINDCRAFT_JSON);
+    manifestText = fileContentText(project.files.raw.read(MINDCRAFT_JSON));
   } catch {
+    manifestText = undefined;
+  }
+  if (manifestText === undefined) {
     vscode.window.showWarningMessage("mindcraft.json could not be read.");
     return;
   }

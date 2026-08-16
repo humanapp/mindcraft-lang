@@ -92,7 +92,7 @@ function projectFileSystemWithMindcraftJson(fields: {
 
 function parseWritten(ws: ProjectFileSystem) {
   const entry = ws.exportSnapshot().get(MINDCRAFT_JSON_PATH);
-  assert.ok(entry && entry.kind === "file");
+  assert.ok(entry && entry.kind === "file" && typeof entry.content === "string");
   const parsed = parseProjectContentManifest(entry.content);
   assert.ok(parsed.ok);
   return parsed.manifest;
@@ -105,7 +105,7 @@ describe("syncManifestToMindcraftJson", () => {
     syncManifestToMindcraftJson(ws, makeManifest({ version: "1.4.2" }));
 
     const entry = ws.exportSnapshot().get(MINDCRAFT_JSON_PATH);
-    assert.ok(entry && entry.kind === "file");
+    assert.ok(entry && entry.kind === "file" && typeof entry.content === "string");
     assert.strictEqual(entry.content.includes('"host"'), false);
     const manifest = parseWritten(ws);
     assert.strictEqual(manifest.name, "My Project");

@@ -1,3 +1,5 @@
+import type { FileContent } from "@mindcraft-lang/app-host";
+import { fileContentEquals, fileContentFromWire, fileContentText } from "@mindcraft-lang/app-host";
 import type { FolderCompilerFilesPayload } from "@mindcraft-lang/bridge-protocol";
 import { EXTENSIONS_TREE_PATH, INSTALLED_EXTENSIONS_METADATA_PATH } from "@mindcraft-lang/bridge-protocol";
 
@@ -19,10 +21,10 @@ const GITIGNORE_ENTRIES = [`${EXTENSIONS_TREE_PATH}/`, GENERATED_TSCONFIG_PATH] 
 
 /** File operations the affordance writer performs against the project folder. */
 export interface AffordanceFileAccess {
-  /** Read a text file; undefined when it is missing or unreadable. */
-  readTextFile(path: string): Promise<string | undefined>;
-  /** Write a text file, creating missing parent directories. */
-  writeTextFile(path: string, content: string): Promise<void>;
+  /** Read a file; undefined when it is missing or unreadable. */
+  readFile(path: string): Promise<FileContent | undefined>;
+  /** Write a file, creating missing parent directories. */
+  writeFile(path: string, content: FileContent): Promise<void>;
   /** Delete a file; a no-op when it is missing. */
   deleteFile(path: string): Promise<void>;
   /** Recursively list the file paths under `directory`; empty when it does not exist. */
@@ -117,9 +119,13 @@ export class ProjectAffordanceWriter {
 
   /** Reconcile the project folder's generated files against `payload`. */
   async apply(payload: FolderCompilerFilesPayload): Promise<AffordanceApplyResult> {
-    const expected = new Map<string, string>();
-    for (const [path, content] of payload.files) {
-      expected.set(path, path === GENERATED_TSCONFIG_PATH ? renderGeneratedTsconfig(content) : content);
+    const expected = new Map<string, FileContent>();
+    for (const [path, wire] of payload.files) {
+      const content = fileContentFromWire(wire);
+      expected.set(
+        path,
+        path === GENERATED_TSCONFIG_PATH ? renderGeneratedTsconfig(fileContentText(content) ?? "") : content
+      );
     }
     if (Object.keys(payload.installedExtensions).length > 0) {
       expected.set(INSTALLED_EXTENSIONS_METADATA_PATH, JSON.stringify(payload.installedExtensions, null, 2));
@@ -134,8 +140,9 @@ export class ProjectAffordanceWriter {
     const deletedPaths: string[] = [];
     for (const [path, content] of expected) {
       stale.delete(path);
-      if ((await this.fileAccess.readTextFile(path)) !== content) {
-        await this.fileAccess.writeTextFile(path, content);
+      const existing = await this.fileAccess.readFile(path);
+      if (existing === undefined || !fileContentEquals(existing, content)) {
+        await this.fileAccess.writeFile(path, content);
         writtenPaths.push(path);
       }
     }
@@ -146,9 +153,12 @@ export class ProjectAffordanceWriter {
     await this.pruneEmptyTreeDirectories(deletedPaths);
     this.managedPaths = new Set([GENERATED_TSCONFIG_PATH, ...[...expected.keys()].filter((path) => !isTreePath(path))]);
 
-    const gitignore = updatedGitignoreContent(await this.fileAccess.readTextFile(GITIGNORE_PATH));
+    const existingGitignore = await this.fileAccess.readFile(GITIGNORE_PATH);
+    const gitignore = updatedGitignoreContent(
+      existingGitignore === undefined ? undefined : fileContentText(existingGitignore)
+    );
     if (gitignore !== undefined) {
-      await this.fileAccess.writeTextFile(GITIGNORE_PATH, gitignore);
+      await this.fileAccess.writeFile(GITIGNORE_PATH, gitignore);
       writtenPaths.push(GITIGNORE_PATH);
     }
     return { writtenPaths, deletedPaths };

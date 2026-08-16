@@ -161,7 +161,7 @@ describe("AppEnvironmentHost user-action id write-back", () => {
       await host.initialize("p1");
 
       const written = filesystem.exportSnapshot().get("tiles/scan.ts");
-      assert.ok(written && written.kind === "file");
+      assert.ok(written && written.kind === "file" && typeof written.content === "string");
       const idMatch = written.content.match(/id: "([A-Za-z0-9]{16})"/);
       assert.ok(idMatch, `expected a minted id written back into the source, got:\n${written.content}`);
       assert.match(written.content, /name: "scan"/);

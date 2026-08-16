@@ -1,4 +1,5 @@
-import type { ProjectFileChange, ProjectFileSnapshot } from "@mindcraft-lang/app-host";
+import type { ProjectFileChange, ProjectFileSnapshot, ProjectFileSystemEntry } from "@mindcraft-lang/app-host";
+import { fileContentFromWire, fileContentToWire } from "@mindcraft-lang/app-host";
 import type { FileSystemSnapshot } from "@mindcraft-lang/bridge-client";
 import type { FileSystemNotification } from "@mindcraft-lang/bridge-protocol";
 
@@ -14,7 +15,7 @@ export function toFileSystemNotification(change: ProjectFileChange): FileSystemN
       return {
         action: "write",
         path: change.path,
-        content: change.content,
+        ...fileContentToWire(change.content),
         newEtag: change.newEtag,
         ...(change.isReadonly !== undefined ? { isReadonly: change.isReadonly } : {}),
         ...(change.expectedEtag !== undefined ? { expectedEtag: change.expectedEtag } : {}),
@@ -37,7 +38,7 @@ export function toFileSystemNotification(change: ProjectFileChange): FileSystemN
     case "rmdir":
       return { action: "rmdir", path: change.path };
     case "import":
-      return { action: "import", entries: [...change.entries] };
+      return { action: "import", entries: [...change.entries].map(toWireEntry) };
   }
 }
 
@@ -48,7 +49,7 @@ export function toProjectFileChange(notification: FileSystemNotification): Proje
       return {
         action: "write",
         path: notification.path,
-        content: notification.content,
+        content: fileContentFromWire(notification),
         newEtag: notification.newEtag,
         ...(notification.isReadonly !== undefined ? { isReadonly: notification.isReadonly } : {}),
         ...(notification.expectedEtag !== undefined ? { expectedEtag: notification.expectedEtag } : {}),
@@ -71,6 +72,27 @@ export function toProjectFileChange(notification: FileSystemNotification): Proje
     case "rmdir":
       return { action: "rmdir", path: notification.path };
     case "import":
-      return { action: "import", entries: [...notification.entries] };
+      return { action: "import", entries: [...notification.entries].map(fromWireEntry) };
   }
+}
+
+/** One entry of a filesystem notification's `import` snapshot, as the protocol carries it. */
+type WireSnapshotEntry = Extract<FileSystemNotification, { action: "import" }>["entries"][number][1];
+
+/** Encode a project snapshot entry for the wire. */
+function toWireEntry([path, entry]: [string, ProjectFileSystemEntry]): [string, WireSnapshotEntry] {
+  if (entry.kind === "directory") {
+    return [path, entry];
+  }
+  const { content, ...rest } = entry;
+  return [path, { ...rest, ...fileContentToWire(content) }];
+}
+
+/** Decode a wire entry back into a project snapshot entry. */
+function fromWireEntry([path, entry]: [string, WireSnapshotEntry]): [string, ProjectFileSystemEntry] {
+  if (entry.kind === "directory") {
+    return [path, entry];
+  }
+  const { encoding, ...rest } = entry;
+  return [path, { ...rest, content: fileContentFromWire(entry) }];
 }

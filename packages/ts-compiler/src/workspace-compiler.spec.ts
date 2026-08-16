@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { coreModule, createMindcraftEnvironment, List, type MindcraftModule } from "@mindcraft-lang/core";
 import { type EnumTypeDef, mkTypeId, NativeType } from "@mindcraft-lang/core/runtime";
+import { fileContentText } from "@mindcraft-lang/service-api";
 import { buildAmbientDeclarations } from "./compiler/ambient.js";
 import type { DependencyMount, ProjectDependency } from "./compiler/extension-mounts.js";
 import { declarationMount, type Mount } from "./compiler/mounts.js";
@@ -192,7 +193,7 @@ export default Sensor({
 
     assert.equal(controlledFiles.get("mindcraft.core.d.ts"), ambientFiles[0]!.content);
     assert.equal(controlledFiles.get("mindcraft.ecosim.d.ts"), ambientFiles[1]!.content);
-    assert.ok(controlledFiles.get("tsconfig.json")?.includes('"strict": true'));
+    assert.ok(fileContentText(controlledFiles.get("tsconfig.json") ?? "")?.includes('"strict": true'));
   });
 
   test("re-resolving to drop a dependency clears the dropped origin's type registrations", () => {
@@ -515,7 +516,7 @@ export default Sensor({
       "the carried tsconfig.json materializes verbatim under the extension subtree"
     );
     assert.ok(
-      controlled.get("tsconfig.json")?.includes('"strict": true'),
+      fileContentText(controlled.get("tsconfig.json") ?? "")?.includes('"strict": true'),
       "the workspace-root tsconfig.json stays the generated one"
     );
     // Extension content keys under `.libraries/<owner>/<repo>/` unconditionally,

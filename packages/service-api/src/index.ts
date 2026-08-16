@@ -1,3 +1,16 @@
+export type { FileContent, WireFileContent } from "./file-content.js";
+export {
+  base64ToBytes,
+  bytesToBase64,
+  fileContentByteLength,
+  fileContentEquals,
+  fileContentFromBytes,
+  fileContentFromWire,
+  fileContentText,
+  fileContentToBytes,
+  fileContentToWire,
+  isBinaryFileContent,
+} from "./file-content.js";
 export type {
   MindcraftProgramImage,
   MindcraftProgramImageBytes,
@@ -21,8 +34,10 @@ export type {
   MindcraftProjectDocumentParseResult,
   MindcraftProjectDocumentValidationError,
   MindcraftProjectExtensions,
+  MindcraftProjectFileContent,
 } from "./project-document.js";
 export {
+  isMindcraftProjectFileContent,
   isMindcraftProjectFilePath,
   LOWEST_CONTENT_VERSION,
   MINDCRAFT_PROJECT_FORMAT,

@@ -20,7 +20,9 @@ import {
   collectUnstableDependencies,
   diffMindcraftJsonToManifest,
   ExtensionFetchErrorCode,
+  type FileContent,
   fetchExtensionSnapshot,
+  fileContentText,
   highestListedRelease,
   MINDCRAFT_JSON_PATH,
   type ProjectManager,
@@ -293,7 +295,7 @@ export class AppEnvironmentHost {
   private _servedFileSystem: ProjectFileSystem | undefined;
 
   // -- Compiler-controlled file set changes --
-  private readonly _compilerControlledFilesListeners = new Set<(files: ReadonlyMap<string, string>) => void>();
+  private readonly _compilerControlledFilesListeners = new Set<(files: ReadonlyMap<string, FileContent>) => void>();
 
   constructor(options: AppEnvironmentHostOptions) {
     this.projectManager = options.projectManager;
@@ -751,7 +753,7 @@ export class AppEnvironmentHost {
    * generated `tsconfig.json`, ambient declarations, and the materialized
    * installed-extensions tree. Undefined until the compiler is wired.
    */
-  getCompilerControlledFiles(): ReadonlyMap<string, string> | undefined {
+  getCompilerControlledFiles(): ReadonlyMap<string, FileContent> | undefined {
     return this._compiler?.compiler.getCompilerControlledFiles();
   }
 
@@ -760,7 +762,7 @@ export class AppEnvironmentHost {
    * the full new set after each compile that changed it. Returns an
    * unsubscribe function.
    */
-  onCompilerControlledFilesChanged(listener: (files: ReadonlyMap<string, string>) => void): () => void {
+  onCompilerControlledFilesChanged(listener: (files: ReadonlyMap<string, FileContent>) => void): () => void {
     this._compilerControlledFilesListeners.add(listener);
     return () => {
       this._compilerControlledFilesListeners.delete(listener);
@@ -1005,7 +1007,7 @@ export class AppEnvironmentHost {
       return { committed: false, refusal: { kind: "fetch", error: closure.error } };
     }
 
-    const fetchedContent = new Map<string, ReadonlyMap<string, string>>();
+    const fetchedContent = new Map<string, ReadonlyMap<string, FileContent>>();
     for (const [reference, record] of closure.snapshotsByReference) {
       fetchedContent.set(reference, decodeInstalledSnapshotFiles(record));
     }
@@ -1410,7 +1412,8 @@ export class AppEnvironmentHost {
         },
       };
     }
-    const manifestContent = decodeInstalledSnapshotFiles(record).get(`/${MINDCRAFT_JSON_PATH}`);
+    const manifestEntry = decodeInstalledSnapshotFiles(record).get(`/${MINDCRAFT_JSON_PATH}`);
+    const manifestContent = manifestEntry === undefined ? undefined : fileContentText(manifestEntry);
     const parsed = manifestContent !== undefined ? parseProjectContentManifest(manifestContent) : undefined;
     return checkExtensionReferenceUpdate({
       reference,
@@ -1863,7 +1866,11 @@ export class AppEnvironmentHost {
   handleRemoteProjectFileChange(change: ProjectFileChange): void {
     this.bumpVfsRevision();
     if (change.action === "write" && change.path === MINDCRAFT_JSON_PATH && this.projectManager.activeProject) {
-      const patch = diffMindcraftJsonToManifest(change.content, this.projectManager.activeProject.manifest);
+      const manifestText = fileContentText(change.content);
+      const patch =
+        manifestText === undefined
+          ? undefined
+          : diffMindcraftJsonToManifest(manifestText, this.projectManager.activeProject.manifest);
       if (patch) {
         // An extensions change flows through the install transaction, the
         // same pipeline the extension browser uses; the remaining synced

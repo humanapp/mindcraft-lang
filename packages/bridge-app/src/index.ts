@@ -103,8 +103,6 @@ export type {
   InstalledExtensionSnapshots,
 } from "./fetched-extension-snapshots.js";
 export {
-  base64ToBytes,
-  bytesToBase64,
   decodeInstalledSnapshotFiles,
   fetchedContentFromSnapshots,
   INSTALLED_EXTENSIONS_APP_DATA_KEY,

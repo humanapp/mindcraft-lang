@@ -70,7 +70,7 @@ export {
   compileStatusPayloadSchema,
   sessionHelloPayloadSchema,
 } from "./messages/index.js";
-export type { FileSystemNotification, FilesystemSyncPayload } from "./notifications.js";
+export type { FileContentPayload, FileSystemNotification, FilesystemSyncPayload } from "./notifications.js";
 export {
   filesystemNotificationSchema,
   filesystemSyncPayloadSchema,

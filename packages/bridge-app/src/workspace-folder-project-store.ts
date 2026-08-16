@@ -11,6 +11,8 @@ import {
   AppHostErrorCode,
   appHostError,
   applyProjectFileChangeToSnapshot,
+  fileContentEquals,
+  fileContentToWire,
   MINDCRAFT_JSON_PATH,
   parseProjectContentManifest,
   serializeProjectContentManifest,
@@ -484,11 +486,11 @@ function diffSnapshotChanges(mirror: ProjectFileSnapshot, target: ProjectFileSna
       }
       continue;
     }
-    if (!current || current.kind !== "file" || current.content !== entry.content) {
+    if (!current || current.kind !== "file" || !fileContentEquals(current.content, entry.content)) {
       changes.push({
         action: "write",
         path,
-        content: entry.content,
+        ...fileContentToWire(entry.content),
         newEtag: entry.etag,
         ...(current?.kind === "file" ? { expectedEtag: current.etag } : {}),
       });

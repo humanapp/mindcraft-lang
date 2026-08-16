@@ -1,4 +1,5 @@
-import type { FetchedExtensionSnapshot } from "@mindcraft-lang/app-host";
+import type { FetchedExtensionSnapshot, FileContent } from "@mindcraft-lang/app-host";
+import { base64ToBytes, bytesToBase64, fileContentFromBytes, fileContentToBytes } from "@mindcraft-lang/app-host";
 import type { FolderInstalledExtensionMetadata } from "@mindcraft-lang/bridge-protocol";
 import { EXTENSIONS_TREE_PATH } from "@mindcraft-lang/bridge-protocol";
 import type { FetchedExtensionContentMap } from "./embedded-extensions.js";
@@ -28,26 +29,6 @@ export interface InstalledExtensionSnapshot {
 /** A project's installed fetched-extension snapshots, keyed by `<owner>/<repo>` coordinate. */
 export type InstalledExtensionSnapshots = Readonly<Record<string, InstalledExtensionSnapshot>>;
 
-/** Encode bytes as base64 text. */
-export function bytesToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  const chunkSize = 0x8000;
-  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
-  }
-  return btoa(binary);
-}
-
-/** Decode base64 text into bytes. */
-export function base64ToBytes(text: string): Uint8Array {
-  const binary = atob(text);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index++) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return bytes;
-}
-
 /** Build the persisted snapshot record for a fetched extension snapshot. */
 export function installedSnapshotFromFetched(snapshot: FetchedExtensionSnapshot): InstalledExtensionSnapshot {
   const files: Record<string, string> = {};
@@ -57,12 +38,11 @@ export function installedSnapshotFromFetched(snapshot: FetchedExtensionSnapshot)
   return { reference: snapshot.reference, specifier: snapshot.specifier, files };
 }
 
-/** Decode a stored snapshot's files into the origin-relative text map resolution consumes (leading-slash paths). */
-export function decodeInstalledSnapshotFiles(snapshot: InstalledExtensionSnapshot): Map<string, string> {
-  const decoder = new TextDecoder();
-  const files = new Map<string, string>();
+/** Decode a stored snapshot's files into the origin-relative content map resolution consumes (leading-slash paths). */
+export function decodeInstalledSnapshotFiles(snapshot: InstalledExtensionSnapshot): Map<string, FileContent> {
+  const files = new Map<string, FileContent>();
   for (const [path, data] of Object.entries(snapshot.files)) {
-    files.set(path.startsWith("/") ? path : `/${path}`, decoder.decode(base64ToBytes(data)));
+    files.set(path.startsWith("/") ? path : `/${path}`, fileContentFromBytes(base64ToBytes(data)));
   }
   return files;
 }
@@ -72,7 +52,7 @@ export function decodeInstalledSnapshotFiles(snapshot: InstalledExtensionSnapsho
  * snapshot records, keyed by each record's reference.
  */
 export function fetchedContentFromSnapshots(snapshots: InstalledExtensionSnapshots): FetchedExtensionContentMap {
-  const content = new Map<string, ReadonlyMap<string, string>>();
+  const content = new Map<string, ReadonlyMap<string, FileContent>>();
   for (const snapshot of Object.values(snapshots)) {
     content.set(snapshot.reference, decodeInstalledSnapshotFiles(snapshot));
   }
@@ -166,13 +146,12 @@ export function parseInstalledExtensionMetadata(
  * record.
  *
  * @param metadata - Install provenance per origin, as recorded beside the tree.
- * @param treeFiles - Project-relative path/content pairs of the tree's text files.
+ * @param treeFiles - Project-relative path/content pairs of the tree's files.
  */
 export function reconstructInstalledSnapshotsFromTree(
   metadata: Readonly<Record<string, FolderInstalledExtensionMetadata>>,
-  treeFiles: ReadonlyArray<[string, string]>
+  treeFiles: ReadonlyArray<[string, FileContent]>
 ): InstalledExtensionSnapshots {
-  const encoder = new TextEncoder();
   const snapshots: Record<string, InstalledExtensionSnapshot> = {};
   for (const [origin, provenance] of Object.entries(metadata)) {
     const prefix = `${EXTENSIONS_TREE_PATH}/${origin}/`;
@@ -180,7 +159,7 @@ export function reconstructInstalledSnapshotsFromTree(
     let hasFiles = false;
     for (const [path, content] of treeFiles) {
       if (!path.startsWith(prefix)) continue;
-      files[path.slice(prefix.length)] = bytesToBase64(encoder.encode(content));
+      files[path.slice(prefix.length)] = bytesToBase64(fileContentToBytes(content));
       hasFiles = true;
     }
     if (!hasFiles) continue;

@@ -1,5 +1,6 @@
 import type { CompiledActionBundle, MindcraftEnvironment } from "@mindcraft-lang/core";
 import type { DiagnosticSeverity } from "@mindcraft-lang/core/brain";
+import type { FileContent } from "@mindcraft-lang/service-api";
 import type { ProjectCompileResult } from "./compiler/compile.js";
 import { type DependencyMount, extensionWorkspacePath, type ProjectDependency } from "./compiler/extension-mounts.js";
 import { declarationMounts, type Mount, mountedFiles, sourceMounts } from "./compiler/mounts.js";
@@ -11,7 +12,7 @@ import { buildMultiRootActionBundle } from "./runtime/action-bundle.js";
 /** A file in a {@link WorkspaceSnapshot}: `content` plus the `etag` used for optimistic concurrency. */
 export type WorkspaceFileEntry = {
   kind: "file";
-  content: string;
+  content: FileContent;
   etag: string;
   isReadonly: boolean;
 };
@@ -37,7 +38,7 @@ export type WorkspaceChange =
   | {
       action: "write";
       path: string;
-      content: string;
+      content: FileContent;
       isReadonly?: boolean;
       newEtag: string;
       expectedEtag?: string;
@@ -142,7 +143,7 @@ export interface WorkspaceCompiler {
    * materialized from the resolved extension set. The host should keep these in
    * sync with the workspace and exclude them from the project's saved bytes.
    */
-  getCompilerControlledFiles(): ReadonlyMap<string, string>;
+  getCompilerControlledFiles(): ReadonlyMap<string, FileContent>;
 }
 
 function mapDiagnostic(diagnostic: CompileDiagnostic): WorkspaceDiagnosticEntry {
@@ -186,8 +187,8 @@ function foldRootDiagnostics(
   }
 }
 
-function snapshotToProjectFiles(snapshot: WorkspaceSnapshot): Map<string, string> {
-  const files = new Map<string, string>();
+function snapshotToProjectFiles(snapshot: WorkspaceSnapshot): Map<string, FileContent> {
+  const files = new Map<string, FileContent>();
 
   for (const [path, entry] of snapshot) {
     if (entry.kind === "file") {
@@ -334,8 +335,8 @@ class WorkspaceCompilerController implements WorkspaceCompiler {
     };
   }
 
-  getCompilerControlledFiles(): ReadonlyMap<string, string> {
-    const files = new Map<string, string>();
+  getCompilerControlledFiles(): ReadonlyMap<string, FileContent> {
+    const files = new Map<string, FileContent>();
     for (const file of mountedFiles(this.options.mounts)) {
       files.set(file.path, file.content);
     }

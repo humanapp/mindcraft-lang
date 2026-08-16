@@ -8,6 +8,7 @@
  * `@lib/<owner>/<repo>` resolves to the declaring extension's registration.
  */
 
+import type { FileContent } from "@mindcraft-lang/service-api";
 import { qualifiedClassName } from "./symbol-keys.js";
 
 /**
@@ -31,7 +32,7 @@ export interface DependencyMount {
   /** The mounted project's namespace. */
   namespace: string;
   /** The mounted project's source files, keyed by project-relative path. */
-  files: ReadonlyMap<string, string>;
+  files: ReadonlyMap<string, FileContent>;
   /** The mounted project's own extensions list, resolving `@lib/<owner>/<repo>` imports inside its files. */
   dependencies?: readonly ProjectDependency[];
   /**

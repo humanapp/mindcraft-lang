@@ -1701,7 +1701,11 @@ describe("catalog moves -- transitive dependency redirect", () => {
       const robotManifest = host.servedProjectFileSystem
         .exportSnapshot()
         .get(`.libraries/${ROBOT_COORDINATE}/mindcraft.json`);
-      assert.ok(robotManifest?.kind === "file" && robotManifest.content.includes(`embedded:${MOTOR_COORDINATE}`));
+      assert.ok(
+        robotManifest?.kind === "file" &&
+          typeof robotManifest.content === "string" &&
+          robotManifest.content.includes(`embedded:${MOTOR_COORDINATE}`)
+      );
     } finally {
       host.dispose();
       restoreLocalStorage();
