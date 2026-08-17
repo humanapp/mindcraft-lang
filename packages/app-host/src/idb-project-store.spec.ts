@@ -482,6 +482,26 @@ describe("createIdbProjectStore project collection membership", () => {
     assert.strictEqual(store.getProjectSession(), undefined);
   });
 
+  it("stores the last opened project in localStorage so it survives the browser session", async () => {
+    const sessionStorage = installStorage("sessionStorage");
+    installStorage("localStorage");
+    const keyPrefix = nextKeyPrefix();
+    const store = await createIdbProjectStore(keyPrefix);
+
+    assert.strictEqual(store.getLastOpenedProject(), undefined);
+
+    store.setLastOpenedProject({
+      projectCollectionId: DEFAULT_PROJECT_COLLECTION_ID,
+      projectId: "current-project",
+    });
+    sessionStorage.clear();
+
+    assert.deepStrictEqual(store.getLastOpenedProject(), {
+      projectCollectionId: DEFAULT_PROJECT_COLLECTION_ID,
+      projectId: "current-project",
+    });
+  });
+
   it("rejects guarded project writes after project tombstone", async () => {
     const store = await createIdbProjectStore(nextKeyPrefix());
     const collection = await store.ensureDefaultProjectCollection();

@@ -182,7 +182,7 @@ export {
   RELOAD_UNLOCK_TTL_MS,
 } from "./project-manager.js";
 export type { ProjectManifest } from "./project-manifest.js";
-export type { ProjectCollectionTabSession, ProjectStore } from "./project-store.js";
+export type { ProjectCollectionTabSession, ProjectRef, ProjectStore } from "./project-store.js";
 export { registryTargetEntry, seedProjectTargets } from "./project-target-seed.js";
 export type { UnpackedTree, UnpackRefusal } from "./project-unpack.js";
 export { buildUnpackedTree, isUnpackRefusal, UnpackErrorCode } from "./project-unpack.js";

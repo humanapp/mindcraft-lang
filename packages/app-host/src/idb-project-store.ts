@@ -12,7 +12,7 @@ import {
 import { INITIAL_CONTENT_VERSION } from "./project-content-version.js";
 import type { ProjectFileChange, ProjectFileSnapshot, ProjectFileSystemEntry } from "./project-file-snapshot.js";
 import type { ProjectManifest } from "./project-manifest.js";
-import type { ProjectCollectionTabSession, ProjectStore } from "./project-store.js";
+import type { ProjectCollectionTabSession, ProjectRef, ProjectStore } from "./project-store.js";
 
 interface ProjectDbSchema extends DBSchema {
   projectCollections: {
@@ -53,6 +53,10 @@ function appDataKey(projectId: string, key: string): string {
   return `${projectId}:${key}`;
 }
 
+function lastOpenedProjectKey(keyPrefix: string): string {
+  return `${keyPrefix}:last-opened-project`;
+}
+
 function isLiveProjectCollection(collection: ProjectCollection): boolean {
   return collection.deleted !== true;
 }
@@ -68,8 +72,9 @@ function isConstraintError(error: unknown): boolean {
 /**
  * Create a {@link ProjectStore} backed by IndexedDB.
  *
- * @param keyPrefix - Used to derive the IndexedDB database name and the
- *   `sessionStorage` key that tracks the current tab's project session.
+ * @param keyPrefix - Used to derive the IndexedDB database name, the
+ *   `sessionStorage` key that tracks the current tab's project session, and
+ *   the `localStorage` key that tracks the most recently opened project.
  */
 export async function createIdbProjectStore(keyPrefix: string): Promise<ProjectStore> {
   let migrateWorkspacesToFiles: Map<string, Array<[string, ProjectFileSystemEntry]>> | undefined;
@@ -507,6 +512,32 @@ class IdbProjectStore implements ProjectStore {
       return;
     }
     sessionStorage.setItem(key, JSON.stringify(session));
+  }
+
+  getLastOpenedProject(): ProjectRef | undefined {
+    if (typeof localStorage === "undefined") {
+      return undefined;
+    }
+    const raw = localStorage.getItem(lastOpenedProjectKey(this.keyPrefix));
+    if (!raw) {
+      return undefined;
+    }
+    try {
+      const parsed = JSON.parse(raw) as Partial<ProjectRef>;
+      if (typeof parsed.projectCollectionId === "string" && typeof parsed.projectId === "string") {
+        return { projectCollectionId: parsed.projectCollectionId, projectId: parsed.projectId };
+      }
+    } catch {
+      localStorage.removeItem(lastOpenedProjectKey(this.keyPrefix));
+    }
+    return undefined;
+  }
+
+  setLastOpenedProject(lastOpened: ProjectRef): void {
+    if (typeof localStorage === "undefined") {
+      return;
+    }
+    localStorage.setItem(lastOpenedProjectKey(this.keyPrefix), JSON.stringify(lastOpened));
   }
 
   private async listLiveProjectCollections(): Promise<ProjectCollection[]> {

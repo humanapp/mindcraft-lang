@@ -12,6 +12,7 @@ import {
   type ProjectFileChange,
   type ProjectFileSnapshot,
   type ProjectManifest,
+  type ProjectRef,
   type ProjectStore,
 } from "@mindcraft-lang/app-host";
 import { INITIAL_CONTENT_VERSION } from "../project-content-version.js";
@@ -21,6 +22,7 @@ interface MemoryProjectStoreData {
   projects: ProjectManifest[];
   projectFiles: Map<string, ProjectFileSnapshot>;
   appData: Map<string, string>;
+  lastOpenedProject: ProjectRef | undefined;
 }
 
 function createMemoryProjectStoreData(): MemoryProjectStoreData {
@@ -29,6 +31,7 @@ function createMemoryProjectStoreData(): MemoryProjectStoreData {
     projects: [],
     projectFiles: new Map(),
     appData: new Map(),
+    lastOpenedProject: undefined,
   };
 }
 
@@ -301,6 +304,14 @@ export class MemoryProjectStore implements ProjectStore {
 
   setProjectSession(session: ProjectCollectionTabSession | undefined): void {
     this.projectSession = session;
+  }
+
+  getLastOpenedProject(): ProjectRef | undefined {
+    return this.data.lastOpenedProject;
+  }
+
+  setLastOpenedProject(lastOpened: ProjectRef): void {
+    this.data.lastOpenedProject = lastOpened;
   }
 
   private async requireLiveProject(id: string): Promise<ProjectManifest> {

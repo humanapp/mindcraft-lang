@@ -34,6 +34,12 @@ if (import.meta.env.DEV) {
     ecosimStore.dispose();
   };
   window.addEventListener("pagehide", disposeSimStore, { once: true });
+  // Going hidden commits the pending project save; the store stays alive.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      void ecosimStore.projectManager.flushAutoSave();
+    }
+  });
   import.meta.hot?.dispose(disposeSimStore);
 
   await ecosimStore.initialize();

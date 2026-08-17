@@ -10,6 +10,14 @@ export interface ProjectCollectionTabSession {
   readonly activeProjectId?: string;
 }
 
+/** One project, named together with the project collection that holds it. */
+export interface ProjectRef {
+  /** Project collection holding the project. */
+  readonly projectCollectionId: string;
+  /** Project within that project collection. */
+  readonly projectId: string;
+}
+
 /**
  * Persistence layer for project collections, project manifests, project file
  * snapshots, and app-specific data.
@@ -90,4 +98,13 @@ export interface ProjectStore {
   getProjectSession(): ProjectCollectionTabSession | undefined;
   /** Store or clear the current tab's selected project collection and project. */
   setProjectSession(session: ProjectCollectionTabSession | undefined): void;
+
+  /**
+   * Read the most recently opened project, or `undefined` when this app
+   * namespace has never opened one. The record survives browser restarts and
+   * may name a project or project collection that has since been deleted.
+   */
+  getLastOpenedProject(): ProjectRef | undefined;
+  /** Record `lastOpened` as the most recently opened project. */
+  setLastOpenedProject(lastOpened: ProjectRef): void;
 }

@@ -5,6 +5,7 @@ import type {
   ProjectFileChange,
   ProjectFileSnapshot,
   ProjectManifest,
+  ProjectRef,
   ProjectStore,
 } from "@mindcraft-lang/app-host";
 import {
@@ -350,6 +351,16 @@ export class WorkspaceFolderProjectStore implements ProjectStore {
   setProjectSession(): void {
     // The folder project is the session; there is nothing to persist.
   }
+
+  getLastOpenedProject(): ProjectRef {
+    return {
+      projectCollectionId: this.collection.projectCollectionId,
+      projectId: this.projectId,
+    };
+  }
+
+  /** Ignores the write; this store's last opened project is always its folder project. */
+  setLastOpenedProject(): void {}
 
   // -- Internals --
 

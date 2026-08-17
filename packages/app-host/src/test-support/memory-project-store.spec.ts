@@ -20,6 +20,7 @@ function storeWithVersionlessProject(): MemoryProjectStore {
     projects: [versionless],
     projectFiles: new Map(),
     appData: new Map(),
+    lastOpenedProject: undefined,
   });
 }
 

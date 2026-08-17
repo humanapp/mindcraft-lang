@@ -19,6 +19,7 @@ import {
   ProjectManager,
   type ProjectManifest,
   type ProjectPersistenceError,
+  type ProjectRef,
   RELOAD_UNLOCK_REFRESH_INTERVAL_MS,
   RELOAD_UNLOCK_TTL_MS,
   serializeProjectContentManifest,
@@ -532,6 +533,86 @@ describe("ProjectManager", () => {
       restored.dispose();
     });
 
+    it("reopens the last opened project when the tab session is gone", async () => {
+      await pm.init();
+      await pm.create("First Created");
+      const lastOpened = await pm.create("Last Opened");
+
+      const relaunched = new ProjectManager(memStore.cloneForNewTab());
+      await relaunched.init();
+
+      assert.strictEqual(relaunched.activeProject?.manifest.id, lastOpened.id);
+      await relaunched.close();
+      relaunched.dispose();
+    });
+
+    it("reopens the last opened project's workspace when the tab session is gone", async () => {
+      await pm.init();
+      await pm.create("In Default");
+      const collection = await pm.createProjectCollection("Other");
+      await memStore.createProject(collection.projectCollectionId, "First In Other");
+      const lastOpened = await pm.switchProjectCollectionAndCreateProject(
+        collection.projectCollectionId,
+        "Last Opened"
+      );
+
+      const relaunched = new ProjectManager(memStore.cloneForNewTab());
+      await relaunched.init();
+
+      assert.strictEqual(relaunched.activeProjectCollection?.projectCollectionId, collection.projectCollectionId);
+      assert.strictEqual(relaunched.activeProject?.manifest.id, lastOpened.project.id);
+      await relaunched.close();
+      relaunched.dispose();
+    });
+
+    it("keeps the last opened project written by the most recent tab", async () => {
+      await pm.init();
+      const tabAProject = await pm.create("Tab A");
+      const tabB = new ProjectManager(memStore.cloneForNewTab());
+      await tabB.init();
+      const tabBProject = await tabB.create("Tab B");
+      await tabB.close();
+      tabB.dispose();
+
+      const relaunched = new ProjectManager(memStore.cloneForNewTab());
+      await relaunched.init();
+
+      assert.notStrictEqual(tabAProject.id, tabBProject.id);
+      assert.strictEqual(relaunched.activeProject?.manifest.id, tabBProject.id);
+      await relaunched.close();
+      relaunched.dispose();
+    });
+
+    it("falls back when the last opened project is gone", async () => {
+      await pm.init();
+      const remaining = await pm.create("Remaining");
+      memStore.setLastOpenedProject({
+        projectCollectionId: DEFAULT_PROJECT_COLLECTION_ID,
+        projectId: "deleted-id",
+      });
+
+      const relaunched = new ProjectManager(memStore.cloneForNewTab());
+      await relaunched.init();
+
+      assert.strictEqual(relaunched.activeProject?.manifest.id, remaining.id);
+      await relaunched.close();
+      relaunched.dispose();
+    });
+
+    it("falls back when no project has ever been opened", async () => {
+      await memStore.ensureDefaultProjectCollection();
+      const existing = await memStore.createProject(DEFAULT_PROJECT_COLLECTION_ID, "Existing");
+
+      const fresh = new ProjectManager(memStore);
+      await fresh.init();
+      assert.strictEqual(fresh.activeProject, undefined);
+
+      const active = await fresh.ensureDefaultProject(DEFAULT_PROJECT_NAME);
+      assert.strictEqual(active.manifest.id, existing.id);
+      await fresh.close();
+      fresh.dispose();
+    });
+
     it("does not rewrite an unchanged tab session on re-init", async () => {
       const countingStore = new CountingProjectSessionStore();
       const manager = new ProjectManager(countingStore);
@@ -739,6 +820,137 @@ describe("ProjectManager", () => {
         assert.strictEqual(manager.activeProject?.manifest.name, DEFAULT_PROJECT_NAME);
       } finally {
         logger.error = originalLoggerError;
+        await manager.close();
+        manager.dispose();
+      }
+    });
+  });
+
+  describe("auto-save flush", () => {
+    it("writes a change still inside the auto-save debounce", async () => {
+      const countingStore = new CountingFileWriteStore();
+      const manager = new ProjectManager(countingStore);
+      try {
+        await manager.create("Flush Pending");
+        countingStore.appliedChangeBatches.length = 0;
+        manager.activeProject?.filesystem.applyLocalChange({
+          action: "write",
+          path: "src/main.ts",
+          content: "flushed",
+          newEtag: "etag-1",
+        });
+
+        await manager.flushAutoSave();
+
+        assert.strictEqual(countingStore.appliedChangeBatches.length, 1);
+        const saved = await countingStore.loadProjectFiles(manager.activeProject!.manifest.id);
+        const entry = saved?.get("src/main.ts");
+        assert.ok(entry && entry.kind === "file");
+        assert.strictEqual(entry.content, "flushed");
+      } finally {
+        await manager.close();
+        manager.dispose();
+      }
+    });
+
+    it("writes a change still inside the auto-save debounce when the manager is disposed", async () => {
+      const countingStore = new CountingFileWriteStore();
+      const manager = new ProjectManager(countingStore);
+      const manifest = await manager.create("Flush On Dispose");
+      countingStore.appliedChangeBatches.length = 0;
+      manager.activeProject?.filesystem.applyLocalChange({
+        action: "write",
+        path: "src/main.ts",
+        content: "disposed",
+        newEtag: "etag-1",
+      });
+
+      manager.dispose();
+      await waitForTimers();
+
+      assert.strictEqual(countingStore.appliedChangeBatches.length, 1);
+      const saved = await countingStore.loadProjectFiles(manifest.id);
+      const entry = saved?.get("src/main.ts");
+      assert.ok(entry && entry.kind === "file");
+      assert.strictEqual(entry.content, "disposed");
+    });
+
+    it("writes nothing when no change is pending", async () => {
+      const countingStore = new CountingFileWriteStore();
+      const manager = new ProjectManager(countingStore);
+      try {
+        await manager.create("Nothing Pending");
+        countingStore.saveProjectFilesCount = 0;
+        countingStore.appliedChangeBatches.length = 0;
+
+        await manager.flushAutoSave();
+
+        assert.strictEqual(countingStore.saveProjectFilesCount, 0);
+        assert.strictEqual(countingStore.appliedChangeBatches.length, 0);
+      } finally {
+        await manager.close();
+        manager.dispose();
+      }
+    });
+
+    it("reports a failed flush write through the persistence error listener", async () => {
+      const failingStore = new FailingSaveProjectStore();
+      const manager = new ProjectManager(failingStore);
+      const persistenceErrors: ProjectPersistenceError[] = [];
+      const loggerErrors: unknown[][] = [];
+      const originalLoggerError = logger.error.bind(logger);
+      logger.error = (message: string, data?: unknown) => {
+        loggerErrors.push([message, data]);
+      };
+
+      try {
+        const manifest = await manager.create("Flush Failure");
+        manager.onProjectPersistenceError((error) => {
+          persistenceErrors.push(error);
+        });
+        failingStore.failProjectFileSaves = true;
+        manager.activeProject?.filesystem.applyLocalChange({
+          action: "write",
+          path: "src/main.ts",
+          content: "not persisted",
+          newEtag: "etag-1",
+        });
+
+        await manager.flushAutoSave();
+        await waitForTimers();
+
+        assert.strictEqual(persistenceErrors.length, 1);
+        assert.strictEqual(persistenceErrors[0].operation, "autosave");
+        assert.strictEqual(persistenceErrors[0].projectId, manifest.id);
+        assert.strictEqual(loggerErrors.length, 1);
+        assert.strictEqual(loggerErrors[0][0], "[app-host] project autosave failed");
+      } finally {
+        logger.error = originalLoggerError;
+        failingStore.failProjectFileSaves = false;
+        await manager.close();
+        manager.dispose();
+      }
+    });
+
+    it("recovers a stale active project when the flush write fails", async () => {
+      const fastStore = new MemoryProjectStore();
+      const manager = new ProjectManager(fastStore);
+      try {
+        const active = await manager.ensureDefaultProject(DEFAULT_PROJECT_NAME);
+        await fastStore.deleteProject(active.manifest.id);
+        manager.activeProject?.filesystem.applyLocalChange({
+          action: "write",
+          path: "src/main.ts",
+          content: "stale",
+          newEtag: "etag-1",
+        });
+
+        await manager.flushAutoSave();
+        await waitForTimers();
+
+        assert.notStrictEqual(manager.activeProject?.manifest.id, active.manifest.id);
+        assert.strictEqual(manager.activeProject?.manifest.name, DEFAULT_PROJECT_NAME);
+      } finally {
         await manager.close();
         manager.dispose();
       }
@@ -1075,6 +1287,10 @@ describe("ProjectManager", () => {
           projectId: deleted.id,
         },
       ]);
+
+      const ref = events.map(tombstonedProjectRef).find((entry) => entry !== undefined);
+      assert.strictEqual(ref?.projectCollectionId, DEFAULT_PROJECT_COLLECTION_ID);
+      assert.strictEqual(ref?.projectId, deleted.id);
     });
   });
 
@@ -1141,6 +1357,34 @@ describe("ProjectManager", () => {
       assert.strictEqual(tabB.isProjectCollectionUnlocked(collection.projectCollectionId), true);
       await tabB.close();
       tabB.dispose();
+    });
+
+    it("requires the PIN before reopening a last opened project in a protected collection", async () => {
+      await pm.init();
+      const collection = await pm.createProjectCollection("Protected");
+      await memStore.createProject(collection.projectCollectionId, "First In Protected");
+      const lastOpened = await pm.switchProjectCollectionAndCreateProject(
+        collection.projectCollectionId,
+        "Last Opened"
+      );
+      await pm.setProjectCollectionPin(collection.projectCollectionId, "1234");
+
+      const relaunched = new ProjectManager(memStore.cloneForNewTab());
+      try {
+        await relaunched.init();
+
+        const locked = await relaunched.getProjectCollectionState();
+        const lockedActiveProject = relaunched.activeProject;
+        assert.strictEqual(locked.activeProjectCollection?.projectCollectionId, collection.projectCollectionId);
+        assert.strictEqual(locked.access, "locked");
+        assert.strictEqual(lockedActiveProject, undefined);
+
+        await relaunched.unlockProjectCollection(collection.projectCollectionId, "1234");
+        assert.strictEqual(relaunched.activeProject?.manifest.id, lastOpened.project.id);
+      } finally {
+        await relaunched.close();
+        relaunched.dispose();
+      }
     });
 
     it("switches to a protected locked collection without opening a project", async () => {
@@ -2442,6 +2686,11 @@ function installIntervalCapture(): IntervalCapture {
       await waitForTimers();
     },
   };
+}
+
+/** The project a tombstone event names, or undefined for any other event. */
+function tombstonedProjectRef(event: ProjectCollectionEvent): ProjectRef | undefined {
+  return event.type === "project-tombstoned" ? event : undefined;
 }
 
 async function waitForTimers(): Promise<void> {

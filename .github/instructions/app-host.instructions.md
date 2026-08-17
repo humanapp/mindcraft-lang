@@ -75,12 +75,34 @@ src/
 it from the store's saved snapshot via an `import` change. On project close or
 switch, `closeInternal` saves the current snapshot back to the store.
 
+### Project restore
+
+`ProjectManager.init` restores the tab's project collection and project from
+two `ProjectStore` pointers. The tab session (`getProjectSession`, kept in
+`sessionStorage`) wins whenever the tab has one, so a reload restores exactly
+what that tab had open. A tab with no session -- a new tab, or the first tab
+after a browser restart -- falls back to the last opened project
+(`getLastOpenedProject`, kept in `localStorage`), which the manager writes on
+every project open. When neither pointer resolves to a live project, the
+manager opens the first project in the collection and creates one if the
+collection is empty. A PIN-protected collection still boots locked: restoring
+its pointer selects the collection, and the project opens only after unlock.
+
 ### Auto-save
 
 `ProjectManager` subscribes to `filesystem.onAnyChange()` and debounces writes
 to the store (default 2s). This ensures project file mutations (remote file changes
 from the bridge, local edits) survive page reloads without requiring explicit
 save. The debounce timer is cleared on project close to avoid stale writes.
+
+`flushAutoSave` cancels the pending debounce and writes immediately, and
+`dispose` starts one so every teardown path persists the debounce window.
+Host apps flush when the page goes hidden (`visibilitychange` to hidden) and
+dispose on `pagehide`, so a backgrounded or closed tab does not drop edits made
+inside the debounce window. What the flush can promise is bounded by the store:
+`idb-project-store` reads before it writes, so a flush issued as the page is
+torn down is best-effort, while a flush in a still-running hidden page
+completes normally.
 
 ### mindcraft.json filtering
 

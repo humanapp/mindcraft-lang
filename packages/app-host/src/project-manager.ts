@@ -18,7 +18,7 @@ import type { ProjectFileChange, ProjectFileSnapshot } from "./project-file-snap
 import type { ProjectFileSystem } from "./project-file-system.js";
 import type { ProjectLock, ProjectLockHandle } from "./project-lock.js";
 import type { ProjectManifest } from "./project-manifest.js";
-import type { ProjectCollectionTabSession, ProjectStore } from "./project-store.js";
+import type { ProjectCollectionTabSession, ProjectRef, ProjectStore } from "./project-store.js";
 
 /** Display name used when a project is created without an explicit name. */
 export const DEFAULT_PROJECT_NAME = "Untitled Project";
@@ -128,7 +128,7 @@ export type ProjectCollectionEvent =
   | { readonly type: "project-collection-changed"; readonly projectCollectionId: string }
   | { readonly type: "project-collection-tombstoned"; readonly projectCollectionId: string }
   | { readonly type: "project-list-changed"; readonly projectCollectionId: string }
-  | { readonly type: "project-tombstoned"; readonly projectCollectionId: string; readonly projectId: string };
+  | ({ readonly type: "project-tombstoned" } & ProjectRef);
 
 /** Non-fatal persistence failure observed by {@link ProjectManager}. */
 export interface ProjectPersistenceError {
@@ -163,6 +163,14 @@ export interface ProjectManagerOptions {
    * extensions.
    */
   defaultExtensions?: Readonly<Record<string, string>>;
+}
+
+/** Project collection and project a manager with no open project restores. */
+interface ProjectRestoreTarget {
+  /** Project collection to make active. */
+  readonly projectCollectionId: string;
+  /** Project to open in that project collection, when one should be restored. */
+  readonly projectId?: string;
 }
 
 /**
@@ -213,14 +221,15 @@ export class ProjectManager {
 
   async init(): Promise<void> {
     const session = this.store.getProjectSession();
-    const collection = await this.ensureInitialProjectCollection(session?.projectCollectionId);
+    const restore = this.restoreTarget(session);
+    const collection = await this.ensureInitialProjectCollection(restore?.projectCollectionId);
     await this.restoreReloadUnlock(collection, session);
     if (this.collectionAccess(collection) === "locked") {
       await this.notifyProjectCollectionState();
       return;
     }
-    if (!this.currentActive && session?.activeProjectId) {
-      const restored = await this.tryRestoreSessionProject(session.activeProjectId, collection);
+    if (!this.currentActive && restore?.projectId) {
+      const restored = await this.tryRestoreProject(restore.projectId, collection);
       if (!restored) {
         await this.ensureDefaultProjectInternal(DEFAULT_PROJECT_NAME, false);
       }
@@ -820,13 +829,9 @@ export class ProjectManager {
     this.writeReloadUnlockForCurrentSession(projectCollectionId);
     this.updateReloadUnlockRefreshTimer();
     if (this.currentProjectCollection?.projectCollectionId === projectCollectionId && !this.currentActive) {
-      const session = this.store.getProjectSession();
-      if (session?.activeProjectId) {
-        const restored = await this.tryRestoreSessionProject(session.activeProjectId, current);
-        if (!restored) {
-          await this.ensureDefaultProjectInternal(DEFAULT_PROJECT_NAME, false);
-        }
-      } else {
+      const restore = this.restoreTarget(this.store.getProjectSession());
+      const restored = restore?.projectId ? await this.tryRestoreProject(restore.projectId, current) : undefined;
+      if (!restored) {
         await this.ensureDefaultProjectInternal(DEFAULT_PROJECT_NAME, false);
       }
       this.updateProjectSession();
@@ -1033,12 +1038,57 @@ export class ProjectManager {
     };
   }
 
-  /** Close cross-tab project collection resources owned by this manager. */
+  /**
+   * Write the project file changes accumulated since the last auto-save
+   * immediately, cancelling the pending debounce: local-only edits go through
+   * the store's change-granular write path, and any remote change since the
+   * last save falls back to a whole-snapshot write. Resolves when the write
+   * settles. A write that fails keeps its changes pending for the next save
+   * and reports through {@link onProjectPersistenceError}. Resolves without
+   * writing when no project is open or nothing has changed.
+   */
+  async flushAutoSave(): Promise<void> {
+    if (this.autoSaveTimerId !== undefined) {
+      clearTimeout(this.autoSaveTimerId);
+      this.autoSaveTimerId = undefined;
+    }
+    const active = this.currentActive;
+    if (!active) {
+      return;
+    }
+    const { manifest, filesystem } = active;
+    const changes = this.pendingLocalChanges;
+    const hadRemoteChanges = this.remoteChangesSinceFlush;
+    this.pendingLocalChanges = [];
+    this.remoteChangesSinceFlush = false;
+    if (changes.length === 0 && !hadRemoteChanges) {
+      return;
+    }
+    try {
+      if (hadRemoteChanges) {
+        await this.store.saveProjectFiles(manifest.id, filesystem.exportSnapshot());
+      } else {
+        await this.store.applyProjectFileChanges(manifest.id, changes);
+      }
+    } catch (error) {
+      this.pendingLocalChanges = [...changes, ...this.pendingLocalChanges];
+      this.remoteChangesSinceFlush = this.remoteChangesSinceFlush || hadRemoteChanges;
+      void this.handleAutoSaveError(manifest.projectCollectionId, manifest.id, error);
+    }
+  }
+
+  /**
+   * Start a {@link flushAutoSave} for any pending changes, then close the
+   * cross-tab project collection resources owned by this manager. The flush is
+   * issued but not awaited: callers that need the write to settle await
+   * {@link flushAutoSave} themselves before disposing.
+   */
   dispose(): void {
     if (this.disposed) {
       return;
     }
     this.disposed = true;
+    void this.flushAutoSave();
     this.stopReloadUnlockRefreshTimer();
     this.projectCollectionBroadcastUnsub();
     this.projectCollectionBroadcast.close();
@@ -1122,37 +1172,6 @@ export class ProjectManager {
       this.autoSaveTimerId = undefined;
       void this.flushAutoSave();
     }, this.autoSaveDelayMs);
-  }
-
-  /**
-   * Persist the changes accumulated since the last flush: local-only edits go
-   * through the store's change-granular write path; any remote change since
-   * the last flush falls back to a whole-snapshot save.
-   */
-  private async flushAutoSave(): Promise<void> {
-    const active = this.currentActive;
-    if (!active) {
-      return;
-    }
-    const { manifest, filesystem } = active;
-    const changes = this.pendingLocalChanges;
-    const hadRemoteChanges = this.remoteChangesSinceFlush;
-    this.pendingLocalChanges = [];
-    this.remoteChangesSinceFlush = false;
-    if (changes.length === 0 && !hadRemoteChanges) {
-      return;
-    }
-    try {
-      if (hadRemoteChanges) {
-        await this.store.saveProjectFiles(manifest.id, filesystem.exportSnapshot());
-      } else {
-        await this.store.applyProjectFileChanges(manifest.id, changes);
-      }
-    } catch (error) {
-      this.pendingLocalChanges = [...changes, ...this.pendingLocalChanges];
-      this.remoteChangesSinceFlush = this.remoteChangesSinceFlush || hadRemoteChanges;
-      void this.handleAutoSaveError(manifest.projectCollectionId, manifest.id, error);
-    }
   }
 
   private notifyActiveProject(): void {
@@ -1327,11 +1346,11 @@ export class ProjectManager {
     return manifest;
   }
 
-  private async tryRestoreSessionProject(
-    activeProjectId: string,
+  private async tryRestoreProject(
+    projectId: string,
     collection: ProjectCollection
   ): Promise<ActiveProject | undefined> {
-    const manifest = await this.store.getProject(activeProjectId);
+    const manifest = await this.store.getProject(projectId);
     if (!manifest || manifest.projectCollectionId !== collection.projectCollectionId) {
       return undefined;
     }
@@ -1409,12 +1428,37 @@ export class ProjectManager {
     }
   }
 
+  /**
+   * Project collection and project to restore when this manager has no open
+   * project: the current tab's session when the tab has one, and otherwise the
+   * durable record of the most recently opened project. Returns `undefined`
+   * when neither exists.
+   */
+  private restoreTarget(session: ProjectCollectionTabSession | undefined): ProjectRestoreTarget | undefined {
+    if (session) {
+      return {
+        projectCollectionId: session.projectCollectionId,
+        ...(session.activeProjectId === undefined ? {} : { projectId: session.activeProjectId }),
+      };
+    }
+    const lastOpened = this.store.getLastOpenedProject();
+    return lastOpened
+      ? { projectCollectionId: lastOpened.projectCollectionId, projectId: lastOpened.projectId }
+      : undefined;
+  }
+
   private updateProjectSession(activeProjectId = this.currentActive?.manifest.id): void {
     if (!this.currentProjectCollection) {
       if (this.store.getProjectSession() !== undefined) {
         this.store.setProjectSession(undefined);
       }
       return;
+    }
+    if (activeProjectId !== undefined) {
+      this.store.setLastOpenedProject({
+        projectCollectionId: this.currentProjectCollection.projectCollectionId,
+        projectId: activeProjectId,
+      });
     }
     const session: ProjectCollectionTabSession = {
       projectCollectionId: this.currentProjectCollection.projectCollectionId,
