@@ -97,13 +97,17 @@ export interface VmConfig {
  * Synchronous host function signature.
  *
  * `args` is a positional read-only view (`Sublist`) over the operand
- * stack of size `callDef.argSlots.size()`. Read by `slotId` --
- * `args.get(getSlotId(callDef, ...))` -- not by name. Unsupplied
- * slots are filled with `NIL_VALUE`; check via `isNilValue`.
+ * stack, sized to the call's argument count. Read by `slotId` --
+ * `args.at(getSlotId(callDef, ...))` -- not by name. A call the rule
+ * compiler emits carries every slot of `callDef.argSlots`, with an
+ * unsupplied slot holding `NIL_VALUE`; a call from other emitters may
+ * carry fewer, so a slot past the end reads as `undefined` from `at()`
+ * and `get()` faults on it. Treat both `undefined` and `NIL_VALUE` as
+ * absent.
  *
  * **Lifetime:** the wrapper is ephemeral. Do not retain `args` past
  * the call. Read what you need into locals and return. Individual
- * `Value` heap objects returned by `args.get(i)` are safe to retain.
+ * `Value` heap objects read from `args` are safe to retain.
  *
  * @param ctx - Execution context providing access to variables, rule, etc.
  * @param args - Positional view of arguments, indexed by slotId.
@@ -120,9 +124,13 @@ export type HostSyncFn = {
  * Asynchronous host function signature.
  *
  * `args` is an owned positional snapshot (a freshly-allocated
- * `List<Value>`) of size `callDef.argSlots.size()`. Read by `slotId`
- * -- `args.get(getSlotId(callDef, ...))` -- not by name. Unsupplied
- * slots are filled with `NIL_VALUE`; check via `isNilValue`.
+ * `List<Value>`) sized to the call's argument count. Read by `slotId`
+ * -- `args.at(getSlotId(callDef, ...))` -- not by name. A call the
+ * rule compiler emits carries every slot of `callDef.argSlots`, with
+ * an unsupplied slot holding `NIL_VALUE`; a call from other emitters
+ * may carry fewer, so a slot past the end reads as `undefined` from
+ * `at()` and `get()` faults on it. Treat both `undefined` and
+ * `NIL_VALUE` as absent.
  *
  * **Lifetime:** the wrapper is owned. Free to retain `args` and `handle` and
  * close over individual values across the async boundary; settle the handle
