@@ -1,7 +1,7 @@
 // Context and types
 
-export type { BrainCommand } from "@wendoo-lang/core/brain/model";
-// Commands (relocated to @wendoo-lang/core/brain/model; re-exported for API stability)
+export type { BrainCommand } from "@wendoo/core/brain/model";
+// Commands (relocated to @wendoo/core/brain/model; re-exported for API stability)
 export {
   AddPageCommand,
   AddTileCommand,
@@ -23,7 +23,7 @@ export {
   ReplaceBrainCommand,
   ReplaceLastPageCommand,
   ReplaceTileCommand,
-} from "@wendoo-lang/core/brain/model";
+} from "@wendoo/core/brain/model";
 // Action call-spec arg entries
 export type {
   AcceleratorBinding,

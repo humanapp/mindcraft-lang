@@ -11,17 +11,17 @@ import type {
   ProjectCollection,
   ProjectFileSystem,
   ProjectManager,
-} from "@wendoo-lang/app-host";
+} from "@wendoo/app-host";
 import {
   AppHostErrorCode,
   createInMemoryProjectFileSystem,
   createJsDelivrExtensionTransport,
   ExtensionAddInputErrorCode,
   ExtensionFetchErrorCode,
-} from "@wendoo-lang/app-host";
-import type { PersistedBrainJson } from "@wendoo-lang/core/app";
-import { BrainDef, coreModule } from "@wendoo-lang/core/app";
-import { declarationMount } from "@wendoo-lang/ts-compiler";
+} from "@wendoo/app-host";
+import type { PersistedBrainJson } from "@wendoo/core/app";
+import { BrainDef, coreModule } from "@wendoo/core/app";
+import { declarationMount } from "@wendoo/ts-compiler";
 import { AppEnvironmentHost } from "./app-environment-host.js";
 import type { EmbeddedExtension } from "./embedded-extensions.js";
 import { CatalogMoveWarningCode } from "./embedded-extensions.js";

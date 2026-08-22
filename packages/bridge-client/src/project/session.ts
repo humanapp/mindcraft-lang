@@ -1,4 +1,4 @@
-import { PROTOCOL_VERSION, type WsMessage } from "@wendoo-lang/bridge-protocol";
+import { PROTOCOL_VERSION, type WsMessage } from "@wendoo/bridge-protocol";
 import { WsClient } from "../ws-client.js";
 
 type InternalHandler = (msg: WsMessage) => void;

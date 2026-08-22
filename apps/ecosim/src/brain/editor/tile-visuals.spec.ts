@@ -6,10 +6,10 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { IBrainTileDef } from "@wendoo-lang/core/app";
-import { coreModule, createWendooEnvironment } from "@wendoo-lang/core/app";
-import { tileSentenceWord } from "@wendoo-lang/core/brain/language-service";
-import { createDefaultLocalizer } from "@wendoo-lang/core/localization";
+import type { IBrainTileDef } from "@wendoo/core/app";
+import { coreModule, createWendooEnvironment } from "@wendoo/core/app";
+import { tileSentenceWord } from "@wendoo/core/brain/language-service";
+import { createDefaultLocalizer } from "@wendoo/core/localization";
 import { createEcosimModule } from "../index";
 
 /**

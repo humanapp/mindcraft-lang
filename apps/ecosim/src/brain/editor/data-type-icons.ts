@@ -1,4 +1,4 @@
-import { CoreTypeIds } from "@wendoo-lang/core/app";
+import { CoreTypeIds } from "@wendoo/core/app";
 import { ICON_BASE } from "@/brain/icon-base";
 import { EcosimTypeIds } from "@/brain/type-system";
 

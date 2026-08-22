@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { ProjectFileChange, ProjectFileSnapshot, ProjectFileSystem, ProjectManifest } from "@wendoo-lang/app-host";
+import type { ProjectFileChange, ProjectFileSnapshot, ProjectFileSystem, ProjectManifest } from "@wendoo/app-host";
 import {
   DEFAULT_PROJECT_COLLECTION_ID,
   diffWendooJsonToManifest,
@@ -8,7 +8,7 @@ import {
   serializeProjectContentManifest,
   syncManifestToWendooJson,
   WENDOO_JSON_PATH,
-} from "@wendoo-lang/app-host";
+} from "@wendoo/app-host";
 
 function makeManifest(overrides?: Partial<ProjectManifest>): ProjectManifest {
   return {

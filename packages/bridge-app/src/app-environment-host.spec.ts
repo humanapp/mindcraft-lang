@@ -13,11 +13,11 @@ import {
   type ProjectFileSnapshot,
   type ProjectFileSystem,
   type ProjectManager,
-} from "@wendoo-lang/app-host";
-import type { IBrainDef, WendooBrain } from "@wendoo-lang/core/app";
-import { BrainDef, CoreTypeIds, coreModule, List, mkSensorTileId } from "@wendoo-lang/core/app";
-import type { IBrainActionTileDef, IBrainTileDef } from "@wendoo-lang/core/brain";
-import { type CompileDiagnostic, declarationMount, type WorkspaceCompileResult } from "@wendoo-lang/ts-compiler";
+} from "@wendoo/app-host";
+import type { IBrainDef, WendooBrain } from "@wendoo/core/app";
+import { BrainDef, CoreTypeIds, coreModule, List, mkSensorTileId } from "@wendoo/core/app";
+import type { IBrainActionTileDef, IBrainTileDef } from "@wendoo/core/brain";
+import { type CompileDiagnostic, declarationMount, type WorkspaceCompileResult } from "@wendoo/ts-compiler";
 import { AppEnvironmentHost } from "./app-environment-host.js";
 import { collectBrainTileCompileDiagnostics } from "./brain-diagnostics.js";
 import type { EmbeddedExtension } from "./embedded-extensions.js";

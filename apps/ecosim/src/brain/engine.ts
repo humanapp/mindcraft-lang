@@ -1,4 +1,4 @@
-import type { BrainDef, Vector2, WendooEnvironment } from "@wendoo-lang/core/app";
+import type { BrainDef, Vector2, WendooEnvironment } from "@wendoo/core/app";
 import * as ECS from "miniplex";
 import type { Playground } from "@/game/scenes/Playground";
 import { heatColor } from "@/lib/color";

@@ -1,4 +1,4 @@
-import type { FolderHostMessage } from "@wendoo-lang/bridge-protocol";
+import type { FolderHostMessage } from "@wendoo/bridge-protocol";
 import * as vscode from "vscode";
 import { WENDOO_JSON } from "../wendoo-json";
 import { buildAppHostHtml, buildAppLoadFailureHtml, buildAppLoadingHtml } from "./app-host-html";

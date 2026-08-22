@@ -14,7 +14,7 @@ import {
   type ProjectRef,
   type ProjectStore,
   WENDOO_JSON_PATH,
-} from "@wendoo-lang/app-host";
+} from "@wendoo/app-host";
 import { INITIAL_CONTENT_VERSION } from "../project-content-version.js";
 
 interface MemoryProjectStoreData {

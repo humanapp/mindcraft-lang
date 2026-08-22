@@ -1,4 +1,4 @@
-import { fileContentToBytes } from "@wendoo-lang/app-host";
+import { fileContentToBytes } from "@wendoo/app-host";
 import type { ProjectFileSnapshot, ProjectFileSystem } from "./app-bridge.js";
 
 const VFS_PREFIX = "/vfs/";

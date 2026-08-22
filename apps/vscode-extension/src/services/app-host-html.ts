@@ -1,4 +1,4 @@
-import { FOLDER_HOST_MODE_FOLDER, FOLDER_HOST_MODE_GLOBAL } from "@wendoo-lang/bridge-protocol";
+import { FOLDER_HOST_MODE_FOLDER, FOLDER_HOST_MODE_GLOBAL } from "@wendoo/bridge-protocol";
 
 /** Inputs for {@link buildAppHostHtml}. */
 export interface AppHostHtmlOptions {

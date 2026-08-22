@@ -12,8 +12,8 @@
 
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List } from "@wendoo-lang/core";
-import type { BrainServices, IBrainTileDef, ITileCatalog } from "@wendoo-lang/core/brain";
+import { List } from "@wendoo/core";
+import type { BrainServices, IBrainTileDef, ITileCatalog } from "@wendoo/core/brain";
 import {
   CoreControlFlowId,
   CoreLiteralFactoryId,
@@ -28,8 +28,8 @@ import {
   percentFormat,
   RuleSide,
   TilePlacement,
-} from "@wendoo-lang/core/brain";
-import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+} from "@wendoo/core/brain";
+import { __test__createBrainServices } from "@wendoo/core/brain/__test__";
 import {
   buildInsertionContext,
   suggestTiles,
@@ -37,8 +37,8 @@ import {
   type TileSuggestion,
   type TileSuggestionResult,
   tileSentenceWord,
-} from "@wendoo-lang/core/brain/language-service";
-import { BrainDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
+} from "@wendoo/core/brain/language-service";
+import { BrainDef, type BrainRuleDef } from "@wendoo/core/brain/model";
 import {
   BrainTileActuatorDef,
   type BrainTileFactoryDef,
@@ -48,7 +48,7 @@ import {
   type BrainTileVariableDef,
   manufactureLiteralTile,
   manufactureVariableTile,
-} from "@wendoo-lang/core/brain/tiles";
+} from "@wendoo/core/brain/tiles";
 import {
   bag,
   CoreHostActions,
@@ -63,7 +63,7 @@ import {
   optional,
   type TypeId,
   VOID_VALUE,
-} from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/runtime";
 import type { ArmedTileTarget } from "./ArmedTargetContext";
 import {
   arrangeCandidateSubcategories,

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { ConformanceCheckCode, checkArtifactSelfContained } from "@wendoo-lang/assistant-bridge/kit/node";
+import { ConformanceCheckCode, checkArtifactSelfContained } from "@wendoo/assistant-bridge/kit/node";
 
 /** The app directory, from this module's own location. */
 const APP_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");

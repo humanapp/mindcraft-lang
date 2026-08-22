@@ -4,7 +4,7 @@ import type {
   RelayToolOutcome,
   RelayToolResult,
   RelayToolResultBatch,
-} from "@wendoo-lang/assistant-relay";
+} from "@wendoo/assistant-relay";
 import type { ToolCallError } from "../tools/dispatch.js";
 import { executeToolCall, ToolCallErrorCode } from "../tools/dispatch.js";
 import type { AuthoringWorkspace } from "../tools/workspace.js";

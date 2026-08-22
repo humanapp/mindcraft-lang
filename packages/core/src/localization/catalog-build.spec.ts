@@ -10,13 +10,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { pathToFileURL } from "node:url";
-import type { CatalogEntryInput, LocaleCatalog, PluralRuleSpec } from "@wendoo-lang/core/localization";
+import type { CatalogEntryInput, LocaleCatalog, PluralRuleSpec } from "@wendoo/core/localization";
 import {
   buildLocaleCatalogModule,
   createLocalizer,
   defaultPluralRule,
   TemplateDiagCode,
-} from "@wendoo-lang/core/localization";
+} from "@wendoo/core/localization";
 
 type CatalogJson = {
   entries?: Record<string, string>;

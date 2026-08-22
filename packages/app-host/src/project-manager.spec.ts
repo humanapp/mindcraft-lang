@@ -24,8 +24,8 @@ import {
   RELOAD_UNLOCK_TTL_MS,
   serializeProjectContentManifest,
   verifyProjectCollectionPin,
-} from "@wendoo-lang/app-host";
-import { logger } from "@wendoo-lang/core";
+} from "@wendoo/app-host";
+import { logger } from "@wendoo/core";
 import { createProjectCollectionBroadcast } from "./project-collection-broadcast.js";
 import { assertRejectsWithCode } from "./test-support/error-assertions.js";
 import { MemoryProjectStore } from "./test-support/memory-project-store.js";

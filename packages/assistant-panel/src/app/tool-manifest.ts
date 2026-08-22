@@ -1,8 +1,8 @@
-import type { AuthoringWorkspace, CatalogTile, TargetAdapter } from "@wendoo-lang/assistant-bridge";
-import { catalogDigest, createAuthoringWorkspace, readCatalog, toolDefinitions } from "@wendoo-lang/assistant-bridge";
-import type { RelayToolManifest } from "@wendoo-lang/assistant-relay";
-import { List } from "@wendoo-lang/core/app";
-import type { ITileCatalog } from "@wendoo-lang/core/brain";
+import type { AuthoringWorkspace, CatalogTile, TargetAdapter } from "@wendoo/assistant-bridge";
+import { catalogDigest, createAuthoringWorkspace, readCatalog, toolDefinitions } from "@wendoo/assistant-bridge";
+import type { RelayToolManifest } from "@wendoo/assistant-relay";
+import { List } from "@wendoo/core/app";
+import type { ITileCatalog } from "@wendoo/core/brain";
 
 /** Name of the empty document the installed catalog is read over. */
 const catalogBrainName = "catalog";

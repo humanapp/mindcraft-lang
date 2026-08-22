@@ -1,4 +1,4 @@
-# @wendoo-lang/assistant-relay
+# @wendoo/assistant-relay
 
 Protocol types and schemas for the assistant relay session.
 
@@ -7,12 +7,12 @@ conversation and is the tool client, and the target app serves the assistant
 bridge's tools against the live document. This package defines the wire between
 them -- the session handshake, the turn events the service sends downstream, and
 the tool-call and control messages the client sends upstream -- plus an
-in-memory loopback pairing of the two ends under `@wendoo-lang/assistant-relay/testing`.
+in-memory loopback pairing of the two ends under `@wendoo/assistant-relay/testing`.
 
 ## Install
 
 ```sh
-npm install @wendoo-lang/assistant-relay
+npm install @wendoo/assistant-relay
 ```
 
 ## License

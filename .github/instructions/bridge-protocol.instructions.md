@@ -88,7 +88,7 @@ client) and a `ServerMessage` union (sent by the bridge server to that client).
 
 - Types-and-schemas-only package. No runtime logic, no side effects.
 - All exports go through `src/index.ts`. Consumers import from
-  `@wendoo-lang/bridge-protocol`.
+  `@wendoo/bridge-protocol`.
 - Use `import type` for type-only imports.
 - Zod schemas live alongside their corresponding types. If a payload needs runtime
   validation, define a Zod schema; otherwise, a plain TypeScript type is sufficient.

@@ -1,12 +1,12 @@
-import { assertUnreachable } from "@wendoo-lang/core";
-import type { IBrainTileDef } from "@wendoo-lang/core/brain";
+import { assertUnreachable } from "@wendoo/core";
+import type { IBrainTileDef } from "@wendoo/core/brain";
 import type {
   BrainTileActuatorDef,
   BrainTileModifierDef,
   BrainTileOutputDef,
   BrainTileParameterDef,
   BrainTileSensorDef,
-} from "@wendoo-lang/core/brain/tiles";
+} from "@wendoo/core/brain/tiles";
 
 /** An installed library whose tiles the editor subgroups: its coordinate identity and manifest display name. */
 export interface TileSourceLibrary {

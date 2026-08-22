@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { BrainTileParameterDef, TileCatalog } from "@wendoo-lang/core/brain/tiles";
-import { CoreTypeIds } from "@wendoo-lang/core/runtime";
+import { BrainTileParameterDef, TileCatalog } from "@wendoo/core/brain/tiles";
+import { CoreTypeIds } from "@wendoo/core/runtime";
 
 describe("TileCatalog", () => {
   test("preserves explicit metadata when registering tiles", () => {

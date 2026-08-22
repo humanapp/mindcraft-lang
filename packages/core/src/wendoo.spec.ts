@@ -17,8 +17,8 @@ import {
   type WendooEnvironment,
   type WendooModule,
   type WendooModuleApi,
-} from "@wendoo-lang/core";
-import { CoreHostActions } from "@wendoo-lang/core/runtime";
+} from "@wendoo/core";
+import { CoreHostActions } from "@wendoo/core/runtime";
 
 type RootContracts = [
   ActionBundleUpdate,

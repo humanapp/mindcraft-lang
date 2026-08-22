@@ -1,4 +1,4 @@
-import type { ConversationToolCall } from "@wendoo-lang/assistant-relay";
+import type { ConversationToolCall } from "@wendoo/assistant-relay";
 
 /** What one tool call did, as the status line beneath the narration reads it. */
 export const ToolActivityKind = {

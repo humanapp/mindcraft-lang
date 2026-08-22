@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { RuleSide } from "@wendoo-lang/core/brain";
-import { CompilationDiagCode, ParseDiagCode } from "@wendoo-lang/core/brain/compiler";
-import type { BrainJson } from "@wendoo-lang/core/brain/model";
-import { AddRuleCommand, AddTileCommand, BrainRuleDef } from "@wendoo-lang/core/brain/model";
+import { RuleSide } from "@wendoo/core/brain";
+import { CompilationDiagCode, ParseDiagCode } from "@wendoo/core/brain/compiler";
+import type { BrainJson } from "@wendoo/core/brain/model";
+import { AddRuleCommand, AddTileCommand, BrainRuleDef } from "@wendoo/core/brain/model";
 import { RehearsalRejection, RehearsalRejectionCode } from "../kit/index.js";
 import type { TraceSummary } from "../simulate/summarizer.js";
 import { createTargetAdapter, FAKE_SUBJECT, ruleIdAt } from "../testing/index.js";

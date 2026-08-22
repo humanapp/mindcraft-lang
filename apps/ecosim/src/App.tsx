@@ -1,6 +1,6 @@
-import type { ProjectCollection, ProjectCollectionState, ProjectManifest } from "@wendoo-lang/app-host";
-import { AppHostError } from "@wendoo-lang/app-host";
-import type { EditedBrainWorkspaces } from "@wendoo-lang/assistant-panel";
+import type { ProjectCollection, ProjectCollectionState, ProjectManifest } from "@wendoo/app-host";
+import { AppHostError } from "@wendoo/app-host";
+import type { EditedBrainWorkspaces } from "@wendoo/assistant-panel";
 import {
   AssistantProvider,
   assistantSessionUrl,
@@ -9,10 +9,10 @@ import {
   createPersonActivity,
   createWebSocketConnect,
   useAssistant,
-} from "@wendoo-lang/assistant-panel";
-import type { BrainDef } from "@wendoo-lang/core/app";
-import type { ITileCatalog } from "@wendoo-lang/core/brain";
-import { DocsSidebar, DocsSidebarProvider, useDocsSidebar } from "@wendoo-lang/docs";
+} from "@wendoo/assistant-panel";
+import type { BrainDef } from "@wendoo/core/app";
+import type { ITileCatalog } from "@wendoo/core/brain";
+import { DocsSidebar, DocsSidebarProvider, useDocsSidebar } from "@wendoo/docs";
 import {
   BrainEditorDialog,
   type BrainEditorDialogProps,
@@ -21,7 +21,7 @@ import {
   ProjectPickerDialog,
   type ProjectPickerItem,
   Toaster,
-} from "@wendoo-lang/ui";
+} from "@wendoo/ui";
 import { Lock, Menu, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";

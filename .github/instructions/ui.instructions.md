@@ -13,7 +13,7 @@ apps resolve the TypeScript source directly via Vite aliases and tsconfig path m
 ## Key Constraints
 
 - **No path aliases** within this package. Use relative imports only (e.g., `../ui/button`,
-  `../lib/utils`). Consuming apps map `@wendoo-lang/ui` to the source directory; internal
+  `../lib/utils`). Consuming apps map `@wendoo/ui` to the source directory; internal
   aliases would not resolve through the host app's toolchain.
 - **No app-specific types**. Types like `Archetype`, `Actor`, or other sim-specific concepts
   must not appear here. The brain editor is decoupled from app specifics via
@@ -68,7 +68,7 @@ src/
 
 The editing command classes and `BrainCommandHistory` (undo/redo) live in
 `packages/core/src/brain/model/commands/` and are imported from
-`@wendoo-lang/core/brain/model`; this package re-exports them from its
+`@wendoo/core/brain/model`; this package re-exports them from its
 barrel for consuming apps.
 
 ## BrainEditorContext
@@ -353,12 +353,12 @@ To add a new shadcn/ui component:
 
 1. Create the component file in `src/ui/` following existing patterns
 2. Export it from `src/ui/index.ts`
-3. It will automatically be available via `import { ... } from "@wendoo-lang/ui"` in consuming apps
+3. It will automatically be available via `import { ... } from "@wendoo/ui"` in consuming apps
 
 ## Documentation System
 
 The documentation sidebar, registry, markdown renderer, and standalone docs page live in
-`packages/docs` (`@wendoo-lang/docs`). See `language-docs.instructions.md` for full details.
+`packages/docs` (`@wendoo/docs`). See `language-docs.instructions.md` for full details.
 
 The brain editor integrates with docs via two optional `BrainEditorConfig` fields:
 
@@ -375,14 +375,14 @@ These are wired up by the host app (see `apps/ecosim/src/App.tsx` `DocsBrainEdit
 
 In a new webapp, add these configurations:
 
-**package.json**: `"@wendoo-lang/ui": "file:../../packages/ui"`
+**package.json**: `"@wendoo/ui": "file:../../packages/ui"`
 
 **Vite config**:
 
 ```js
 resolve: {
   alias: {
-    "@wendoo-lang/ui": path.resolve(__dirname, "../../packages/ui/src"),
+    "@wendoo/ui": path.resolve(__dirname, "../../packages/ui/src"),
   },
 },
 ```
@@ -408,7 +408,7 @@ exactly one React, from the app's own `node_modules`.
   `<DropdownMenu>`), healed by the reload that follows.
 
 That is why the failure was cold-start-only, `--force`-only, and confined to one app: `apps/ecosim`
-excludes only `@wendoo-lang/core` and `zod`, and never saw it.
+excludes only `@wendoo/core` and `zod`, and never saw it.
 
 Two things worth knowing if you are diagnosing something similar:
 
@@ -426,8 +426,8 @@ Two things worth knowing if you are diagnosing something similar:
 {
   "compilerOptions": {
     "paths": {
-      "@wendoo-lang/ui": ["../../packages/ui/src/index.ts"],
-      "@wendoo-lang/ui/*": ["../../packages/ui/src/*"]
+      "@wendoo/ui": ["../../packages/ui/src/index.ts"],
+      "@wendoo/ui/*": ["../../packages/ui/src/*"]
     }
   }
 }

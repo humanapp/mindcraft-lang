@@ -10,12 +10,12 @@ import {
   List,
   type WendooEnvironment,
   type WendooModule,
-} from "@wendoo-lang/core";
-import { type BrainServices, type IBrainRuleDef, TilePlacement } from "@wendoo-lang/core/brain";
-import type { TypecheckResult } from "@wendoo-lang/core/brain/compiler";
-import { TypeDiagCode } from "@wendoo-lang/core/brain/compiler";
-import { BrainDef } from "@wendoo-lang/core/brain/model";
-import { BrainTileActuatorDef, BrainTileParameterDef, BrainTileSensorDef } from "@wendoo-lang/core/brain/tiles";
+} from "@wendoo/core";
+import { type BrainServices, type IBrainRuleDef, TilePlacement } from "@wendoo/core/brain";
+import type { TypecheckResult } from "@wendoo/core/brain/compiler";
+import { TypeDiagCode } from "@wendoo/core/brain/compiler";
+import { BrainDef } from "@wendoo/core/brain/model";
+import { BrainTileActuatorDef, BrainTileParameterDef, BrainTileSensorDef } from "@wendoo/core/brain/tiles";
 import {
   type BrainActionCallDef,
   BYTECODE_VERSION,
@@ -30,7 +30,7 @@ import {
   param,
   type StructTypeDef,
   type TypeId,
-} from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/runtime";
 
 const noopCodec = {
   encode(): void {},

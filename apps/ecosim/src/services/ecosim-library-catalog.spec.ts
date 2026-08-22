@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
-import { CATALOG_ENTRY_KIND_EXTENSION, validateExtensionCatalogDocument } from "@wendoo-lang/app-host";
-import type { EmbeddedExtension, FetchedExtensionContentMap } from "@wendoo-lang/bridge-app";
+import { CATALOG_ENTRY_KIND_EXTENSION, validateExtensionCatalogDocument } from "@wendoo/app-host";
+import type { EmbeddedExtension, FetchedExtensionContentMap } from "@wendoo/bridge-app";
 import {
   buildEcosimCatalogOffers,
   buildEcosimExtensionEntries,

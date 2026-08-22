@@ -9,12 +9,12 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
-import { List } from "@wendoo-lang/core";
-import { type BrainServices, mkPageTileId, mkVariableTileId } from "@wendoo-lang/core/brain";
-import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
-import { BrainDef, type BrainJson, BrainRuleDef, type PageJson, type RuleJson } from "@wendoo-lang/core/brain/model";
-import { BrainTileLiteralDef, BrainTileVariableDef, type CatalogTileJson } from "@wendoo-lang/core/brain/tiles";
-import { CoreTypeIds } from "@wendoo-lang/core/runtime";
+import { List } from "@wendoo/core";
+import { type BrainServices, mkPageTileId, mkVariableTileId } from "@wendoo/core/brain";
+import { __test__createBrainServices } from "@wendoo/core/brain/__test__";
+import { BrainDef, type BrainJson, BrainRuleDef, type PageJson, type RuleJson } from "@wendoo/core/brain/model";
+import { BrainTileLiteralDef, BrainTileVariableDef, type CatalogTileJson } from "@wendoo/core/brain/tiles";
+import { CoreTypeIds } from "@wendoo/core/runtime";
 
 let services: BrainServices;
 

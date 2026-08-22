@@ -1,4 +1,4 @@
-import { type Logger, logger } from "@wendoo-lang/core/app";
+import { type Logger, logger } from "@wendoo/core/app";
 
 /** Log category prefix shared by every server and client subsystem in this app. */
 export const APP_LOG_CATEGORY = "ecosim-rbx";

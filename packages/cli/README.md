@@ -1,4 +1,4 @@
-# wendoo-cli
+# wendoo
 
 Command-line tools for publishing and versioning Wendoo projects.
 
@@ -14,18 +14,18 @@ Requires Node.js 18 or newer.
 Run without installing:
 
 ```
-npx wendoo-cli <command> [arguments]
+npx wendoo <command> [arguments]
 ```
 
 Or install once and call it directly:
 
 ```
-npm install -g wendoo-cli
+npm install -g wendoo
 wendoo <command> [arguments]
 ```
 
 Both give you the same `wendoo` command. Examples below use `wendoo`;
-substitute `npx wendoo-cli` if you did not install it.
+substitute `npx wendoo` if you did not install it.
 
 ## Commands at a glance
 

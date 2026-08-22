@@ -4,8 +4,8 @@ import App from "./App.tsx";
 import DocsPage from "./DocsPage.tsx";
 import "./globals.css";
 
-import { LogLevel, logger } from "@wendoo-lang/core/app";
-import { enableClipboardLogging } from "@wendoo-lang/ui";
+import { LogLevel, logger } from "@wendoo/core/app";
+import { enableClipboardLogging } from "@wendoo/ui";
 import { loadAnalytics } from "./analytics";
 import { EcosimEnvironmentProvider } from "./contexts/ecosim-environment";
 import { EcosimEnvironmentStore } from "./services/ecosim-environment-store";

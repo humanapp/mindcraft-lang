@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
-import type { BrainServices, IBrainPageDef, IBrainRuleDef, IBrainTileDef } from "@wendoo-lang/core/brain";
+import type { BrainServices, IBrainPageDef, IBrainRuleDef, IBrainTileDef } from "@wendoo/core/brain";
 import {
   CoreCapabilityBits,
   CoreControlFlowId,
@@ -13,8 +13,8 @@ import {
   mkSensorTileId,
   mkVariableTileId,
   TilePlacement,
-} from "@wendoo-lang/core/brain";
-import { __test__appendTile, __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+} from "@wendoo/core/brain";
+import { __test__appendTile, __test__createBrainServices } from "@wendoo/core/brain/__test__";
 import {
   flattenRuleTiles,
   paragraphText,
@@ -25,8 +25,8 @@ import {
   sentenceText,
   tileSentenceWord,
   whenTriggerWord,
-} from "@wendoo-lang/core/brain/language-service";
-import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
+} from "@wendoo/core/brain/language-service";
+import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@wendoo/core/brain/model";
 import {
   BrainTileActuatorDef,
   BrainTileLiteralDef,
@@ -36,9 +36,9 @@ import {
   BrainTileSensorDef,
   BrainTileVariableDef,
   getCatalogFallbackLabel,
-} from "@wendoo-lang/core/brain/tiles";
-import type { LocaleCatalog, Localizer } from "@wendoo-lang/core/localization";
-import { createDefaultLocalizer, createLocalizer, defaultPluralRule } from "@wendoo-lang/core/localization";
+} from "@wendoo/core/brain/tiles";
+import type { LocaleCatalog, Localizer } from "@wendoo/core/localization";
+import { createDefaultLocalizer, createLocalizer, defaultPluralRule } from "@wendoo/core/localization";
 import {
   type BrainActionCallSpec,
   bag,
@@ -51,8 +51,8 @@ import {
   optional,
   param,
   type TypeId,
-} from "@wendoo-lang/core/runtime";
-import { BitSet } from "@wendoo-lang/core/util";
+} from "@wendoo/core/runtime";
+import { BitSet } from "@wendoo/core/util";
 
 let services: BrainServices;
 let localizer: Localizer;

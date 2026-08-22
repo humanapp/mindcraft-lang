@@ -1,4 +1,4 @@
-import { buildActiveProjectExportDocument, type ProjectManager } from "@wendoo-lang/app-host";
+import { buildActiveProjectExportDocument, type ProjectManager } from "@wendoo/app-host";
 import type { Archetype } from "@/brain/actor";
 import { ARCHETYPES } from "@/brain/archetypes";
 import type { Obstacle } from "@/brain/vision";

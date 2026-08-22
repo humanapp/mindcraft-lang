@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, type ReadonlyList } from "@wendoo-lang/core";
-import type { BrainServices } from "@wendoo-lang/core/brain";
-import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
-import type { ExecutionContext } from "@wendoo-lang/core/runtime";
-import { type AsyncHandle, ContextTypeIds, CoreTypeIds, type Value } from "@wendoo-lang/core/runtime";
+import { List, type ReadonlyList } from "@wendoo/core";
+import type { BrainServices } from "@wendoo/core/brain";
+import { __test__createBrainServices } from "@wendoo/core/brain/__test__";
+import type { ExecutionContext } from "@wendoo/core/runtime";
+import { type AsyncHandle, ContextTypeIds, CoreTypeIds, type Value } from "@wendoo/core/runtime";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";

@@ -1,8 +1,8 @@
-import type { CompiledActionArtifact, CompiledActionBundle } from "@wendoo-lang/core/app";
-import { Dict, List } from "@wendoo-lang/core/app";
-import { mkActuatorTileId } from "@wendoo-lang/core/brain";
-import { BrainTileActuatorDef } from "@wendoo-lang/core/brain/tiles";
-import { BYTECODE_VERSION, mkCallDef, mkNumberValue, Op } from "@wendoo-lang/core/runtime";
+import type { CompiledActionArtifact, CompiledActionBundle } from "@wendoo/core/app";
+import { Dict, List } from "@wendoo/core/app";
+import { mkActuatorTileId } from "@wendoo/core/brain";
+import { BrainTileActuatorDef } from "@wendoo/core/brain/tiles";
+import { BYTECODE_VERSION, mkCallDef, mkNumberValue, Op } from "@wendoo/core/runtime";
 
 /**
  * Action key of the compiled user actuator {@link userTileBundle} carries. It

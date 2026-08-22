@@ -1,5 +1,5 @@
 import { RunService, Workspace } from "@rbxts/services";
-import { coreModule, createEntropySeededRng, createWendooEnvironment } from "@wendoo-lang/core/app";
+import { coreModule, createEntropySeededRng, createWendooEnvironment } from "@wendoo/core/app";
 import { createEcosimModule } from "server/brain";
 import { Engine } from "server/brain/engine";
 import { buildArena } from "server/world/arena";

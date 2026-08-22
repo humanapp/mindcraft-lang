@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { fileContentToWire } from "@wendoo-lang/app-host";
+import { fileContentToWire } from "@wendoo/app-host";
 import type {
   FileContentPayload,
   FolderAppMessage,
@@ -9,8 +9,8 @@ import type {
   FolderOpenExternalDocumentMessage,
   FolderSessionErrorCode as FolderSessionErrorCodeType,
   FolderVolumeWriteMessage,
-} from "@wendoo-lang/bridge-protocol";
-import { FolderSessionErrorCode, INSTALLED_EXTENSIONS_METADATA_PATH } from "@wendoo-lang/bridge-protocol";
+} from "@wendoo/bridge-protocol";
+import { FolderSessionErrorCode, INSTALLED_EXTENSIONS_METADATA_PATH } from "@wendoo/bridge-protocol";
 import {
   decodeInstalledSnapshotFiles,
   INSTALLED_EXTENSIONS_APP_DATA_KEY,

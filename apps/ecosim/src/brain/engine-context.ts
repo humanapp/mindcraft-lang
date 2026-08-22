@@ -12,7 +12,7 @@ import {
   type ReadonlyList,
   type Value,
   type WendooModuleApi,
-} from "@wendoo-lang/core/app";
+} from "@wendoo/core/app";
 import { EcosimFuncId } from "./abi-ids";
 import type { Archetype } from "./actor";
 import { getSelf } from "./execution-context-types";

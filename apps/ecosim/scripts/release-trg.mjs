@@ -11,7 +11,7 @@
  *   3. wendoo publish --dir target-package          (ship it verbatim)
  * A nonzero exit from any step aborts the rest and becomes this script's exit
  * code. The `wendoo` binary resolves from the app's node_modules/.bin,
- * provided by the wendoo-cli file: devDependency.
+ * provided by the wendoo file: devDependency.
  */
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";

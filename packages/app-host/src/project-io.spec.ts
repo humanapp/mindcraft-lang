@@ -6,7 +6,7 @@ import type {
   ProjectFileSnapshot,
   ProjectFileSystem,
   ProjectManifest,
-} from "@wendoo-lang/app-host";
+} from "@wendoo/app-host";
 import {
   AppHostErrorCode,
   buildActiveProjectExportDocument,
@@ -22,14 +22,14 @@ import {
   parseProjectContentManifest,
   syncManifestToWendooJson,
   WENDOO_JSON_PATH,
-} from "@wendoo-lang/app-host";
-import type { WendooProjectFileContent } from "@wendoo-lang/service-api";
+} from "@wendoo/app-host";
+import type { WendooProjectFileContent } from "@wendoo/service-api";
 import {
   fileContentToBytes,
   fileContentToWire,
   WENDOO_PROJECT_FORMAT,
   WendooProjectDocumentValidationCode,
-} from "@wendoo-lang/service-api";
+} from "@wendoo/service-api";
 import { assertRejectsWithCode } from "./test-support/error-assertions.js";
 import { MemoryProjectStore } from "./test-support/memory-project-store.js";
 

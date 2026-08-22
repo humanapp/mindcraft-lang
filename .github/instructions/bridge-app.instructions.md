@@ -53,6 +53,6 @@ src/
 - Thin wrapper package. App-role logic only; generic client logic belongs in
   `bridge-client`. Message types and schemas belong in `bridge-protocol`.
 - All exports go through `src/index.ts`. Consumers import from
-  `@wendoo-lang/bridge-app`.
+  `@wendoo/bridge-app`.
 - Use `import type` for type-only imports.
 - All unsubscribe functions return `() => void`.

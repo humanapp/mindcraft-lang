@@ -15,7 +15,7 @@ import {
   TRUE_VALUE,
   type Value,
   VOID_VALUE,
-} from "@wendoo-lang/core/app";
+} from "@wendoo/core/app";
 import { EcosimHostActions } from "../abi-ids";
 import { ARCHETYPES } from "../archetypes";
 import { getSelf } from "../execution-context-types";

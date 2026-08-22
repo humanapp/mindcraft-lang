@@ -13,7 +13,7 @@ commands:
   unpack    convert a .wendoo export into a publishable project directory
 
 options:
-  -v, --version   print the wendoo-cli version
+  -v, --version   print the wendoo version
 `;
 
 /** Location of the CLI's own package.json, resolved relative to this module. */

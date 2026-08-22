@@ -5,11 +5,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 /** The `package.json` name a directory must declare to count as a local CLI checkout. */
-const LOCAL_CLI_PACKAGE_NAME = "wendoo-cli";
+const LOCAL_CLI_PACKAGE_NAME = "wendoo";
 
 /**
  * Subdirectories, relative to an ancestor directory, where a local
- * `wendoo-cli` package may live: a direct wendoo-lang checkout keeps it at
+ * `wendoo` package may live: a direct wendoo-lang checkout keeps it at
  * `packages/cli`, and a repository embedding the reference checkout keeps it at
  * `external/wendoo-lang/packages/cli`.
  */
@@ -71,10 +71,10 @@ function* ancestorCliDirs(startDir: string): Generator<string> {
 }
 
 /**
- * Locate the built entry point of a local `wendoo-cli` working copy by
+ * Locate the built entry point of a local `wendoo` working copy by
  * walking up from `startDir`. At each ancestor directory it tests both known
  * layouts; a candidate qualifies when its `package.json` declares
- * `name === "wendoo-cli"` and a `dist/main.js` exists beside it.
+ * `name === "wendoo"` and a `dist/main.js` exists beside it.
  *
  * @param startDir - Directory to begin the upward walk from.
  * @returns Absolute path to the first qualifying candidate's `dist/main.js`, or
@@ -91,7 +91,7 @@ export function findLocalCliMain(startDir: string): string | undefined {
 }
 
 /**
- * Report whether a local `wendoo-cli` checkout exists in the ancestry of
+ * Report whether a local `wendoo` checkout exists in the ancestry of
  * `startDir` but has not been built (no `dist/main.js`).
  */
 function hasUnbuiltLocalCli(startDir: string): boolean {
@@ -184,7 +184,7 @@ export function runLocalBuild(localMain: string, args: readonly string[], baseEn
  * anchored at `process.cwd()`.
  *
  * This runs local repository code, like `npx` or a project-local `.bin`; the
- * `name === "wendoo-cli"` check guards against accidental collision with an
+ * `name === "wendoo"` check guards against accidental collision with an
  * unrelated monorepo that also has a `packages/cli`.
  *
  * @returns True when a local build was re-executed (in which case
@@ -198,7 +198,7 @@ export async function maybeRedirectToLocalBuild(): Promise<boolean> {
 
   if (localMain === undefined || !shouldRedirect({ localMain, runningMain, env: process.env })) {
     if (localMain === undefined && hasUnbuiltLocalCli(startDir)) {
-      process.stderr.write("wendoo: local wendoo-cli found but not built; run npm run build to use it\n");
+      process.stderr.write("wendoo: local wendoo found but not built; run npm run build to use it\n");
     }
     return false;
   }

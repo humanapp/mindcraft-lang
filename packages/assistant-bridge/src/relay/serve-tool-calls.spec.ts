@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { RelayToolCallRequest, RelayToolResult } from "@wendoo-lang/assistant-relay";
-import { correlateToolResults, RelayDeclineCode, RelayTakeoverCode } from "@wendoo-lang/assistant-relay";
-import { createRelayLoopback, RelayLoopbackClosed } from "@wendoo-lang/assistant-relay/testing";
+import type { RelayToolCallRequest, RelayToolResult } from "@wendoo/assistant-relay";
+import { correlateToolResults, RelayDeclineCode, RelayTakeoverCode } from "@wendoo/assistant-relay";
+import { createRelayLoopback, RelayLoopbackClosed } from "@wendoo/assistant-relay/testing";
 import { createTargetAdapter, ruleIdAt } from "../testing/index.js";
 import type { ToolCallError } from "../tools/dispatch.js";
 import { ToolCallErrorCode } from "../tools/dispatch.js";

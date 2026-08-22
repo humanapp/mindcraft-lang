@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { List } from "@wendoo-lang/core";
+import { List } from "@wendoo/core";
 import {
   BYTECODE_VERSION,
   type ExecutionContext,
@@ -10,8 +10,8 @@ import {
   type Program,
   VM,
   VmStatus,
-} from "@wendoo-lang/core/runtime";
-import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
+} from "@wendoo/core/runtime";
+import { __test__createPlatformServices } from "@wendoo/core/runtime/__test__";
 
 test("runFiber returns YIELDED and exhausts the budget on an infinite loop", () => {
   const program: Program = {

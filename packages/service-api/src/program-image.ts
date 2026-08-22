@@ -5,7 +5,7 @@ import {
   type WendooProgramImage,
   type WendooProgramImageBytes,
   WendooProgramImageEncoding,
-} from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/runtime";
 
 export {
   WENDOO_BINARY_PROGRAM_IMAGE_MAGIC,

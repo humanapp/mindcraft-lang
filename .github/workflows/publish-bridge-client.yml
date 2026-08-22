@@ -1,4 +1,4 @@
-name: Publish @wendoo-lang/bridge-client
+name: Publish @wendoo/bridge-client
 
 on:
   push:

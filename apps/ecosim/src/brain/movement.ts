@@ -4,7 +4,7 @@
 // - Steering intents are blended by weighted average. An `exclusive` intent
 //   overrides all others (highest-weight exclusive wins if multiple are present).
 
-import type { Vector2 } from "@wendoo-lang/core/app";
+import type { Vector2 } from "@wendoo/core/app";
 import type { Actor } from "./actor";
 import type { PrecomputedObstacle } from "./vision";
 

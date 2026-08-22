@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { AppSessionJoinCodeMessage, ExtensionAppStatusMessage, SessionRole } from "@wendoo-lang/bridge-protocol";
+import type { AppSessionJoinCodeMessage, ExtensionAppStatusMessage, SessionRole } from "@wendoo/bridge-protocol";
 import type { WSContext } from "hono/ws";
 import { createBindingToken, generateBindingId, verifyBindingToken } from "#core/binding-token.js";
 import { logger } from "#core/logging/logger.js";

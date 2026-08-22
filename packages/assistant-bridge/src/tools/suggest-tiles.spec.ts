@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { RuleSide } from "@wendoo-lang/core/brain";
+import { RuleSide } from "@wendoo/core/brain";
 import {
   buildInsertionContext,
   collectRuleHierarchyCapabilities,
   collectRuleHierarchyOutputKeys,
   suggestTiles as coreSuggestTiles,
-} from "@wendoo-lang/core/brain/language-service";
+} from "@wendoo/core/brain/language-service";
 import { createTargetAdapter, ruleIdAt } from "../testing/index.js";
 import { proposeEdit } from "./propose-edit.js";
 import type { SuggestionView } from "./suggest-tiles.js";

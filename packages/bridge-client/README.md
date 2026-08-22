@@ -1,4 +1,4 @@
-# @wendoo-lang/bridge-client
+# @wendoo/bridge-client
 
 Client SDK and shared protocol for communicating with the Wendoo VSCode bridge.
 
@@ -9,7 +9,7 @@ clients.
 ## Install
 
 ```sh
-npm install @wendoo-lang/bridge-client
+npm install @wendoo/bridge-client
 ```
 
 ## License

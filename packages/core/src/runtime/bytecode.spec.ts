@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { instrOperandMismatch, OPERAND_SCHEMA, Op } from "@wendoo-lang/core/runtime";
+import { instrOperandMismatch, OPERAND_SCHEMA, Op } from "@wendoo/core/runtime";
 
 describe("instrOperandMismatch", () => {
   test("accepts a schema-shaped instruction for every opcode", () => {

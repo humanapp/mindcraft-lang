@@ -21,8 +21,8 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { stream } from "@wendoo-lang/core";
-import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { stream } from "@wendoo/core";
+import { __test__createBrainServices } from "@wendoo/core/brain/__test__";
 import {
   type BrainProgramTypeEntryJson,
   type BrainProgramValueJson,
@@ -38,7 +38,7 @@ import {
   NativeType,
   type NumberPrecision,
   Op,
-} from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/runtime";
 
 const { byteArrayFromUint8Array, byteArrayToUint8Array } = stream;
 

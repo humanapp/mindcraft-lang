@@ -1,7 +1,7 @@
-import type { BrainServices, IBrainActionTileDef, IBrainTileDef, ITileCatalog } from "@wendoo-lang/core/brain";
-import type { BrainDef } from "@wendoo-lang/core/brain/model";
-import type { LocalizedValue, Localizer } from "@wendoo-lang/core/localization";
-import { createDefaultLocalizer } from "@wendoo-lang/core/localization";
+import type { BrainServices, IBrainActionTileDef, IBrainTileDef, ITileCatalog } from "@wendoo/core/brain";
+import type { BrainDef } from "@wendoo/core/brain/model";
+import type { LocalizedValue, Localizer } from "@wendoo/core/localization";
+import { createDefaultLocalizer } from "@wendoo/core/localization";
 import { createContext, type ReactNode, useContext, useMemo } from "react";
 import type { PrintTransport } from "../print/standalone-print-document";
 import type { EditorMode } from "./editor-mode";

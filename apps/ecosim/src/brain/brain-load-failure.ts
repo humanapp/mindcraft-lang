@@ -1,4 +1,4 @@
-import { AppHostError, type AppHostErrorCode } from "@wendoo-lang/app-host";
+import { AppHostError, type AppHostErrorCode } from "@wendoo/app-host";
 
 /** Why the archetype brains could not be loaded when the simulation started. */
 export interface BrainLoadFailure {

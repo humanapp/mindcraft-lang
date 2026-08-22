@@ -1,4 +1,4 @@
-import type { ControlPongMessage } from "@wendoo-lang/bridge-protocol";
+import type { ControlPongMessage } from "@wendoo/bridge-protocol";
 import { safeSend } from "#transport/ws/safe-send.js";
 import type { WsHandler, WsHandlerMap } from "#transport/ws/types.js";
 

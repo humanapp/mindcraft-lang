@@ -5,8 +5,8 @@ import type {
   ConversationToolCall,
   ConversationTurnEnding,
   ConversationTurnStep,
-} from "@wendoo-lang/assistant-relay";
-import { CONVERSATION_RECORD_VERSION } from "@wendoo-lang/assistant-relay";
+} from "@wendoo/assistant-relay";
+import { CONVERSATION_RECORD_VERSION } from "@wendoo/assistant-relay";
 
 /** One step of a turn, as it lands in a brain's record. */
 export type ConversationUpdate =

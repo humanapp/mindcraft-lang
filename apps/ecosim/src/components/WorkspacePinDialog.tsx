@@ -6,7 +6,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@wendoo-lang/ui";
+} from "@wendoo/ui";
 import { useEffect, useState } from "react";
 import { WorkspacePinInput } from "./WorkspacePinInput";
 

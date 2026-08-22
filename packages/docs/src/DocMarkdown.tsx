@@ -1,4 +1,4 @@
-import type { IBrainTileDef } from "@wendoo-lang/core/brain";
+import type { IBrainTileDef } from "@wendoo/core/brain";
 import type { Element } from "hast";
 import type { ReactNode } from "react";
 import Markdown, { type Components } from "react-markdown";

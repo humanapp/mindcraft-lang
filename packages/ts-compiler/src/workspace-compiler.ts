@@ -1,6 +1,6 @@
-import type { CompiledActionBundle, WendooEnvironment } from "@wendoo-lang/core";
-import type { DiagnosticSeverity } from "@wendoo-lang/core/brain";
-import type { FileContent } from "@wendoo-lang/service-api";
+import type { CompiledActionBundle, WendooEnvironment } from "@wendoo/core";
+import type { DiagnosticSeverity } from "@wendoo/core/brain";
+import type { FileContent } from "@wendoo/service-api";
 import type { ProjectCompileResult } from "./compiler/compile.js";
 import { type DependencyMount, extensionWorkspacePath, type ProjectDependency } from "./compiler/extension-mounts.js";
 import { declarationMounts, type Mount, mountedFiles, sourceMounts } from "./compiler/mounts.js";

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { AuthoringWorkspace, ScenarioInput, SimulationRun } from "@wendoo-lang/assistant-bridge";
-import { createAuthoringWorkspace, proposeEdit } from "@wendoo-lang/assistant-bridge";
-import { createRehearsalEnvironment, createSeededRng } from "@wendoo-lang/assistant-bridge/kit";
-import { ruleIdAt } from "@wendoo-lang/assistant-bridge/testing";
+import type { AuthoringWorkspace, ScenarioInput, SimulationRun } from "@wendoo/assistant-bridge";
+import { createAuthoringWorkspace, proposeEdit } from "@wendoo/assistant-bridge";
+import { createRehearsalEnvironment, createSeededRng } from "@wendoo/assistant-bridge/kit";
+import { ruleIdAt } from "@wendoo/assistant-bridge/testing";
 import type { Actor, Archetype } from "@/brain/actor";
 import { ARCHETYPE_NAMES } from "@/brain/archetypes";
 import { createEcosimModule } from "@/brain/index";

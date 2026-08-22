@@ -12,7 +12,7 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { __test__createBrainServices } from "@wendoo/core/brain/__test__";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { type BrainEditorConfig, BrainEditorProvider } from "./BrainEditorContext";

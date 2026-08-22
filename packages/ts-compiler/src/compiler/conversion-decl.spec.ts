@@ -9,8 +9,8 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { Dict, List } from "@wendoo-lang/core";
-import { coreModule, createWendooEnvironment } from "@wendoo-lang/core/app";
+import { Dict, List } from "@wendoo/core";
+import { coreModule, createWendooEnvironment } from "@wendoo/core/app";
 import {
   type BrainServices,
   type IBrainTileDef,
@@ -18,22 +18,17 @@ import {
   mkVariableTileId,
   RuleSide,
   TilePlacement,
-} from "@wendoo-lang/core/brain";
-import { __test__appendTile, __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
-import type { Expr } from "@wendoo-lang/core/brain/compiler";
+} from "@wendoo/core/brain";
+import { __test__appendTile, __test__createBrainServices } from "@wendoo/core/brain/__test__";
+import type { Expr } from "@wendoo/core/brain/compiler";
 import {
   type InsertionContext,
   parseTilesForSuggestions,
   suggestTiles,
   type TileSuggestionResult,
-} from "@wendoo-lang/core/brain/language-service";
-import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
-import {
-  BrainTileLiteralDef,
-  BrainTileOperatorDef,
-  BrainTileVariableDef,
-  TileCatalog,
-} from "@wendoo-lang/core/brain/tiles";
+} from "@wendoo/core/brain/language-service";
+import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@wendoo/core/brain/model";
+import { BrainTileLiteralDef, BrainTileOperatorDef, BrainTileVariableDef, TileCatalog } from "@wendoo/core/brain/tiles";
 import {
   CoreTypeIds,
   extractNumberValue,
@@ -41,7 +36,7 @@ import {
   isBytecodeConversion,
   mkParameterTileId,
   type Value,
-} from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/runtime";
 import ts from "typescript";
 import { registerUserTile } from "../runtime/registration-bridge.js";
 import { buildUserTileMetadata } from "../runtime/user-tile-metadata.js";

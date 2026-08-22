@@ -1,5 +1,5 @@
-import type { BrainServices } from "@wendoo-lang/core/brain";
-import type { FileContent } from "@wendoo-lang/service-api";
+import type { BrainServices } from "@wendoo/core/brain";
+import type { FileContent } from "@wendoo/service-api";
 import { buildAmbientDeclarations } from "./ambient.js";
 import type { DependencyMount, ProjectDependency } from "./extension-mounts.js";
 import {

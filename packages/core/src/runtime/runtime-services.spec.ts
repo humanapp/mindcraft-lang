@@ -21,8 +21,8 @@ import {
   type IBrain,
   mkNumberValue,
   NIL_VALUE,
-} from "@wendoo-lang/core/runtime";
-import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
+} from "@wendoo/core/runtime";
+import { __test__createPlatformServices } from "@wendoo/core/runtime/__test__";
 
 const stubBrain = {} as IBrain;
 

@@ -1,8 +1,8 @@
-import { parseExtensionReference } from "@wendoo-lang/app-host";
-import type { ExtensionTransactionToasts, LibraryUninstallImpact } from "@wendoo-lang/bridge-app";
-import { presentExtensionTransaction, runGuardedLibraryUninstall } from "@wendoo-lang/bridge-app";
-import { useDocsSidebar } from "@wendoo-lang/docs";
-import { Button, ExtensionBrowserDialog, Slider, Switch } from "@wendoo-lang/ui";
+import { parseExtensionReference } from "@wendoo/app-host";
+import type { ExtensionTransactionToasts, LibraryUninstallImpact } from "@wendoo/bridge-app";
+import { presentExtensionTransaction, runGuardedLibraryUninstall } from "@wendoo/bridge-app";
+import { useDocsSidebar } from "@wendoo/docs";
+import { Button, ExtensionBrowserDialog, Slider, Switch } from "@wendoo/ui";
 import {
   Blocks,
   BookOpen,

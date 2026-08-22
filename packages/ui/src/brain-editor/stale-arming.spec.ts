@@ -15,16 +15,16 @@
 
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import type { BrainServices, IBrainTileDef } from "@wendoo-lang/core/brain";
-import { RuleSide } from "@wendoo-lang/core/brain";
-import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { BrainServices, IBrainTileDef } from "@wendoo/core/brain";
+import { RuleSide } from "@wendoo/core/brain";
+import { __test__createBrainServices } from "@wendoo/core/brain/__test__";
 import {
   BrainCommandHistory,
   type BrainRuleDef,
   RemoveTileCommand,
   ReplaceTileCommand,
-} from "@wendoo-lang/core/brain/model";
-import { BrainTileModifierDef } from "@wendoo-lang/core/brain/tiles";
+} from "@wendoo/core/brain/model";
+import { BrainTileModifierDef } from "@wendoo/core/brain/tiles";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { type ArmedTargetController, ArmedTargetProvider, type ArmedTileTarget } from "./ArmedTargetContext";

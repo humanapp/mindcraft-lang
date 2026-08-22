@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { ExtensionAddInputErrorCode, ExtensionFetchErrorCode, resolveExtensionAddInput } from "@wendoo-lang/app-host";
-import type { EmbeddedExtension, ExtensionCatalogEntry } from "@wendoo-lang/bridge-app";
-import { ExtensionActionResultCode } from "@wendoo-lang/bridge-app";
+import { ExtensionAddInputErrorCode, ExtensionFetchErrorCode, resolveExtensionAddInput } from "@wendoo/app-host";
+import type { EmbeddedExtension, ExtensionCatalogEntry } from "@wendoo/bridge-app";
+import { ExtensionActionResultCode } from "@wendoo/bridge-app";
 import {
   buildEcosimExtensionEntries,
   checkSimExtensionUpdates,

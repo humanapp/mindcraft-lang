@@ -1,16 +1,16 @@
-# @wendoo-lang/bridge-app
+# @wendoo/bridge-app
 
 App-side client for the Wendoo bridge.
 
-Wraps `@wendoo-lang/bridge-client` with app-role-specific behavior: automatic join code
+Wraps `@wendoo/bridge-client` with app-role-specific behavior: automatic join code
 management and the `"app"` WebSocket path. Apps that connect to the bridge should depend on
 this package rather than using `bridge-client` directly.
 
 ## Usage
 
 ```typescript
-import { createAppBridge } from "@wendoo-lang/bridge-app";
-import { createCompilationFeature } from "@wendoo-lang/bridge-app/compilation";
+import { createAppBridge } from "@wendoo/bridge-app";
+import { createCompilationFeature } from "@wendoo/bridge-app/compilation";
 
 const bridge = createAppBridge({
   appName: "My App",
@@ -36,7 +36,7 @@ publication helpers.
 ## Install
 
 ```sh
-npm install @wendoo-lang/bridge-app
+npm install @wendoo/bridge-app
 ```
 
 ## License

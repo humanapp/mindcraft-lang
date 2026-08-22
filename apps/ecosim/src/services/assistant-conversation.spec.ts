@@ -7,25 +7,25 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { ruleIdAt } from "@wendoo-lang/assistant-bridge/testing";
-import type { EditedBrainWorkspaces } from "@wendoo-lang/assistant-panel";
-import { assistantToolManifest, createEditedBrainWorkspaces } from "@wendoo-lang/assistant-panel";
-import { recordFor } from "@wendoo-lang/assistant-panel/conversation/store";
-import type { AssistantChannel } from "@wendoo-lang/assistant-panel/session/channel";
-import { AssistantMachine, AssistantStatus } from "@wendoo-lang/assistant-panel/session/machine";
-import type { ScriptedService } from "@wendoo-lang/assistant-panel/testing/scripted-service";
-import { runScriptedService } from "@wendoo-lang/assistant-panel/testing/scripted-service";
+import { ruleIdAt } from "@wendoo/assistant-bridge/testing";
+import type { EditedBrainWorkspaces } from "@wendoo/assistant-panel";
+import { assistantToolManifest, createEditedBrainWorkspaces } from "@wendoo/assistant-panel";
+import { recordFor } from "@wendoo/assistant-panel/conversation/store";
+import type { AssistantChannel } from "@wendoo/assistant-panel/session/channel";
+import { AssistantMachine, AssistantStatus } from "@wendoo/assistant-panel/session/machine";
+import type { ScriptedService } from "@wendoo/assistant-panel/testing/scripted-service";
+import { runScriptedService } from "@wendoo/assistant-panel/testing/scripted-service";
 import type {
   ConversationAssistantEntry,
   ConversationRecord,
   ConversationToolCall,
-} from "@wendoo-lang/assistant-relay";
-import type { RelayLoopback } from "@wendoo-lang/assistant-relay/testing";
-import { createRelayLoopback } from "@wendoo-lang/assistant-relay/testing";
-import { coreModule, createWendooEnvironment, List } from "@wendoo-lang/core/app";
-import type { BrainPageDef, BrainRuleDef } from "@wendoo-lang/core/brain/model";
-import { BrainCommandHistory, BrainDef } from "@wendoo-lang/core/brain/model";
-import type { EditedBrain } from "@wendoo-lang/ui";
+} from "@wendoo/assistant-relay";
+import type { RelayLoopback } from "@wendoo/assistant-relay/testing";
+import { createRelayLoopback } from "@wendoo/assistant-relay/testing";
+import { coreModule, createWendooEnvironment, List } from "@wendoo/core/app";
+import type { BrainPageDef, BrainRuleDef } from "@wendoo/core/brain/model";
+import { BrainCommandHistory, BrainDef } from "@wendoo/core/brain/model";
+import type { EditedBrain } from "@wendoo/ui";
 import { createEcosimModule } from "@/brain/index";
 import { TileIds } from "@/brain/tileids";
 import { createTargetAdapter } from "@/rehearsal/adapter";

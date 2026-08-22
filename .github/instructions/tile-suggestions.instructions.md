@@ -13,7 +13,7 @@ function-level details; this file captures rules and key behaviors.
 ## Quick Reference
 
 - **Tests**: `cd packages/core && npm test` (tile suggestion tests in `tile-suggestions.spec.ts`)
-- **Import path**: `@wendoo-lang/core/brain/language-service`
+- **Import path**: `@wendoo/core/brain/language-service`
 - **Main entry point**: `suggestTiles(context, catalogs)`
 - **Context builder**: `buildInsertionContext(inputs)` in `insertion-context.ts` -- assembles the
   `InsertionContext` for all three shapes (append, insert-at-index, replace-at-index)
@@ -88,5 +88,5 @@ accessorPosition) and suggests accordingly.
 ## Tests
 
 Uses `node:test` and `node:assert/strict`. Spec files use package imports
-(`@wendoo-lang/core/brain`, etc.). The `pretest` script runs `npm run build:node`
+(`@wendoo/core/brain`, etc.). The `pretest` script runs `npm run build:node`
 automatically.

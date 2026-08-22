@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { List, type ReadonlyList } from "@wendoo-lang/core";
+import { List, type ReadonlyList } from "@wendoo/core";
 import {
   BrainActionRegistry,
   BYTECODE_VERSION,
@@ -17,8 +17,8 @@ import {
   type Value,
   VM,
   VmStatus,
-} from "@wendoo-lang/core/runtime";
-import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
+} from "@wendoo/core/runtime";
+import { __test__createPlatformServices } from "@wendoo/core/runtime/__test__";
 
 const scheduler = {
   onHandleCompleted: () => {},

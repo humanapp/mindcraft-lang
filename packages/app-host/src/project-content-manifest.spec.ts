@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { ProjectContentManifest } from "@wendoo-lang/app-host";
+import type { ProjectContentManifest } from "@wendoo/app-host";
 import {
   isAbbreviatedCommitPin,
   ProjectContentManifestErrorCode,
@@ -9,7 +9,7 @@ import {
   serializeProjectContentManifest,
   validateProjectContentManifest,
   validateProjectExtensions,
-} from "@wendoo-lang/app-host";
+} from "@wendoo/app-host";
 
 const VALID_MANIFEST = {
   name: "My Project",

@@ -1,6 +1,6 @@
-[![Publish @wendoo-lang/docs](https://github.com/wendoo-lang/wendoo-lang/actions/workflows/publish-docs.yml/badge.svg)](https://github.com/wendoo-lang/wendoo-lang/actions/workflows/publish-docs.yml)
+[![Publish @wendoo/docs](https://github.com/wendoo-lang/wendoo-lang/actions/workflows/publish-docs.yml/badge.svg)](https://github.com/wendoo-lang/wendoo-lang/actions/workflows/publish-docs.yml)
 
-# @wendoo-lang/docs
+# @wendoo/docs
 
 Shared documentation sidebar and rendering components for **Wendoo** web applications. This package provides a complete docs system -- sidebar, markdown rendering, brain-rule visualizations, and a standalone docs page -- designed to be consumed by any webapp in the monorepo.
 
@@ -24,7 +24,7 @@ For step-by-step setup instructions in your own project, see the [Integration Gu
 ```js
 resolve: {
   alias: {
-    "@wendoo-lang/docs": path.resolve(__dirname, "../../packages/docs/src"),
+    "@wendoo/docs": path.resolve(__dirname, "../../packages/docs/src"),
   },
 },
 ```
@@ -35,8 +35,8 @@ resolve: {
 {
   "compilerOptions": {
     "paths": {
-      "@wendoo-lang/docs": ["../../packages/docs/src/index.ts"],
-      "@wendoo-lang/docs/*": ["../../packages/docs/src/*"]
+      "@wendoo/docs": ["../../packages/docs/src/index.ts"],
+      "@wendoo/docs/*": ["../../packages/docs/src/*"]
     }
   }
 }
@@ -45,9 +45,9 @@ resolve: {
 ### Imports
 
 ```typescript
-import { DocsSidebarProvider, DocsSidebar, useDocsSidebar } from "@wendoo-lang/docs";
-import { DocsPage, DocsRegistry, buildDocsRegistry } from "@wendoo-lang/docs";
-import type { AppTileDocMeta, AppPatternDocMeta } from "@wendoo-lang/docs";
+import { DocsSidebarProvider, DocsSidebar, useDocsSidebar } from "@wendoo/docs";
+import { DocsPage, DocsRegistry, buildDocsRegistry } from "@wendoo/docs";
+import type { AppTileDocMeta, AppPatternDocMeta } from "@wendoo/docs";
 ```
 
 ## Integration
@@ -55,7 +55,7 @@ import type { AppTileDocMeta, AppPatternDocMeta } from "@wendoo-lang/docs";
 Wrap your app in `DocsSidebarProvider` with a populated `DocsRegistry`, then render `DocsSidebar` as a sibling overlay. Use `useDocsSidebar()` to open/close the panel or deep-link to specific tiles.
 
 ```tsx
-import { DocsSidebarProvider, DocsSidebar, buildDocsRegistry } from "@wendoo-lang/docs";
+import { DocsSidebarProvider, DocsSidebar, buildDocsRegistry } from "@wendoo/docs";
 
 const registry = buildDocsRegistry({
   appTiles: { meta: [...], content: new Map([...]) },
@@ -99,8 +99,8 @@ src/
 
 ## Dependencies
 
-- **@wendoo-lang/core** -- brain tile definitions, docs manifests, compiler services
-- **@wendoo-lang/ui** -- TileVisual, color utilities, glass effects, rule clipboard
+- **@wendoo/core** -- brain tile definitions, docs manifests, compiler services
+- **@wendoo/ui** -- TileVisual, color utilities, glass effects, rule clipboard
 - **lucide-react** -- icons
 - **react-markdown + remark-gfm** -- markdown rendering
 - **sonner** -- toast notifications

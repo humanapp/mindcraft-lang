@@ -8,13 +8,13 @@ need to clone the wendoo-lang monorepo.
 
 | Package                | Purpose                                                                | Build model     |
 | ---------------------- | ---------------------------------------------------------------------- | --------------- |
-| `@wendoo-lang/core` | Tile-based visual programming language: model, compiler, runtime, VM   | Built (ESM/CJS) |
-| `@wendoo-lang/ui`   | Shared React components: shadcn/ui primitives + brain editor           | Source-only     |
-| `@wendoo-lang/docs` | Documentation sidebar, markdown renderer, standalone docs page         | Source-only     |
+| `@wendoo/core` | Tile-based visual programming language: model, compiler, runtime, VM   | Built (ESM/CJS) |
+| `@wendoo/ui`   | Shared React components: shadcn/ui primitives + brain editor           | Source-only     |
+| `@wendoo/docs` | Documentation sidebar, markdown renderer, standalone docs page         | Source-only     |
 
-`@wendoo-lang/core` is a conventionally built package with pre-built ESM and CJS output.
+`@wendoo/core` is a conventionally built package with pre-built ESM and CJS output.
 It works with standard Node module resolution -- no aliases needed. Import app-facing
-symbols from `@wendoo-lang/core/app`.
+symbols from `@wendoo/core/app`.
 
 **Source-only** means `ui` and `docs` ship their TypeScript source on npm rather than
 pre-built JavaScript. Your app compiles them at build time using Vite aliases and tsconfig
@@ -26,16 +26,16 @@ See [TypeScript Compiler + VS Code Bridge](#6-typescript-compiler--vs-code-bridg
 ### Dependency Graph
 
 ```
-@wendoo-lang/docs
-  |-- @wendoo-lang/ui
-  |-- @wendoo-lang/core
+@wendoo/docs
+  |-- @wendoo/ui
+  |-- @wendoo/core
   |-- react, react-dom (peer)
 
-@wendoo-lang/ui
-  |-- @wendoo-lang/core
+@wendoo/ui
+  |-- @wendoo/core
   |-- react, react-dom (peer)
 
-@wendoo-lang/core
+@wendoo/core
   (no peer dependencies)
 ```
 
@@ -44,7 +44,7 @@ See [TypeScript Compiler + VS Code Bridge](#6-typescript-compiler--vs-code-bridg
 ## 1. Getting Started with Core
 
 ```bash
-npm install @wendoo-lang/core
+npm install @wendoo/core
 ```
 
 The core package provides the brain model, tile catalog, compiler, runtime, and VM. Create
@@ -56,7 +56,7 @@ import {
   coreModule,
   type WendooModule,
   type WendooModuleApi,
-} from "@wendoo-lang/core/app";
+} from "@wendoo/core/app";
 
 function createAppModule(): WendooModule {
   return {
@@ -76,7 +76,7 @@ brain.startup();
 brain.think(now);
 ```
 
-All app-facing symbols are exported from `@wendoo-lang/core/app` -- environment,
+All app-facing symbols are exported from `@wendoo/core/app` -- environment,
 modules, brain model, tile definitions, type system, runtime values, and platform utilities.
 
 ---
@@ -84,7 +84,7 @@ modules, brain model, tile definitions, type system, runtime values, and platfor
 ## 2. Adding the Brain Editor
 
 ```bash
-npm install @wendoo-lang/ui
+npm install @wendoo/ui
 ```
 
 The UI package provides shadcn/ui primitives, the brain editor, and utility functions.
@@ -94,7 +94,7 @@ The UI package provides shadcn/ui primitives, the brain editor, and utility func
 The brain editor requires a `BrainEditorConfig` to decouple it from app-specific concerns:
 
 ```tsx
-import type { BrainEditorConfig } from "@wendoo-lang/ui";
+import type { BrainEditorConfig } from "@wendoo/ui";
 
 const brainEditorConfig: BrainEditorConfig = {
   dataTypeIcons: new Map([
@@ -127,7 +127,7 @@ const brainEditorConfig: BrainEditorConfig = {
 Wrap your app with `BrainEditorProvider` and use `BrainEditorDialog` to open it:
 
 ```tsx
-import { BrainEditorProvider, BrainEditorDialog, Toaster } from "@wendoo-lang/ui";
+import { BrainEditorProvider, BrainEditorDialog, Toaster } from "@wendoo/ui";
 
 function App() {
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -156,8 +156,8 @@ function App() {
 The package also re-exports shadcn/ui primitives and utility functions:
 
 ```tsx
-import { Button, Card, Dialog, Input, Slider } from "@wendoo-lang/ui";
-import { cn, adjustColor, saturateColor } from "@wendoo-lang/ui";
+import { Button, Card, Dialog, Input, Slider } from "@wendoo/ui";
+import { cn, adjustColor, saturateColor } from "@wendoo/ui";
 ```
 
 ---
@@ -165,11 +165,11 @@ import { cn, adjustColor, saturateColor } from "@wendoo-lang/ui";
 ## 3. Adding Documentation
 
 ```bash
-npm install @wendoo-lang/docs
+npm install @wendoo/docs
 ```
 
 The docs package provides a documentation sidebar, markdown renderer, and standalone docs
-page. It depends on both `@wendoo-lang/core` and `@wendoo-lang/ui`.
+page. It depends on both `@wendoo/core` and `@wendoo/ui`.
 
 ### Minimal Setup
 
@@ -177,7 +177,7 @@ If you have no app-specific documentation, call `buildDocsRegistry()` with no ar
 get a registry containing only the built-in core docs:
 
 ```tsx
-import { buildDocsRegistry, DocsSidebar, DocsSidebarProvider } from "@wendoo-lang/docs";
+import { buildDocsRegistry, DocsSidebar, DocsSidebarProvider } from "@wendoo/docs";
 
 function App() {
   const docsRegistry = useMemo(() => buildDocsRegistry(), []);
@@ -197,8 +197,8 @@ To add your own tile and pattern docs, create a manifest with metadata entries a
 content, then pass them to `buildDocsRegistry()`:
 
 ```typescript
-import { buildDocsRegistry } from "@wendoo-lang/docs";
-import type { AppTileDocMeta, AppPatternDocMeta } from "@wendoo-lang/docs";
+import { buildDocsRegistry } from "@wendoo/docs";
+import type { AppTileDocMeta, AppPatternDocMeta } from "@wendoo/docs";
 
 const appTileDocs: readonly AppTileDocMeta[] = [
   { tileId: "tile.sensor->sensor.see", tags: ["vision"], category: "Sensors", contentKey: "see" },
@@ -230,7 +230,7 @@ export function createDocsRegistry() {
 For a full-page docs view at a `/docs` route:
 
 ```tsx
-import { DocsPage } from "@wendoo-lang/docs";
+import { DocsPage } from "@wendoo/docs";
 
 export default function MyDocsPage() {
   const docsRegistry = useMemo(() => createDocsRegistry(), []);
@@ -244,8 +244,8 @@ To enable the Help context menu on tiles and the docs toggle in the editor toolb
 bridge the two contexts:
 
 ```tsx
-import { useDocsSidebar } from "@wendoo-lang/docs";
-import { BrainEditorProvider } from "@wendoo-lang/ui";
+import { useDocsSidebar } from "@wendoo/docs";
+import { BrainEditorProvider } from "@wendoo/ui";
 
 function DocsBrainEditorProvider({ children }: { children: React.ReactNode }) {
   const { openDocsForTile, isOpen, toggle, close } = useDocsSidebar();
@@ -288,7 +288,7 @@ pre-bundling since it already ships as ESM.
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
-import { uiPlugin } from "./node_modules/@wendoo-lang/ui/src/vite-plugin.ts";
+import { uiPlugin } from "./node_modules/@wendoo/ui/src/vite-plugin.ts";
 
 export default defineConfig({
   plugins: [
@@ -297,20 +297,20 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      "@wendoo-lang/ui": path.resolve(__dirname, "node_modules/@wendoo-lang/ui/src"),
-      "@wendoo-lang/docs": path.resolve(__dirname, "node_modules/@wendoo-lang/docs/src"),
+      "@wendoo/ui": path.resolve(__dirname, "node_modules/@wendoo/ui/src"),
+      "@wendoo/docs": path.resolve(__dirname, "node_modules/@wendoo/docs/src"),
     },
   },
   optimizeDeps: {
-    exclude: ["@wendoo-lang/core"],
+    exclude: ["@wendoo/core"],
   },
 });
 ```
 
-`uiPlugin()` handles the Latin Modern Math font bundled with `@wendoo-lang/ui`. Without
+`uiPlugin()` handles the Latin Modern Math font bundled with `@wendoo/ui`. Without
 it the font will fail to load silently.
 
-If you are only using `@wendoo-lang/core`, you can skip the aliases and `uiPlugin`
+If you are only using `@wendoo/core`, you can skip the aliases and `uiPlugin`
 entirely and just keep the `optimizeDeps.exclude`.
 
 ### TypeScript
@@ -327,10 +327,10 @@ Add path mappings so TypeScript can resolve the source-only packages:
     "strict": true,
     "noEmit": true,
     "paths": {
-      "@wendoo-lang/ui": ["./node_modules/@wendoo-lang/ui/src/index.ts"],
-      "@wendoo-lang/ui/*": ["./node_modules/@wendoo-lang/ui/src/*"],
-      "@wendoo-lang/docs": ["./node_modules/@wendoo-lang/docs/src/index.ts"],
-      "@wendoo-lang/docs/*": ["./node_modules/@wendoo-lang/docs/src/*"]
+      "@wendoo/ui": ["./node_modules/@wendoo/ui/src/index.ts"],
+      "@wendoo/ui/*": ["./node_modules/@wendoo/ui/src/*"],
+      "@wendoo/docs": ["./node_modules/@wendoo/docs/src/index.ts"],
+      "@wendoo/docs/*": ["./node_modules/@wendoo/docs/src/*"]
     }
   }
 }
@@ -344,9 +344,9 @@ variables.
 
 ```css
 @import "tailwindcss";
-@import "@wendoo-lang/ui/ui.css";
-@source "../node_modules/@wendoo-lang/ui/src";
-@source "../node_modules/@wendoo-lang/docs/src";
+@import "@wendoo/ui/ui.css";
+@source "../node_modules/@wendoo/ui/src";
+@source "../node_modules/@wendoo/docs/src";
 ```
 
 The `ui` package uses shadcn/ui design tokens. See the sim app's `globals.css` for a
@@ -359,9 +359,9 @@ complete example of the required `@theme` block and dark mode variant.
 A complete app using all three packages wires the providers together like this:
 
 ```tsx
-import type { BrainDef } from "@wendoo-lang/core/app";
-import { DocsSidebar, DocsSidebarProvider, useDocsSidebar } from "@wendoo-lang/docs";
-import { BrainEditorDialog, BrainEditorProvider, Toaster } from "@wendoo-lang/ui";
+import type { BrainDef } from "@wendoo/core/app";
+import { DocsSidebar, DocsSidebarProvider, useDocsSidebar } from "@wendoo/docs";
+import { BrainEditorDialog, BrainEditorProvider, Toaster } from "@wendoo/ui";
 
 export default function App() {
   const docsRegistry = useMemo(() => createDocsRegistry(), []);
@@ -403,34 +403,34 @@ above works without them.
 
 | Package                           | Purpose                                                              | Build model |
 | --------------------------------- | -------------------------------------------------------------------- | ----------- |
-| `@wendoo-lang/ts-compiler`     | TypeScript-to-Wendoo bytecode compiler for sensors and actuators  | Built (ESM) |
-| `@wendoo-lang/bridge-app`      | App-side client for the VS Code bridge                               | Built (ESM) |
-| `@wendoo-lang/bridge-client`   | WebSocket client SDK for the bridge                                  | Built (ESM) |
-| `@wendoo-lang/bridge-protocol` | Wire types and schemas shared between bridge components              | Built (ESM) |
+| `@wendoo/ts-compiler`     | TypeScript-to-Wendoo bytecode compiler for sensors and actuators  | Built (ESM) |
+| `@wendoo/bridge-app`      | App-side client for the VS Code bridge                               | Built (ESM) |
+| `@wendoo/bridge-client`   | WebSocket client SDK for the bridge                                  | Built (ESM) |
+| `@wendoo/bridge-protocol` | Wire types and schemas shared between bridge components              | Built (ESM) |
 
 ```
-@wendoo-lang/bridge-app
-  |-- @wendoo-lang/bridge-client
-  |-- @wendoo-lang/bridge-protocol
-  |-- @wendoo-lang/ts-compiler
-  |-- @wendoo-lang/core
+@wendoo/bridge-app
+  |-- @wendoo/bridge-client
+  |-- @wendoo/bridge-protocol
+  |-- @wendoo/ts-compiler
+  |-- @wendoo/core
 
-@wendoo-lang/ts-compiler
-  |-- @wendoo-lang/core
+@wendoo/ts-compiler
+  |-- @wendoo/core
 ```
 
 ### Standalone TypeScript Compiler
 
 If you want to compile TypeScript-authored tiles without the VS Code bridge, use
-`@wendoo-lang/ts-compiler` directly:
+`@wendoo/ts-compiler` directly:
 
 ```bash
-npm install @wendoo-lang/core @wendoo-lang/ts-compiler
+npm install @wendoo/core @wendoo/ts-compiler
 ```
 
 ```typescript
-import { createWendooEnvironment, coreModule } from "@wendoo-lang/core/app";
-import { createWorkspaceCompiler } from "@wendoo-lang/ts-compiler";
+import { createWendooEnvironment, coreModule } from "@wendoo/core/app";
+import { createWorkspaceCompiler } from "@wendoo/ts-compiler";
 
 const environment = createWendooEnvironment({
   modules: [coreModule(), createAppModule()],
@@ -451,7 +451,7 @@ The VS Code bridge allows users to author Wendoo sensors and actuators in TypeSc
 using the [Wendoo VS Code Web extension](https://marketplace.visualstudio.com/items?itemName=wendoo-lang.wendoo-lang-vscode-extension).
 
 ```bash
-npm install @wendoo-lang/core @wendoo-lang/ts-compiler @wendoo-lang/bridge-app
+npm install @wendoo/core @wendoo/ts-compiler @wendoo/bridge-app
 ```
 
 #### Architecture
@@ -471,8 +471,8 @@ A `ProjectFileSystem` abstracts the virtual filesystem. The `bridge-app` package
 `createInMemoryProjectFileSystem` for browser apps:
 
 ```typescript
-import { createInMemoryProjectFileSystem } from "@wendoo-lang/bridge-app";
-import { isCompilerControlledPath } from "@wendoo-lang/ts-compiler";
+import { createInMemoryProjectFileSystem } from "@wendoo/bridge-app";
+import { isCompilerControlledPath } from "@wendoo/ts-compiler";
 
 const filesystem = createInMemoryProjectFileSystem({
   shouldExclude: isCompilerControlledPath,
@@ -492,9 +492,9 @@ For non-browser apps, implement `ProjectFileSystem` directly with `exportSnapsho
 wires it to the bridge, and handles virtual filesystem transfer:
 
 ```typescript
-import { createInMemoryProjectFileSystem } from "@wendoo-lang/bridge-app";
-import { createBridgeProject } from "@wendoo-lang/bridge-app/compilation";
-import type { WorkspaceCompileResult } from "@wendoo-lang/bridge-app/compilation";
+import { createInMemoryProjectFileSystem } from "@wendoo/bridge-app";
+import { createBridgeProject } from "@wendoo/bridge-app/compilation";
+import type { WorkspaceCompileResult } from "@wendoo/bridge-app/compilation";
 
 const project = createBridgeProject({
   environment,
@@ -559,7 +559,7 @@ icons for user-authored sensors and actuators whose assets live in the virtual f
 rather than on disk.
 
 ```typescript
-import { registerVfsServiceWorker } from "@wendoo-lang/bridge-app";
+import { registerVfsServiceWorker } from "@wendoo/bridge-app";
 
 registerVfsServiceWorker({
   swUrl: "/vfs-sw.js",
@@ -572,36 +572,36 @@ Your service worker entry point re-exports the handler:
 
 ```typescript
 // vfs-sw.ts (built as a separate entry point)
-import "@wendoo-lang/bridge-app/vfs-service-worker";
+import "@wendoo/bridge-app/vfs-service-worker";
 ```
 
 ---
 
 ## 7. Troubleshooting
 
-**TypeScript cannot find module `@wendoo-lang/ui`**
+**TypeScript cannot find module `@wendoo/ui`**
 -- Verify the `paths` entries in `tsconfig.json` point to the correct
-`node_modules/@wendoo-lang/ui/src/index.ts` path. The barrel export must point to the
+`node_modules/@wendoo/ui/src/index.ts` path. The barrel export must point to the
 `.ts` file, not a directory.
 
 **Tailwind classes from ui/docs packages are missing**
 -- Add `@source` directives in your globals.css pointing to the package `src/` directories
 inside `node_modules`.
 
-**`@wendoo-lang/core` errors during Vite pre-bundling**
--- Add `@wendoo-lang/core` to `optimizeDeps.exclude` in your Vite config.
+**`@wendoo/core` errors during Vite pre-bundling**
+-- Add `@wendoo/core` to `optimizeDeps.exclude` in your Vite config.
 
 **Brain editor throws "useBrainEditorConfig must be used within a BrainEditorProvider"**
 -- Ensure `BrainEditorProvider` wraps any component that renders brain editor UI. If using
 the docs integration pattern, `DocsBrainEditorProvider` must be inside
 `DocsSidebarProvider`.
 
-**Vite cannot resolve imports inside `@wendoo-lang/ui` or `@wendoo-lang/docs`**
+**Vite cannot resolve imports inside `@wendoo/ui` or `@wendoo/docs`**
 -- The Vite alias must point to the `src/` directory so relative imports resolve correctly.
 If you see errors about missing modules like `../lib/utils`, check that the alias path is
 correct.
 
 **Latin Modern Math font fails to load (OTS parsing error or 404)**
--- `uiPlugin()` from `@wendoo-lang/ui/src/vite-plugin.ts` is missing from your Vite
+-- `uiPlugin()` from `@wendoo/ui/src/vite-plugin.ts` is missing from your Vite
 config. The plugin handles URL rewriting, dev-server serving, and production asset emission
 for the bundled font.

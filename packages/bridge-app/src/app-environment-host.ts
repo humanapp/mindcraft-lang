@@ -10,7 +10,7 @@ import type {
   ProjectFileSystem,
   ProjectManifest,
   UnstableDependency,
-} from "@wendoo-lang/app-host";
+} from "@wendoo/app-host";
 import {
   AppHostError,
   AppHostErrorCode,
@@ -31,20 +31,20 @@ import {
   resolveExtensionAddInput,
   syncManifestToWendooJson,
   WENDOO_JSON_PATH,
-} from "@wendoo-lang/app-host";
-import type { FolderInstalledExtensionMetadata } from "@wendoo-lang/bridge-protocol";
-import type { IBrainDef, WendooEnvironment, WendooModule } from "@wendoo-lang/core/app";
+} from "@wendoo/app-host";
+import type { FolderInstalledExtensionMetadata } from "@wendoo/bridge-protocol";
+import type { IBrainDef, WendooEnvironment, WendooModule } from "@wendoo/core/app";
 import {
   createWendooEnvironment,
   Dict,
   encodePersistedBrainJson,
   logger,
   renameBrainNamespaces,
-} from "@wendoo-lang/core/app";
-import type { PersistedBrainJson } from "@wendoo-lang/core/brain/model";
-import type { Localizer } from "@wendoo-lang/core/localization";
-import type { ActionKey, IRngServices, ProfileNumerics } from "@wendoo-lang/core/runtime";
-import type { Mount, WorkspaceCompileResult, WorkspaceDiagnosticEntry } from "@wendoo-lang/ts-compiler";
+} from "@wendoo/core/app";
+import type { PersistedBrainJson } from "@wendoo/core/brain/model";
+import type { Localizer } from "@wendoo/core/localization";
+import type { ActionKey, IRngServices, ProfileNumerics } from "@wendoo/core/runtime";
+import type { Mount, WorkspaceCompileResult, WorkspaceDiagnosticEntry } from "@wendoo/ts-compiler";
 import type { AppBridge, AppBridgeState, ProjectFileChange } from "./app-bridge.js";
 import type { BridgeProjectHandle, ProjectCompilerHandle } from "./compilation.js";
 import { augmentProjectFileSystem, createBridgeProject, createProjectCompiler } from "./compilation.js";

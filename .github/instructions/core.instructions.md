@@ -36,12 +36,12 @@ After making any code changes in `packages/core`, always run these commands in o
 
 Tests use `node:test` and `node:assert/strict` (Node.js built-ins, zero package dependencies). Test files are colocated with the code they test, using the `*.spec.ts` naming convention. All three build tsconfigs (`tsconfig.node.json`, `tsconfig.esm.json`, `tsconfig.rbx.json`) exclude `**/*.spec.ts`, so test files do not affect any build target.
 
-The test runner is `tsx --test` (tsx is a devDependency). A `pretest` script runs `npm run build:node` before tests execute, because spec files use package imports (`@wendoo-lang/core/brain`, etc.) that resolve to the built `dist/node/` output. This is required because platform modules (e.g., `platform/list.ts`) use ambient declarations with `.node.ts` implementations that only resolve after the build step copies them into place.
+The test runner is `tsx --test` (tsx is a devDependency). A `pretest` script runs `npm run build:node` before tests execute, because spec files use package imports (`@wendoo/core/brain`, etc.) that resolve to the built `dist/node/` output. This is required because platform modules (e.g., `platform/list.ts`) use ambient declarations with `.node.ts` implementations that only resolve after the build step copies them into place.
 
 When adding new tests, follow this pattern:
 
 - Use `describe`/`test`/`before` from `node:test` and `assert` from `node:assert/strict`
-- Use package imports (`@wendoo-lang/core`, `@wendoo-lang/core/brain`, etc.) not relative imports to platform modules
+- Use package imports (`@wendoo/core`, `@wendoo/core/brain`, etc.) not relative imports to platform modules
 - Place spec files next to the code they test (e.g., `parser.spec.ts` beside `parser.ts`)
 
 ## Roblox-TS Gotchas

@@ -17,12 +17,8 @@ import type {
   ConversationRecord,
   ConversationToolCall,
   ConversationTurnEnding,
-} from "@wendoo-lang/assistant-relay";
-import {
-  CONVERSATION_RECORD_VERSION,
-  ConversationTurnFailureCode,
-  RelayTurnEndCode,
-} from "@wendoo-lang/assistant-relay";
+} from "@wendoo/assistant-relay";
+import { CONVERSATION_RECORD_VERSION, ConversationTurnFailureCode, RelayTurnEndCode } from "@wendoo/assistant-relay";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ConversationViewProps } from "./ConversationView";
 import { ConversationView, intentKeyAction, landKeyboardInIntent } from "./ConversationView";

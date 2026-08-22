@@ -1,4 +1,4 @@
-name: Publish @wendoo-lang/assistant-relay
+name: Publish @wendoo/assistant-relay
 
 on:
   push:

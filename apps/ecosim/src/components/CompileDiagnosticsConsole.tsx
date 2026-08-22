@@ -1,4 +1,4 @@
-import type { WorkspaceCompileDiagnostic } from "@wendoo-lang/bridge-app";
+import type { WorkspaceCompileDiagnostic } from "@wendoo/bridge-app";
 import { ConsoleOutputList } from "./ConsoleOutputList";
 
 interface CompileDiagnosticsConsoleProps {

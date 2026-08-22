@@ -1,5 +1,5 @@
-import type { LiteralDisplayFormat } from "@wendoo-lang/core/brain";
-import { CoreTypeIds } from "@wendoo-lang/core/runtime";
+import type { LiteralDisplayFormat } from "@wendoo/core/brain";
+import { CoreTypeIds } from "@wendoo/core/runtime";
 import { useState } from "react";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";

@@ -17,18 +17,18 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(process.cwd(), "./src"),
-      "@wendoo-lang/assistant-panel": path.resolve(process.cwd(), "../../packages/assistant-panel/src"),
-      "@wendoo-lang/docs": path.resolve(process.cwd(), "../../packages/docs/src"),
-      "@wendoo-lang/ui": path.resolve(process.cwd(), "../../packages/ui/src"),
-      "@wendoo-lang/app-host": path.resolve(process.cwd(), "../../packages/app-host/src"),
-      "@wendoo-lang/ts-compiler": path.resolve(process.cwd(), "../../packages/ts-compiler/src"),
-      "@wendoo-lang/bridge-protocol": path.resolve(process.cwd(), "../../packages/bridge-protocol/src"),
-      "@wendoo-lang/bridge-client": path.resolve(process.cwd(), "../../packages/bridge-client/src"),
-      "@wendoo-lang/bridge-app": path.resolve(process.cwd(), "../../packages/bridge-app/src"),
+      "@wendoo/assistant-panel": path.resolve(process.cwd(), "../../packages/assistant-panel/src"),
+      "@wendoo/docs": path.resolve(process.cwd(), "../../packages/docs/src"),
+      "@wendoo/ui": path.resolve(process.cwd(), "../../packages/ui/src"),
+      "@wendoo/app-host": path.resolve(process.cwd(), "../../packages/app-host/src"),
+      "@wendoo/ts-compiler": path.resolve(process.cwd(), "../../packages/ts-compiler/src"),
+      "@wendoo/bridge-protocol": path.resolve(process.cwd(), "../../packages/bridge-protocol/src"),
+      "@wendoo/bridge-client": path.resolve(process.cwd(), "../../packages/bridge-client/src"),
+      "@wendoo/bridge-app": path.resolve(process.cwd(), "../../packages/bridge-app/src"),
     },
   },
   optimizeDeps: {
-    exclude: ["@wendoo-lang/core"],
+    exclude: ["@wendoo/core"],
   },
   server: {
     fs: {

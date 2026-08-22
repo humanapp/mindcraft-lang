@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { coreModule, createWendooEnvironment } from "@wendoo-lang/core/app";
-import { buildCoreAmbientDeclarations, buildPlatformAmbientDeclarations } from "@wendoo-lang/ts-compiler";
+import { coreModule, createWendooEnvironment } from "@wendoo/core/app";
+import { buildCoreAmbientDeclarations, buildPlatformAmbientDeclarations } from "@wendoo/ts-compiler";
 import { createEcosimModule } from "../brain";
 
 function readText(relativePath: string): string {
@@ -24,6 +24,6 @@ test("checked-in ambient declarations match generated core and sim declarations"
     ecosimEnvironment.brainServices.runtime.types
   );
 
-  assert.equal(readPackageText("@wendoo-lang/core/lib/wendoo.core.d.ts"), coreAmbient);
+  assert.equal(readPackageText("@wendoo/core/lib/wendoo.core.d.ts"), coreAmbient);
   assert.equal(readText("../../lib/wendoo.ecosim.d.ts"), ecosimAmbient);
 });

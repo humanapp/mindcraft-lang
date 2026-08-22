@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, before, describe, it } from "node:test";
-import type { ExtensionFetchTransport, ExtensionVersionListResult } from "@wendoo-lang/app-host";
+import type { ExtensionFetchTransport, ExtensionVersionListResult } from "@wendoo/app-host";
 import {
   createJsDelivrExtensionTransport,
   ExtensionAddInputErrorCode,
   ExtensionFetchErrorCode,
   parseExtensionAddInput,
   resolveExtensionAddInput,
-} from "@wendoo-lang/app-host";
+} from "@wendoo/app-host";
 
 describe("parseExtensionAddInput accepted shapes", () => {
   const passThroughReferences: readonly string[] = [

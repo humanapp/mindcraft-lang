@@ -10,8 +10,8 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { BrainServices } from "@wendoo-lang/core/brain";
-import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { BrainServices } from "@wendoo/core/brain";
+import { __test__createBrainServices } from "@wendoo/core/brain/__test__";
 import {
   CoreTypeIds,
   mkModifierTileId,
@@ -19,7 +19,7 @@ import {
   mkOutputVarKey,
   NativeType,
   type StructTypeDef,
-} from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/runtime";
 import { buildMultiRootActionBundle } from "../runtime/action-bundle.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { CompileDiagCode } from "./diag-codes.js";

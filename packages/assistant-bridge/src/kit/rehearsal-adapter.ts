@@ -1,9 +1,9 @@
-import type { ExecutionContext, IBrainDef, WendooEnvironment, WendooModule } from "@wendoo-lang/core/app";
-import type { BrainBuildDiagnostic } from "@wendoo-lang/core/brain/compiler";
-import type { BrainJson } from "@wendoo-lang/core/brain/model";
-import { brainJsonWithRulesEmptied } from "@wendoo-lang/core/brain/model";
-import type { HandleId, IBrainRuntime, NumberPrecision } from "@wendoo-lang/core/runtime";
-import { HandleOutcome } from "@wendoo-lang/core/runtime";
+import type { ExecutionContext, IBrainDef, WendooEnvironment, WendooModule } from "@wendoo/core/app";
+import type { BrainBuildDiagnostic } from "@wendoo/core/brain/compiler";
+import type { BrainJson } from "@wendoo/core/brain/model";
+import { brainJsonWithRulesEmptied } from "@wendoo/core/brain/model";
+import type { HandleId, IBrainRuntime, NumberPrecision } from "@wendoo/core/runtime";
+import { HandleOutcome } from "@wendoo/core/runtime";
 import type {
   GateObservation,
   OperationEnding,

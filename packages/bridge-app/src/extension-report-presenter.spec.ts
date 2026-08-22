@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { ExtensionFetchErrorCode } from "@wendoo-lang/app-host";
+import { ExtensionFetchErrorCode } from "@wendoo/app-host";
 import type { ExtensionInstallOutcome, ExtensionInstallProblem, ExtensionInstallReport } from "./extension-install.js";
 import type { ExtensionTransactionToasts } from "./extension-report-presenter.js";
 import { presentExtensionTransaction } from "./extension-report-presenter.js";

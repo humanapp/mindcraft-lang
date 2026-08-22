@@ -12,7 +12,7 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
-import { List } from "@wendoo-lang/core";
+import { List } from "@wendoo/core";
 import {
   BrainRuntime,
   BYTECODE_VERSION,
@@ -24,11 +24,8 @@ import {
   type PlatformServices,
   type Program,
   type Value,
-} from "@wendoo-lang/core/runtime";
-import {
-  __test__createPlatformServices,
-  type __test__PlatformServicesOptions,
-} from "@wendoo-lang/core/runtime/__test__";
+} from "@wendoo/core/runtime";
+import { __test__createPlatformServices, type __test__PlatformServicesOptions } from "@wendoo/core/runtime/__test__";
 
 function makeProgram(variableNames: List<string> = List.empty<string>()): Program {
   return {

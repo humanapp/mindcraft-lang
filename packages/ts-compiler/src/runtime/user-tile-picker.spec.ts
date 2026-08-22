@@ -8,18 +8,18 @@
 
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { type CompiledActionBundle, List } from "@wendoo-lang/core";
-import { type BrainServices, type IBrainTileDef, type ITileCatalog, RuleSide } from "@wendoo-lang/core/brain";
-import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
-import type { Expr, SensorExpr } from "@wendoo-lang/core/brain/compiler";
+import { type CompiledActionBundle, List } from "@wendoo/core";
+import { type BrainServices, type IBrainTileDef, type ITileCatalog, RuleSide } from "@wendoo/core/brain";
+import { __test__createBrainServices } from "@wendoo/core/brain/__test__";
+import type { Expr, SensorExpr } from "@wendoo/core/brain/compiler";
 import {
   type InsertionContext,
   parseTilesForSuggestions,
   suggestTiles,
   type TileSuggestionResult,
-} from "@wendoo-lang/core/brain/language-service";
-import { TileCatalog } from "@wendoo-lang/core/brain/tiles";
-import { mkModifierTileId, mkParameterTileId } from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/brain/language-service";
+import { TileCatalog } from "@wendoo/core/brain/tiles";
+import { mkModifierTileId, mkParameterTileId } from "@wendoo/core/runtime";
 import { buildAmbientDeclarations } from "../compiler/ambient.js";
 import { CompileDiagCode } from "../compiler/diag-codes.js";
 import type { ProjectCompileResult } from "../compiler/project.js";

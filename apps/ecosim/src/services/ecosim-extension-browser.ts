@@ -4,8 +4,8 @@ import type {
   ExtensionFetchError,
   ExtensionFetchErrorCode,
   ExtensionUpdateApplication,
-} from "@wendoo-lang/app-host";
-import { parseExtensionReference, validateExtensionCatalogDocument } from "@wendoo-lang/app-host";
+} from "@wendoo/app-host";
+import { parseExtensionReference, validateExtensionCatalogDocument } from "@wendoo/app-host";
 import {
   type AppEnvironmentHost,
   buildExtensionCatalog,
@@ -20,8 +20,8 @@ import {
   installEmbeddedExtension,
   installExtensionReference,
   uninstallExtension,
-} from "@wendoo-lang/bridge-app";
-import type { ExtensionBrowserEntry } from "@wendoo-lang/ui";
+} from "@wendoo/bridge-app";
+import type { ExtensionBrowserEntry } from "@wendoo/ui";
 import { CORE_LIB_COORDINATE, ECOSIM_LIB_COORDINATE } from "./ecosim-extension-coordinates";
 import ecosimLibraryCatalogDocument from "./ecosim-library-catalog.json";
 

@@ -6,7 +6,7 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { Value, WendooModule, WendooModuleApi } from "@wendoo-lang/core/app";
+import type { Value, WendooModule, WendooModuleApi } from "@wendoo/core/app";
 import {
   BrainTileLiteralDef,
   CoreTypeIds,
@@ -17,8 +17,8 @@ import {
   mkNumberValue,
   mkTypeId,
   NativeType,
-} from "@wendoo-lang/core/app";
-import { mkBufferValueFromHex, TARGET_TYPE_ATOM_BASE } from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/app";
+import { mkBufferValueFromHex, TARGET_TYPE_ATOM_BASE } from "@wendoo/core/runtime";
 import { createRehearsalEnvironment, createSeededRng } from "./environment.js";
 import type { NumberText } from "./value-text.js";
 import { createValueLabeler, renderValue } from "./value-text.js";

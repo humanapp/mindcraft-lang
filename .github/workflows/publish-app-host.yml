@@ -1,4 +1,4 @@
-name: Publish @wendoo-lang/app-host
+name: Publish @wendoo/app-host
 
 on:
   push:

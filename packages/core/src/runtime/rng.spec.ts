@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { coreModule, createWendooEnvironment, List, MathOps, type WendooEnvironment } from "@wendoo-lang/core";
-import type { BrainServices } from "@wendoo-lang/core/brain";
+import { coreModule, createWendooEnvironment, List, MathOps, type WendooEnvironment } from "@wendoo/core";
+import type { BrainServices } from "@wendoo/core/brain";
 import {
   type BrainSyncFunctionEntry,
   CoreFuncId,
@@ -11,7 +11,7 @@ import {
   extractNumberValue,
   Rng,
   type Value,
-} from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/runtime";
 
 /** The first state seed 1 advances to, which pins the generator's constants. */
 const firstStateFromSeedOne = 1015568748;

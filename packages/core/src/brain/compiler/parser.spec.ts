@@ -7,17 +7,17 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
-import { List } from "@wendoo-lang/core";
+import { List } from "@wendoo/core";
 import {
   type BrainServices,
   CoreControlFlowId,
   type IBrainTileDef,
   mkVariableTileId,
   TilePlacement,
-} from "@wendoo-lang/core/brain";
-import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
-import type { SensorExpr } from "@wendoo-lang/core/brain/compiler";
-import { parseBrainTiles, parseRule, TypeDiagCode, whenResultConsumerEligible } from "@wendoo-lang/core/brain/compiler";
+} from "@wendoo/core/brain";
+import { __test__createBrainServices } from "@wendoo/core/brain/__test__";
+import type { SensorExpr } from "@wendoo/core/brain/compiler";
+import { parseBrainTiles, parseRule, TypeDiagCode, whenResultConsumerEligible } from "@wendoo/core/brain/compiler";
 import {
   BrainTileAccessorDef,
   BrainTileActuatorDef,
@@ -28,7 +28,7 @@ import {
   BrainTileParameterDef,
   BrainTileSensorDef,
   BrainTileVariableDef,
-} from "@wendoo-lang/core/brain/tiles";
+} from "@wendoo/core/brain/tiles";
 import {
   type BrainActionCallSpec,
   bag,
@@ -45,7 +45,7 @@ import {
   param,
   repeated,
   VOID_VALUE,
-} from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/runtime";
 
 // ---- Shared setup ----
 

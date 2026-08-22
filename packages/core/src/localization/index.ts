@@ -6,8 +6,8 @@
 // - Template engine: the bounded message syntax `tr` renders
 //
 // Typical usage:
-//   import { createDefaultLocalizer } from "@wendoo-lang/core/localization";
-//   import * as fr from "@wendoo-lang/core/localization/fr";
+//   import { createDefaultLocalizer } from "@wendoo/core/localization";
+//   import * as fr from "@wendoo/core/localization/fr";
 // ---------------------------------------------------------------------------
 
 export type { LocaleCatalog, MessageCatalog } from "./catalog";

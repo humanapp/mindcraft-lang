@@ -6,7 +6,7 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { AddPageCommand } from "@wendoo-lang/core/brain/model";
+import { AddPageCommand } from "@wendoo/core/brain/model";
 import { summarizeRun } from "../simulate/summarizer.js";
 import type { DispatchObservation, SimulationRun } from "../target/adapter.js";
 import { DispatchOutcome } from "../target/adapter.js";

@@ -1,5 +1,5 @@
 /**
- * Test stub for `@wendoo-lang/ui/asset-url`, mapped in `test/tsconfig.json`.
+ * Test stub for `@wendoo/ui/asset-url`, mapped in `test/tsconfig.json`.
  * The real module resolves a path against the Vite build base; the parity test
  * only needs a deterministic string, and tile icon urls are excluded from
  * every comparison it makes.

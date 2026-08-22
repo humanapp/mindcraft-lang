@@ -1,4 +1,4 @@
-import { List } from "@wendoo-lang/core";
+import { List } from "@wendoo/core";
 import {
   AddPageCommand,
   AddRuleCommand,
@@ -14,7 +14,7 @@ import {
   RenamePageCommand,
   ReplaceBrainCommand,
   ReplaceLastPageCommand,
-} from "@wendoo-lang/core/brain/model";
+} from "@wendoo/core/brain/model";
 import {
   BookOpen,
   ChevronDown,

@@ -6,18 +6,18 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
-import { List } from "@wendoo-lang/core";
-import { type BrainServices, type IBrainTileDef, mkOperatorTileId } from "@wendoo-lang/core/brain";
-import { __test__appendTile, __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
-import { parseRule, runBrainLinkPipeline, TypeDiagCode } from "@wendoo-lang/core/brain/compiler";
-import { BrainDef } from "@wendoo-lang/core/brain/model";
+import { List } from "@wendoo/core";
+import { type BrainServices, type IBrainTileDef, mkOperatorTileId } from "@wendoo/core/brain";
+import { __test__appendTile, __test__createBrainServices } from "@wendoo/core/brain/__test__";
+import { parseRule, runBrainLinkPipeline, TypeDiagCode } from "@wendoo/core/brain/compiler";
+import { BrainDef } from "@wendoo/core/brain/model";
 import {
   BrainTileAccessorDef,
   BrainTileActuatorDef,
   BrainTileLiteralDef,
   BrainTileParameterDef,
   BrainTileVariableDef,
-} from "@wendoo-lang/core/brain/tiles";
+} from "@wendoo/core/brain/tiles";
 import {
   bag,
   type Conversion,
@@ -46,8 +46,8 @@ import {
   type TypeId,
   type Value,
   VOID_VALUE,
-} from "@wendoo-lang/core/runtime";
-import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
+} from "@wendoo/core/runtime";
+import { __test__createPlatformServices } from "@wendoo/core/runtime/__test__";
 
 let nextTestFnId = 2000;
 

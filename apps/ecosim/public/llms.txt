@@ -33,8 +33,8 @@ Wendoo programs are written by arranging tiles into rules. Each rule has a WHEN 
 - Phaser 3 with Matter.js -- game canvas and physics
 - Vite -- build tooling
 - Tailwind CSS v4 -- styling
-- @wendoo-lang/core -- Wendoo language runtime (tiles, compiler, VM)
-- @wendoo-lang/ui -- shared brain editor React components
+- @wendoo/core -- Wendoo language runtime (tiles, compiler, VM)
+- @wendoo/ui -- shared brain editor React components
 
 ## Links
 

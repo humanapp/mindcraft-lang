@@ -8,9 +8,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
-import { List } from "@wendoo-lang/core";
-import { type BrainServices, mkOutputTileId, mkVariableTileId } from "@wendoo-lang/core/brain";
-import { __test__appendTile, __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { List } from "@wendoo/core";
+import { type BrainServices, mkOutputTileId, mkVariableTileId } from "@wendoo/core/brain";
+import { __test__appendTile, __test__createBrainServices } from "@wendoo/core/brain/__test__";
 import {
   BrainDef,
   BrainJsonCodecErrorCode,
@@ -19,7 +19,7 @@ import {
   encodePersistedBrainJson,
   type PersistedBrainJson,
   type PersistedTileRef,
-} from "@wendoo-lang/core/brain/model";
+} from "@wendoo/core/brain/model";
 import {
   BrainTileAccessorDef,
   BrainTileActuatorDef,
@@ -30,8 +30,8 @@ import {
   BrainTileParameterDef,
   BrainTileSensorDef,
   BrainTileVariableDef,
-} from "@wendoo-lang/core/brain/tiles";
-import { CoreTypeIds, mkCallDef, mkPrivateArgId, mkUserActionKey, type TypeId } from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/brain/tiles";
+import { CoreTypeIds, mkCallDef, mkPrivateArgId, mkUserActionKey, type TypeId } from "@wendoo/core/runtime";
 
 const NS = "p1";
 const FOREIGN_NS = "acme/widgets";

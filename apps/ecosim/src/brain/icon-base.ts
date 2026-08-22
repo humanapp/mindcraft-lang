@@ -1,4 +1,4 @@
-import { staticAssetUrl } from "@wendoo-lang/ui/asset-url";
+import { staticAssetUrl } from "@wendoo/ui/asset-url";
 
 /**
  * Base URL for the brain tile SVG icons served from `public/assets/brain/icons`.

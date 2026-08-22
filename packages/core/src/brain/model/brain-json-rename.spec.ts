@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { PersistedBrainJson } from "@wendoo-lang/core/app";
-import { renameBrainNamespaces } from "@wendoo-lang/core/app";
+import type { PersistedBrainJson } from "@wendoo/core/app";
+import { renameBrainNamespaces } from "@wendoo/core/app";
 
 const SOURCE = "example-org/cutebot";
 const TARGET = "example-org/cutebot-chassis";

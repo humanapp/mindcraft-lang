@@ -1,15 +1,15 @@
-import type { IBrainTileDef } from "@wendoo-lang/core/brain";
-import { RuleSide } from "@wendoo-lang/core/brain";
-import type { SentenceSegment, SentenceTileRef, SentenceWordSegment } from "@wendoo-lang/core/brain/language-service";
+import type { IBrainTileDef } from "@wendoo/core/brain";
+import { RuleSide } from "@wendoo/core/brain";
+import type { SentenceSegment, SentenceTileRef, SentenceWordSegment } from "@wendoo/core/brain/language-service";
 import {
   flattenRuleTiles,
   projectRuleSentence,
   segmentDisplayText,
   whenTriggerWord,
-} from "@wendoo-lang/core/brain/language-service";
-import type { BrainRuleDef } from "@wendoo-lang/core/brain/model";
-import type { BrainTileLiteralDef } from "@wendoo-lang/core/brain/tiles";
-import { CoreTypeIds } from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/brain/language-service";
+import type { BrainRuleDef } from "@wendoo/core/brain/model";
+import type { BrainTileLiteralDef } from "@wendoo/core/brain/tiles";
+import { CoreTypeIds } from "@wendoo/core/runtime";
 import { type CSSProperties, Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../lib/utils";
 import { type BrainEditorConfig, useBrainEditorConfig, useLocalizer } from "./BrainEditorContext";

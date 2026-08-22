@@ -15,18 +15,18 @@
 
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, type ReadonlyList } from "@wendoo-lang/core";
-import type { BrainServices, IBrainTileDef, ITileCatalog } from "@wendoo-lang/core/brain";
+import { List, type ReadonlyList } from "@wendoo/core";
+import type { BrainServices, IBrainTileDef, ITileCatalog } from "@wendoo/core/brain";
 import {
   CoreLiteralFactoryId,
   CoreVariableFactoryId,
   mkLiteralFactoryTileId,
   mkVariableFactoryTileId,
   RuleSide,
-} from "@wendoo-lang/core/brain";
-import { __test__appendTile, __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
-import { buildInsertionContext, suggestTiles, tileSentenceWord } from "@wendoo-lang/core/brain/language-service";
-import type { BrainCommand, BrainRuleDef } from "@wendoo-lang/core/brain/model";
+} from "@wendoo/core/brain";
+import { __test__appendTile, __test__createBrainServices } from "@wendoo/core/brain/__test__";
+import { buildInsertionContext, suggestTiles, tileSentenceWord } from "@wendoo/core/brain/language-service";
+import type { BrainCommand, BrainRuleDef } from "@wendoo/core/brain/model";
 import {
   BrainTileActuatorDef,
   type BrainTileFactoryDef,
@@ -34,9 +34,9 @@ import {
   BrainTileSensorDef,
   manufactureLiteralTile,
   manufactureVariableTile,
-} from "@wendoo-lang/core/brain/tiles";
-import { createDefaultLocalizer, type Localizer } from "@wendoo-lang/core/localization";
-import { bag, CoreTypeIds, mkActionDescriptor, mkCallDef, NIL_VALUE } from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/brain/tiles";
+import { createDefaultLocalizer, type Localizer } from "@wendoo/core/localization";
+import { bag, CoreTypeIds, mkActionDescriptor, mkCallDef, NIL_VALUE } from "@wendoo/core/runtime";
 import {
   buildStripCandidates,
   type CandidateEntry,

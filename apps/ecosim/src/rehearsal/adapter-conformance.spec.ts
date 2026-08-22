@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { createAuthoringWorkspace, proposeEdit } from "@wendoo-lang/assistant-bridge";
-import { ConformanceCheckCode, checkAdapterConformance } from "@wendoo-lang/assistant-bridge/kit/node";
-import { ruleIdAt } from "@wendoo-lang/assistant-bridge/testing";
+import { createAuthoringWorkspace, proposeEdit } from "@wendoo/assistant-bridge";
+import { ConformanceCheckCode, checkAdapterConformance } from "@wendoo/assistant-bridge/kit/node";
+import { ruleIdAt } from "@wendoo/assistant-bridge/testing";
 import { createTargetAdapter } from "./adapter";
 import { sourceRehearsalContent } from "./source-content";
 

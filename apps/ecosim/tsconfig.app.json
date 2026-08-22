@@ -24,12 +24,12 @@
     /* Path mapping */
     "paths": {
       "@/*": ["./src/*"],
-      "@wendoo-lang/assistant-panel": ["../../packages/assistant-panel/src/index.ts"],
-      "@wendoo-lang/assistant-panel/*": ["../../packages/assistant-panel/src/*"],
-      "@wendoo-lang/docs": ["../../packages/docs/src/index.ts"],
-      "@wendoo-lang/docs/*": ["../../packages/docs/src/*"],
-      "@wendoo-lang/ui": ["../../packages/ui/src/index.ts"],
-      "@wendoo-lang/ui/*": ["../../packages/ui/src/*"]
+      "@wendoo/assistant-panel": ["../../packages/assistant-panel/src/index.ts"],
+      "@wendoo/assistant-panel/*": ["../../packages/assistant-panel/src/*"],
+      "@wendoo/docs": ["../../packages/docs/src/index.ts"],
+      "@wendoo/docs/*": ["../../packages/docs/src/*"],
+      "@wendoo/ui": ["../../packages/ui/src/index.ts"],
+      "@wendoo/ui/*": ["../../packages/ui/src/*"]
     }
   },
   "include": ["src"],

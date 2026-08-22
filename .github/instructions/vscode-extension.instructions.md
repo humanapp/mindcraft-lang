@@ -11,10 +11,10 @@ filesystem, and displays TypeScript diagnostics from the remote compiler.
 
 ## Tech Stack
 
-`@wendoo-lang/bridge-client` (Project, IFileSystem, FileSystemNotification),
-`@wendoo-lang/bridge-protocol` (typed message unions), esbuild (bundler), Biome.
+`@wendoo/bridge-client` (Project, IFileSystem, FileSystemNotification),
+`@wendoo/bridge-protocol` (typed message unions), esbuild (bundler), Biome.
 
-**Not used here:** `bridge-app`, `@wendoo-lang/core`, `@wendoo-lang/ui`.
+**Not used here:** `bridge-app`, `@wendoo/core`, `@wendoo/ui`.
 
 ## Web Extension Constraint
 
@@ -103,4 +103,4 @@ which controls visibility of the `wendoo.sessions` tree view.
 ## Adding a Message Handler
 
 Add a case to the `project.session.onMessage` handler in `ProjectManager`. Use the
-typed unions from `@wendoo-lang/bridge-protocol`; do not invent ad-hoc message shapes.
+typed unions from `@wendoo/bridge-protocol`; do not invent ad-hoc message shapes.

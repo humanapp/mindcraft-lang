@@ -16,7 +16,7 @@ import {
   mkParameterTileId,
   mkSensorTileId,
   mkVariableFactoryTileId,
-} from "@wendoo-lang/core/app";
+} from "@wendoo/core/app";
 import { ICON_BASE } from "@/brain/icon-base";
 import { EcosimTypeIds } from "@/brain/type-system";
 import type { TileVisual } from "./types";

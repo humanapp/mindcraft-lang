@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { coreModule, createWendooEnvironment } from "@wendoo-lang/core";
-import type { IBrainDef } from "@wendoo-lang/core/app";
-import { BrainRuleDef } from "@wendoo-lang/core/brain/model";
+import { coreModule, createWendooEnvironment } from "@wendoo/core";
+import type { IBrainDef } from "@wendoo/core/app";
+import { BrainRuleDef } from "@wendoo/core/brain/model";
 import { collectBrainErrorDiagnostics } from "./brain-diagnostics.js";
 import { typecheckBrainProblems } from "./extension-install.js";
 

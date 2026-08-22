@@ -1,10 +1,10 @@
 /**
- * Runtime settings for the @wendoo-lang/ui package.
+ * Runtime settings for the @wendoo/ui package.
  *
  * All flags default to off. Enable them at application bootstrap as needed,
  * e.g.:
  *
- *   import { enableClipboardLogging } from "@wendoo-lang/ui";
+ *   import { enableClipboardLogging } from "@wendoo/ui";
  *   enableClipboardLogging(true);
  */
 

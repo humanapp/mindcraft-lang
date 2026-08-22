@@ -1,4 +1,4 @@
-import { LOWEST_CONTENT_VERSION, type WendooProjectExtensions } from "@wendoo-lang/service-api";
+import { LOWEST_CONTENT_VERSION, type WendooProjectExtensions } from "@wendoo/service-api";
 
 /**
  * Routing specifier of a `gh:` extension reference: how the reference names

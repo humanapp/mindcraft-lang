@@ -1,5 +1,5 @@
-import { fileContentByteLength, fileContentFromBytes, fileContentToBytes } from "@wendoo-lang/app-host";
-import { ErrorCode, type IFileSystem, ProtocolError } from "@wendoo-lang/bridge-client";
+import { fileContentByteLength, fileContentFromBytes, fileContentToBytes } from "@wendoo/app-host";
+import { ErrorCode, type IFileSystem, ProtocolError } from "@wendoo/bridge-client";
 import * as vscode from "vscode";
 import { WENDOO_JSON } from "../wendoo-json";
 

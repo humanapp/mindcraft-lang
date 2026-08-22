@@ -8,7 +8,7 @@ import {
   mkCallDef,
   NIL_VALUE,
   TARGET_FUNC_ID_BASE,
-} from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/runtime";
 
 const callDef: BrainActionCallDef = mkCallDef({ type: "bag", items: [] });
 const noop: HostSyncFn = { exec: () => NIL_VALUE };

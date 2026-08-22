@@ -9,10 +9,10 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { type BrainServices, type IBrainTileDef, mkVariableTileId } from "@wendoo-lang/core/brain";
-import { __test__appendTile, __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
-import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
-import { BrainTileOperatorDef, BrainTileVariableDef } from "@wendoo-lang/core/brain/tiles";
+import { type BrainServices, type IBrainTileDef, mkVariableTileId } from "@wendoo/core/brain";
+import { __test__appendTile, __test__createBrainServices } from "@wendoo/core/brain/__test__";
+import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@wendoo/core/brain/model";
+import { BrainTileOperatorDef, BrainTileVariableDef } from "@wendoo/core/brain/tiles";
 import {
   CoreTypeIds,
   extractNumberValue,
@@ -22,7 +22,7 @@ import {
   type StructTypeDef,
   type TypeId,
   type Value,
-} from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/runtime";
 import { registerUserTile } from "../runtime/registration-bridge.js";
 import { buildUserTileMetadata } from "../runtime/user-tile-metadata.js";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";

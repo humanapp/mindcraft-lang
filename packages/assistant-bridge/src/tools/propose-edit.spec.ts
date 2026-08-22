@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { DiagCode } from "@wendoo-lang/core/brain/compiler";
-import { ParseDiagCode, TypeDiagCode } from "@wendoo-lang/core/brain/compiler";
+import type { DiagCode } from "@wendoo/core/brain/compiler";
+import { ParseDiagCode, TypeDiagCode } from "@wendoo/core/brain/compiler";
 import { createTargetAdapter } from "../testing/index.js";
 import type { ProposalAccepted, ProposalRejected } from "./propose-edit.js";
 import { proposeEdit } from "./propose-edit.js";

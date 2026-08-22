@@ -1,9 +1,9 @@
 import "fake-indexeddb/auto";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { createIdbProjectStore, ProjectManager } from "@wendoo-lang/app-host";
-import { AppEnvironmentHost } from "@wendoo-lang/bridge-app";
-import { BrainDef, coreModule } from "@wendoo-lang/core/app";
+import { createIdbProjectStore, ProjectManager } from "@wendoo/app-host";
+import { AppEnvironmentHost } from "@wendoo/bridge-app";
+import { BrainDef, coreModule } from "@wendoo/core/app";
 import { name as simName } from "../../package.json";
 import { createEcosimModule } from "../brain";
 import type { Obstacle } from "../brain/vision";

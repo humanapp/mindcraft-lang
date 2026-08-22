@@ -16,15 +16,15 @@ see `ecosim-rbx.instructions.md` for the mirroring rules.
 ## Tech Stack
 
 Vite, React 19, Phaser 3 (Matter.js physics), Tailwind CSS v4, miniplex (ECS),
-`@wendoo-lang/ui` (source-only), `@wendoo-lang/docs` (source-only), Biome.
+`@wendoo/ui` (source-only), `@wendoo/docs` (source-only), Biome.
 
 ## Path Aliases
 
 - `@/*` -> `./src/*` -- prefer over deep relative paths across directory boundaries
-- `@wendoo-lang/ui` -> `../../packages/ui/src` (source-only, no build step)
-- `@wendoo-lang/docs` -> `../../packages/docs/src` (source-only, no build step)
+- `@wendoo/ui` -> `../../packages/ui/src` (source-only, no build step)
+- `@wendoo/docs` -> `../../packages/docs/src` (source-only, no build step)
 
-`@wendoo-lang/core` is not aliased: it resolves through the `file:` dependency to the
+`@wendoo/core` is not aliased: it resolves through the `file:` dependency to the
 package's built output, so core changes require a rebuild.
 
 ## Build & Scripts
@@ -67,14 +67,14 @@ and `prebuild` scripts handle that.
 
 ### Modifier vs Parameter Tiles
 
-- **Modifiers** are boolean flags. Use `mod()` from `@wendoo-lang/core/app`.
-- **Parameters** accept a typed value. Use `param()` from `@wendoo-lang/core/app`.
+- **Modifiers** are boolean flags. Use `mod()` from `@wendoo/core/app`.
+- **Parameters** accept a typed value. Use `param()` from `@wendoo/core/app`.
 - Do not mix them up -- the wrong helper causes slot lookup failures at startup.
 
 ### Call Spec Example
 
 ```typescript
-import { bag, choice, getSlotId, mkCallDef, mod, optional, param } from "@wendoo-lang/core/app";
+import { bag, choice, getSlotId, mkCallDef, mod, optional, param } from "@wendoo/core/app";
 import { TileIds } from "@/brain/tileids";
 
 const Forward = mod(TileIds.Modifier.MovementForward);
@@ -98,11 +98,11 @@ const target = getTargetActor(ctx);
   holding this app's types, contexts, host actions, and tiles (module id `"wendoo.ecosim"`)
 - Environment: `services/ecosim-environment-store.ts` builds it with
   `createWendooEnvironment({ modules: [coreModule(), createEcosimModule()] })` and owns the
-  `AppEnvironmentHost` from `@wendoo-lang/bridge-app`
+  `AppEnvironmentHost` from `@wendoo/bridge-app`
 - Brain editor config: `brain/editor/config.tsx` `buildBrainEditorConfig()` returns the
   `BrainEditorConfig`, wrapped in `BrainEditorProvider` in `App.tsx`
 - Brain persistence: brains live in the project document, managed by the `ProjectManager` from
-  `@wendoo-lang/app-host` over an IndexedDB store; `localStorage` holds only app settings and
+  `@wendoo/app-host` over an IndexedDB store; `localStorage` holds only app settings and
   UI preferences
 - Phaser bridge: `PhaserGame.tsx` calls `StartGame()` from `game/main.ts`, passing the store
   through the Phaser registry and reporting scene brain state through a callback

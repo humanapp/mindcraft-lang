@@ -1,9 +1,9 @@
 {
-  "name": "wendoo-cli",
+  "name": "wendoo",
   "version": "0.1.5",
   "description": "Command-line tools for Wendoo projects",
   "license": "MIT",
-  "author": "humanapp",
+  "author": "wendoo-lang",
   "type": "module",
   "files": [
     "dist",
@@ -47,7 +47,7 @@
     "typescript": "~5.9.3"
   },
   "dependencies": {
-    "@wendoo-lang/app-host": "file:../app-host",
-    "@wendoo-lang/service-api": "file:../service-api"
+    "@wendoo/app-host": "file:../app-host",
+    "@wendoo/service-api": "file:../service-api"
   }
 }

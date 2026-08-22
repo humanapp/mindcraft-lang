@@ -1,5 +1,5 @@
-import type { BrainServices } from "@wendoo-lang/core/brain";
-import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { BrainServices } from "@wendoo/core/brain";
+import { __test__createBrainServices } from "@wendoo/core/brain/__test__";
 import { buildAmbientDeclarations } from "../compiler/ambient.js";
 import { compileUserTile } from "../compiler/compile.js";
 import type { CompileDiagnostic } from "../compiler/types.js";

@@ -1,6 +1,6 @@
-import { fileContentText } from "@wendoo-lang/app-host";
-import { type ConnectionStatus, type FileSystemNotification, Project } from "@wendoo-lang/bridge-client";
-import type { ExtensionClientMessage, ExtensionServerMessage } from "@wendoo-lang/bridge-protocol";
+import { fileContentText } from "@wendoo/app-host";
+import { type ConnectionStatus, type FileSystemNotification, Project } from "@wendoo/bridge-client";
+import type { ExtensionClientMessage, ExtensionServerMessage } from "@wendoo/bridge-protocol";
 
 type ExtensionProject = Project<ExtensionClientMessage, ExtensionServerMessage>;
 

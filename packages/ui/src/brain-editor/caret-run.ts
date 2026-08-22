@@ -1,6 +1,6 @@
-import type { IBrainRuleDef } from "@wendoo-lang/core/brain";
-import { RuleSide } from "@wendoo-lang/core/brain";
-import type { SentenceSegment, SentenceTileRef } from "@wendoo-lang/core/brain/language-service";
+import type { IBrainRuleDef } from "@wendoo/core/brain";
+import { RuleSide } from "@wendoo/core/brain";
+import type { SentenceSegment, SentenceTileRef } from "@wendoo/core/brain/language-service";
 import type { ArmedTargetMode } from "./ArmedTargetContext";
 
 /**

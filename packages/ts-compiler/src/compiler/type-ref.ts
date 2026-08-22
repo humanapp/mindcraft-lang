@@ -1,4 +1,4 @@
-import { CoreTypeNames } from "@wendoo-lang/core/runtime";
+import { CoreTypeNames } from "@wendoo/core/runtime";
 import ts from "typescript";
 import { qualifiedDeclarationName } from "./extension-mounts.js";
 

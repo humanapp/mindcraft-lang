@@ -2,16 +2,16 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import type { FileContent } from "@wendoo-lang/app-host";
+import type { FileContent } from "@wendoo/app-host";
 import {
   type ActiveProject,
   createInMemoryProjectFileSystem,
   type ProjectCollection,
   type ProjectFileSystem,
   type ProjectManager,
-} from "@wendoo-lang/app-host";
-import { coreModule } from "@wendoo-lang/core/app";
-import { declarationMount, isCompilerControlledPath } from "@wendoo-lang/ts-compiler";
+} from "@wendoo/app-host";
+import { coreModule } from "@wendoo/core/app";
+import { declarationMount, isCompilerControlledPath } from "@wendoo/ts-compiler";
 import { AppEnvironmentHost } from "./app-environment-host.js";
 import type { EmbeddedExtension } from "./embedded-extensions.js";
 

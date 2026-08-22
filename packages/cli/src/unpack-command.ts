@@ -1,7 +1,7 @@
 import type { Stats } from "node:fs";
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { UnpackRefusal } from "@wendoo-lang/app-host";
+import type { UnpackRefusal } from "@wendoo/app-host";
 import {
   buildUnpackedTree,
   fileContentToBytes,
@@ -10,8 +10,8 @@ import {
   seedProjectTargets,
   UnpackErrorCode,
   WENDOO_JSON_PATH,
-} from "@wendoo-lang/app-host";
-import { parseWendooProjectDocument } from "@wendoo-lang/service-api";
+} from "@wendoo/app-host";
+import { parseWendooProjectDocument } from "@wendoo/service-api";
 import { loadTargetRegistry } from "./target-registry.js";
 
 const UNPACK_USAGE = `usage: wendoo unpack <file.wendoo> [dir] [--coordinate <owner/repo>] [--force]

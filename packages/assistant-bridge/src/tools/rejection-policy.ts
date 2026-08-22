@@ -1,11 +1,11 @@
-import type { DiagCode, DiagnosticSeverity } from "@wendoo-lang/core/brain/compiler";
+import type { DiagCode, DiagnosticSeverity } from "@wendoo/core/brain/compiler";
 import {
   CompilationDiagCode,
   diagnosticSeverity,
   LinkDiagCode,
   ParseDiagCode,
   TypeDiagCode,
-} from "@wendoo-lang/core/brain/compiler";
+} from "@wendoo/core/brain/compiler";
 import type { DiagParamValue, SerializedDiagParams, ToolDiagnostic } from "./diagnostics.js";
 
 /** What the bridge does with a proposed edit that produced a given diagnostic. */

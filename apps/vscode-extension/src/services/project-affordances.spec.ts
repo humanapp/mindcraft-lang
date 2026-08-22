@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { FileContent } from "@wendoo-lang/app-host";
-import { fileContentText, fileContentToWire } from "@wendoo-lang/app-host";
-import type { FolderCompilerFilesPayload } from "@wendoo-lang/bridge-protocol";
-import { EXTENSIONS_TREE_PATH, INSTALLED_EXTENSIONS_METADATA_PATH } from "@wendoo-lang/bridge-protocol";
+import type { FileContent } from "@wendoo/app-host";
+import { fileContentText, fileContentToWire } from "@wendoo/app-host";
+import type { FolderCompilerFilesPayload } from "@wendoo/bridge-protocol";
+import { EXTENSIONS_TREE_PATH, INSTALLED_EXTENSIONS_METADATA_PATH } from "@wendoo/bridge-protocol";
 import type { AffordanceFileAccess } from "./project-affordances";
 import {
   GENERATED_TSCONFIG_MARKER,

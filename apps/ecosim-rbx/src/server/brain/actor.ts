@@ -7,7 +7,7 @@ import {
   logger,
   type Vector2,
   type WendooBrain,
-} from "@wendoo-lang/core/app";
+} from "@wendoo/core/app";
 import type { CreatureSprite } from "../world/sprite";
 import type { CreatureVisuals } from "../world/visuals";
 import { ARCHETYPES } from "./archetypes";

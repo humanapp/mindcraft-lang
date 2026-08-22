@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import { assistantSessionUrl } from "@wendoo-lang/assistant-panel";
+import { assistantSessionUrl } from "@wendoo/assistant-panel";
 import { name as simName } from "../../package.json";
 import { DEFAULT_APP_SETTINGS, loadAppSettings, normalizeAppSettings, persistAppSettings } from "./app-settings";
 

@@ -1,12 +1,12 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { PublishVersionBump } from "@wendoo-lang/app-host";
+import type { PublishVersionBump } from "@wendoo/app-host";
 import {
   bumpVersion,
   parseProjectContentManifest,
   serializeProjectContentManifest,
   WENDOO_JSON_PATH,
-} from "@wendoo-lang/app-host";
+} from "@wendoo/app-host";
 
 const VERSION_USAGE = `usage: wendoo version <patch|minor|major> [--dir <path>]
 

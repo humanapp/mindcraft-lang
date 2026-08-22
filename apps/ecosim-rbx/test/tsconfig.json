@@ -12,8 +12,8 @@
     "types": ["node"],
     "baseUrl": ".",
     "paths": {
-      "@wendoo-lang/core/app": ["../../../packages/core/dist/node/app/index"],
-      "@wendoo-lang/ui/asset-url": ["./stubs/asset-url.ts"],
+      "@wendoo/core/app": ["../../../packages/core/dist/node/app/index"],
+      "@wendoo/ui/asset-url": ["./stubs/asset-url.ts"],
       "@/*": ["../../ecosim/src/*"]
     }
   },

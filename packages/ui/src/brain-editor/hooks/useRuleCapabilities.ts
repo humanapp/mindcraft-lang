@@ -1,9 +1,6 @@
-import type { ReadonlyBitSet, UniqueSet } from "@wendoo-lang/core";
-import type { IBrainRuleDef } from "@wendoo-lang/core/brain";
-import {
-  collectRuleHierarchyCapabilities,
-  collectRuleHierarchyOutputKeys,
-} from "@wendoo-lang/core/brain/language-service";
+import type { ReadonlyBitSet, UniqueSet } from "@wendoo/core";
+import type { IBrainRuleDef } from "@wendoo/core/brain";
+import { collectRuleHierarchyCapabilities, collectRuleHierarchyOutputKeys } from "@wendoo/core/brain/language-service";
 import { useMemo } from "react";
 
 /**

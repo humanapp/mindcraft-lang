@@ -1,6 +1,6 @@
-import type { ProjectFileChange, ProjectFileSnapshot, ProjectFileSystem } from "@wendoo-lang/app-host";
-import type { ConnectionStatus } from "@wendoo-lang/bridge-client";
-import type { AppClientMessage, CompileDiagnosticEntry } from "@wendoo-lang/bridge-protocol";
+import type { ProjectFileChange, ProjectFileSnapshot, ProjectFileSystem } from "@wendoo/app-host";
+import type { ConnectionStatus } from "@wendoo/bridge-client";
+import type { AppClientMessage, CompileDiagnosticEntry } from "@wendoo/bridge-protocol";
 import { BridgeProject } from "./bridge-project.js";
 import { toFileSystemNotification, toFileSystemSnapshot, toProjectFileChange } from "./project-file-bridge.js";
 

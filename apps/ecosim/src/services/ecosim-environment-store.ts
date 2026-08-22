@@ -11,7 +11,7 @@ import {
   type ProjectFileSystem,
   ProjectManager,
   type ProjectManifest,
-} from "@wendoo-lang/app-host";
+} from "@wendoo/app-host";
 import {
   type AppBridgeState,
   AppEnvironmentHost,
@@ -22,7 +22,7 @@ import {
   type UserTileMetadata,
   type VfsAssetUrlProvider,
   type WorkspaceCompileDiagnostic,
-} from "@wendoo-lang/bridge-app";
+} from "@wendoo/bridge-app";
 import {
   type ActionKind,
   type BrainDef,
@@ -30,10 +30,10 @@ import {
   createEntropySeededRng,
   mkActionTileId,
   type WendooEnvironment,
-} from "@wendoo-lang/core/app";
-import { createDefaultLocalizer } from "@wendoo-lang/core/localization";
-import type { DocsTileEntry } from "@wendoo-lang/docs";
-import { isCompilerControlledPath, type Mount } from "@wendoo-lang/ts-compiler";
+} from "@wendoo/core/app";
+import { createDefaultLocalizer } from "@wendoo/core/localization";
+import type { DocsTileEntry } from "@wendoo/docs";
+import { isCompilerControlledPath, type Mount } from "@wendoo/ts-compiler";
 import { createEcosimModule } from "@/brain";
 import type { Archetype } from "@/brain/actor";
 import { ARCHETYPES } from "@/brain/archetypes";

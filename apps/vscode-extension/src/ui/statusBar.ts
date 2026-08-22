@@ -1,4 +1,4 @@
-import type { ConnectionStatus } from "@wendoo-lang/bridge-client";
+import type { ConnectionStatus } from "@wendoo/bridge-client";
 import * as vscode from "vscode";
 import type { ProjectManager } from "../services/project-manager";
 

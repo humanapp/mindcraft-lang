@@ -8,19 +8,19 @@ import {
   createWendooEnvironment,
   type WendooEnvironment,
   type WendooModule,
-} from "@wendoo-lang/core";
-import type { IBrainActionTileDef } from "@wendoo-lang/core/brain";
-import { RuleSide } from "@wendoo-lang/core/brain";
-import type { BrainBuildDiagnostic, DiagCode, ParseDiag, TypeInfoDiag } from "@wendoo-lang/core/brain/compiler";
+} from "@wendoo/core";
+import type { IBrainActionTileDef } from "@wendoo/core/brain";
+import { RuleSide } from "@wendoo/core/brain";
+import type { BrainBuildDiagnostic, DiagCode, ParseDiag, TypeInfoDiag } from "@wendoo/core/brain/compiler";
 import {
   CompilationDiagCode,
   diagnosticSeverity,
   LinkDiagCode,
   ParseDiagCode,
   TypeDiagCode,
-} from "@wendoo-lang/core/brain/compiler";
-import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
-import { BrainTileActuatorDef } from "@wendoo-lang/core/brain/tiles";
+} from "@wendoo/core/brain/compiler";
+import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@wendoo/core/brain/model";
+import { BrainTileActuatorDef } from "@wendoo/core/brain/tiles";
 import {
   bag,
   CoreParameterId,
@@ -31,7 +31,7 @@ import {
   TARGET_FUNC_ID_BASE,
   TRUE_VALUE,
   VOID_VALUE,
-} from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/runtime";
 
 const kSensorKey = "diagspec.hungry";
 const kSensorLabel = "Hungry";

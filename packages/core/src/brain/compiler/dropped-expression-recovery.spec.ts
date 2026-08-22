@@ -11,7 +11,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import type { ReadonlyList } from "@wendoo-lang/core";
+import type { ReadonlyList } from "@wendoo/core";
 import {
   coreModule,
   createHostActuator,
@@ -19,15 +19,15 @@ import {
   createWendooEnvironment,
   type WendooEnvironment,
   type WendooModule,
-} from "@wendoo-lang/core";
-import type { IBrainDef, IBrainTileDef } from "@wendoo-lang/core/brain";
-import { CoreControlFlowId, mkControlFlowTileId, mkOperatorTileId, RuleSide } from "@wendoo-lang/core/brain";
-import { __test__appendTile } from "@wendoo-lang/core/brain/__test__";
-import type { BrainBuildDiagnostic, DiagCode } from "@wendoo-lang/core/brain/compiler";
-import { CompilationDiagCode, ParseDiagCode, TypeDiagCode } from "@wendoo-lang/core/brain/compiler";
-import type { BrainPageDef, BrainRuleDef } from "@wendoo-lang/core/brain/model";
-import { BrainDef } from "@wendoo-lang/core/brain/model";
-import { BrainTileLiteralDef, BrainTileModifierDef, BrainTileParameterDef } from "@wendoo-lang/core/brain/tiles";
+} from "@wendoo/core";
+import type { IBrainDef, IBrainTileDef } from "@wendoo/core/brain";
+import { CoreControlFlowId, mkControlFlowTileId, mkOperatorTileId, RuleSide } from "@wendoo/core/brain";
+import { __test__appendTile } from "@wendoo/core/brain/__test__";
+import type { BrainBuildDiagnostic, DiagCode } from "@wendoo/core/brain/compiler";
+import { CompilationDiagCode, ParseDiagCode, TypeDiagCode } from "@wendoo/core/brain/compiler";
+import type { BrainPageDef, BrainRuleDef } from "@wendoo/core/brain/model";
+import { BrainDef } from "@wendoo/core/brain/model";
+import { BrainTileLiteralDef, BrainTileModifierDef, BrainTileParameterDef } from "@wendoo/core/brain/tiles";
 import {
   bag,
   CoreOpId,
@@ -43,7 +43,7 @@ import {
   TARGET_FUNC_ID_BASE,
   type Value,
   VOID_VALUE,
-} from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/runtime";
 
 const kSteerKey = "droppedspec.steer";
 const kMarkKey = "droppedspec.mark";

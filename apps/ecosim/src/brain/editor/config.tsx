@@ -1,6 +1,6 @@
-import type { WendooEnvironment } from "@wendoo-lang/core/app";
-import { Vector2 } from "@wendoo-lang/core/app";
-import type { BrainEditorConfig, CustomLiteralType } from "@wendoo-lang/ui";
+import type { WendooEnvironment } from "@wendoo/core/app";
+import { Vector2 } from "@wendoo/core/app";
+import type { BrainEditorConfig, CustomLiteralType } from "@wendoo/ui";
 import type { ReactNode } from "react";
 import type { Archetype } from "@/brain/actor";
 import { EcosimTypeIds } from "@/brain/type-system";

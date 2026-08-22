@@ -14,7 +14,7 @@ A demo application built with the [Wendoo language](../../README.md). Carnivores
   <img src="./assets/2026-03-11_15-25-31.png" alt="Sim Screenshot 2" width="80%" />
 </div>
 
-This app also serves as a reference integration for developers: it shows how to embed `@wendoo-lang/core` and `@wendoo-lang/ui` into a React application, and how to write custom sensors and actuators.
+This app also serves as a reference integration for developers: it shows how to embed `@wendoo/core` and `@wendoo/ui` into a React application, and how to write custom sensors and actuators.
 
 ## Tech Stack
 
@@ -23,9 +23,9 @@ This app also serves as a reference integration for developers: it shows how to 
 - **Phaser 3** -- game canvas with Matter.js physics
 - **Tailwind CSS v4** -- styling
 - **miniplex** -- ECS for actor management
-- **@wendoo-lang/core** -- Wendoo language runtime (local dependency)
-- **@wendoo-lang/ui** -- shared React UI components and brain editor (local dependency)
-- **@wendoo-lang/docs** -- documentation content and assets (local dependency)
+- **@wendoo/core** -- Wendoo language runtime (local dependency)
+- **@wendoo/ui** -- shared React UI components and brain editor (local dependency)
+- **@wendoo/docs** -- documentation content and assets (local dependency)
 
 ## Getting Started
 
@@ -64,7 +64,7 @@ src/
   App.tsx               Root layout: Phaser canvas + sidebar + brain editor
   PhaserGame.tsx        React <-> Phaser bridge
   bootstrap.ts          Startup: logger, services, brain registration
-  brain-editor-config.tsx  BrainEditorConfig for @wendoo-lang/ui provider
+  brain-editor-config.tsx  BrainEditorConfig for @wendoo/ui provider
   globals.css           Tailwind, fonts, theme tokens
 
   brain/                Simulation engine + brain language integration
@@ -98,12 +98,12 @@ src/
 
 ## Brain Editor Integration
 
-The brain editor UI lives in `@wendoo-lang/ui`. The sim provides app-specific configuration via `BrainEditorProvider`:
+The brain editor UI lives in `@wendoo/ui`. The sim provides app-specific configuration via `BrainEditorProvider`:
 
 - `brain-editor-config.tsx` builds a `BrainEditorConfig` with data type icons, tile visuals, a Vector2 custom literal type, and an archetype-scoped `getDefaultBrain` factory
 - `App.tsx` wraps the `BrainEditorDialog` in a `<BrainEditorProvider>` with this config
 
-UI primitives (Button, Slider, etc.) are also imported from `@wendoo-lang/ui` rather than local shadcn/ui copies.
+UI primitives (Button, Slider, etc.) are also imported from `@wendoo/ui` rather than local shadcn/ui copies.
 
 ## Ambient Type Declarations
 
@@ -119,7 +119,7 @@ npm run generate:ambient
 ```
 
 This command first runs core's ambient generator, then writes the sim augmentation. The
-core file remains owned by `@wendoo-lang/core`; the sim reads it from the package
+core file remains owned by `@wendoo/core`; the sim reads it from the package
 export and pairs it with `lib/wendoo.ecosim.d.ts` in `src/services/sim-ambient-files.ts`.
 The workspace compiler and VS Code bridge expose both files as readonly compiler-owned
 root files named `wendoo.core.d.ts` and `wendoo.ecosim.d.ts`.

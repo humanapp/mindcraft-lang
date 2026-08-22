@@ -1,9 +1,9 @@
 {
-  "name": "@wendoo-lang/ui",
+  "name": "@wendoo/ui",
   "description": "Shared React UI components and brain editor for Wendoo apps",
   "version": "0.2.1",
   "type": "module",
-  "author": "humanapp",
+  "author": "wendoo-lang",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -48,7 +48,7 @@
     "release:major": "node ../../scripts/release.js major"
   },
   "dependencies": {
-    "@wendoo-lang/core": "file:../core",
+    "@wendoo/core": "file:../core",
     "@radix-ui/react-context-menu": "^2.3.7",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",

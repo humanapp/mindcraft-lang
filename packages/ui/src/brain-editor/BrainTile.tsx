@@ -1,5 +1,5 @@
-import { type IBrainTileDef, isActionTileDef, RuleSide } from "@wendoo-lang/core/brain";
-import type { BrainTileFactoryDef, BrainTileParameterDef } from "@wendoo-lang/core/brain/tiles";
+import { type IBrainTileDef, isActionTileDef, RuleSide } from "@wendoo/core/brain";
+import type { BrainTileFactoryDef, BrainTileParameterDef } from "@wendoo/core/brain/tiles";
 import { CircleAlert, ClockFading } from "lucide-react";
 import { type ButtonHTMLAttributes, forwardRef, useLayoutEffect, useState } from "react";
 import { staticAssetUrl } from "../asset-url";

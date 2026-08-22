@@ -9,17 +9,17 @@ import {
   type ProjectCollection,
   type ProjectFileSystem,
   type ProjectManager,
-} from "@wendoo-lang/app-host";
+} from "@wendoo/app-host";
 import {
   AppEnvironmentHost,
   CORE_LIB_COORDINATE,
   createVfsAssetUrlProvider,
   type EmbeddedExtension,
-} from "@wendoo-lang/bridge-app";
-import { buildEmbeddedExtensionFromDir } from "@wendoo-lang/bridge-app/node";
-import { coreModule, mkActuatorTileId, mkSensorTileId } from "@wendoo-lang/core/app";
-import type { IBrainTileDef } from "@wendoo-lang/core/brain";
-import { isCompilerControlledPath, type Mount } from "@wendoo-lang/ts-compiler";
+} from "@wendoo/bridge-app";
+import { buildEmbeddedExtensionFromDir } from "@wendoo/bridge-app/node";
+import { coreModule, mkActuatorTileId, mkSensorTileId } from "@wendoo/core/app";
+import type { IBrainTileDef } from "@wendoo/core/brain";
+import { isCompilerControlledPath, type Mount } from "@wendoo/ts-compiler";
 import { createEcosimModule } from "../brain";
 import { createVfsAwareVisualProvider } from "../brain/editor/visual-provider";
 import {

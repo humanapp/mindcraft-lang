@@ -8,7 +8,7 @@ import type {
   ExtensionPublishSource,
   PublishFile,
   PublishVersionBump,
-} from "@wendoo-lang/app-host";
+} from "@wendoo/app-host";
 import {
   createJsDelivrExtensionTransport,
   deriveCoordinateFromRemoteUrl,
@@ -18,7 +18,7 @@ import {
   publishExtensionVersion,
   serializeProjectContentManifest,
   WENDOO_JSON_PATH,
-} from "@wendoo-lang/app-host";
+} from "@wendoo/app-host";
 import { GitCommandError, git, tryGit } from "./git.js";
 
 const PUBLISH_USAGE = `usage: wendoo publish [patch|minor|major] [--dir <path>] [--remote <url>] [--allow-unstable-refs]

@@ -1,5 +1,5 @@
-import type { LiteralDisplayFormat } from "@wendoo-lang/core/brain";
-import type { BrainTileLiteralDef } from "@wendoo-lang/core/brain/tiles";
+import type { LiteralDisplayFormat } from "@wendoo/core/brain";
+import type { BrainTileLiteralDef } from "@wendoo/core/brain/tiles";
 import { useState } from "react";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";

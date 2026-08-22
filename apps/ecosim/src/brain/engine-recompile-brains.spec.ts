@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { CORE_LIB_COORDINATE, resolveProjectExtensions } from "@wendoo-lang/bridge-app";
-import { buildEmbeddedExtensionFromDir } from "@wendoo-lang/bridge-app/node";
+import { CORE_LIB_COORDINATE, resolveProjectExtensions } from "@wendoo/bridge-app";
+import { buildEmbeddedExtensionFromDir } from "@wendoo/bridge-app/node";
 import {
   BrainDef,
   coreModule,
@@ -11,9 +11,9 @@ import {
   mkSensorTileId,
   type WendooBrain,
   type WendooEnvironment,
-} from "@wendoo-lang/core/app";
-import type { IBrainTileDef } from "@wendoo-lang/core/brain";
-import { createWorkspaceCompiler, type Mount, type WorkspaceSnapshot } from "@wendoo-lang/ts-compiler";
+} from "@wendoo/core/app";
+import type { IBrainTileDef } from "@wendoo/core/brain";
+import { createWorkspaceCompiler, type Mount, type WorkspaceSnapshot } from "@wendoo/ts-compiler";
 import { createEcosimModule } from "../brain";
 import type { Archetype } from "../brain/actor";
 import { Engine } from "../brain/engine";

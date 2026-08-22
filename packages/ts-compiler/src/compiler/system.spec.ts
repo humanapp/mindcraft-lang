@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { type BrainServices, mkVariableTileId } from "@wendoo-lang/core/brain";
-import { __test__appendTile, __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
-import { BrainDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
+import { type BrainServices, mkVariableTileId } from "@wendoo/core/brain";
+import { __test__appendTile, __test__createBrainServices } from "@wendoo/core/brain/__test__";
+import { BrainDef, type BrainRuleDef } from "@wendoo/core/brain/model";
 import {
   type BrainTileActuatorDef,
   BrainTileLiteralDef,
   BrainTileOperatorDef,
   type BrainTileSensorDef,
   BrainTileVariableDef,
-} from "@wendoo-lang/core/brain/tiles";
-import { CoreTypeIds, extractNumberValue, type IBrain, type Value } from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/brain/tiles";
+import { CoreTypeIds, extractNumberValue, type IBrain, type Value } from "@wendoo/core/runtime";
 import { registerUserTile } from "../runtime/registration-bridge.js";
 import { buildUserTileMetadata } from "../runtime/user-tile-metadata.js";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";

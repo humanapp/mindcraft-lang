@@ -1,6 +1,6 @@
-import type { IBrainTileDef } from "@wendoo-lang/core/brain";
-import { isActionTileDef, mkVariableFactoryTileId } from "@wendoo-lang/core/brain";
-import type { BrainTileParameterDef } from "@wendoo-lang/core/brain/tiles";
+import type { IBrainTileDef } from "@wendoo/core/brain";
+import { isActionTileDef, mkVariableFactoryTileId } from "@wendoo/core/brain";
+import type { BrainTileParameterDef } from "@wendoo/core/brain/tiles";
 
 /** A documented parameter or modifier tile placed by an action's call spec. */
 export interface ActionArgTileEntry {

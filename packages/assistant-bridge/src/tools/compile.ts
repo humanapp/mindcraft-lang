@@ -1,4 +1,4 @@
-import type { DiagnosticSeverity } from "@wendoo-lang/core/brain/compiler";
+import type { DiagnosticSeverity } from "@wendoo/core/brain/compiler";
 import type { ToolDiagnostic } from "./diagnostics.js";
 import { serializeDiagParams } from "./diagnostics.js";
 import type { AuthoringWorkspace } from "./workspace.js";

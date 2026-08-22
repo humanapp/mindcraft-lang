@@ -9,17 +9,17 @@
 
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { coreModule, createWendooEnvironment, type HydratedTileMetadataSnapshot } from "@wendoo-lang/core";
-import type { BrainServices, IBrainDef } from "@wendoo-lang/core/brain";
-import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
-import { BrainDef } from "@wendoo-lang/core/brain/model";
+import { coreModule, createWendooEnvironment, type HydratedTileMetadataSnapshot } from "@wendoo/core";
+import type { BrainServices, IBrainDef } from "@wendoo/core/brain";
+import { __test__createBrainServices } from "@wendoo/core/brain/__test__";
+import { BrainDef } from "@wendoo/core/brain/model";
 import {
   CoreTypeIds,
   mkActuatorTileId,
   mkModifierTileId,
   mkParameterTileId,
   mkSensorTileId,
-} from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/runtime";
 import { buildCompiledActionBundle, buildMultiRootActionBundle } from "../runtime/action-bundle.js";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { CompileDiagCode } from "./diag-codes.js";

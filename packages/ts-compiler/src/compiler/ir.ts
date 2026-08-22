@@ -1,4 +1,4 @@
-import type { Value } from "@wendoo-lang/core/runtime";
+import type { Value } from "@wendoo/core/runtime";
 
 /** 1-based source-position range carried on {@link IrNode} for debug span emission. */
 export interface IrSourceSpan {

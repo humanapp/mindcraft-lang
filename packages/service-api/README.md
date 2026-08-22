@@ -1,4 +1,4 @@
-# @wendoo-lang/service-api
+# @wendoo/service-api
 
 Request/response schemas, shared enums, error shapes, and serialization formats for the
 Wendoo backend service API.

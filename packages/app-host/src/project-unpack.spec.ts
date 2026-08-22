@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { WENDOO_PROJECT_FORMAT } from "@wendoo-lang/service-api";
+import { WENDOO_PROJECT_FORMAT } from "@wendoo/service-api";
 import type { WendooProjectDocument } from "./project-io.js";
 import { buildUnpackedTree, isUnpackRefusal, UnpackErrorCode } from "./project-unpack.js";
 

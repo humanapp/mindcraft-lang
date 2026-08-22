@@ -1,4 +1,4 @@
-import type { WendooBrain } from "@wendoo-lang/core/app";
+import type { WendooBrain } from "@wendoo/core/app";
 import type { RehearsalWorld, WorldDriver, WorldStaging } from "../kit/index.js";
 import { createRehearsalAdapter } from "../kit/index.js";
 import type { ScenarioInputKind, SubjectStateChannel, TargetAdapter, TargetManifest } from "../target/adapter.js";

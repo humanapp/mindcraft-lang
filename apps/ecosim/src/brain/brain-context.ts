@@ -11,7 +11,7 @@ import {
   type Value,
   Vector2,
   type WendooModuleApi,
-} from "@wendoo-lang/core/app";
+} from "@wendoo/core/app";
 import { getActor, getTargetActor } from "@/brain/execution-context-types";
 import { EcosimTypeIds, extractVector2, mkVector2Value } from "@/brain/type-system";
 import { EcosimFuncId } from "./abi-ids";

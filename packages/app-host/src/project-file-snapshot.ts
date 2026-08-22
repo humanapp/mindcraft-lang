@@ -1,4 +1,4 @@
-import type { FileContent } from "@wendoo-lang/service-api";
+import type { FileContent } from "@wendoo/service-api";
 
 /** A regular file entry in a project file snapshot. */
 export type ProjectFileEntry = {

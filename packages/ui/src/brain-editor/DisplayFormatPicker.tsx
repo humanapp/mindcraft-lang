@@ -1,4 +1,4 @@
-import type { LiteralDisplayFormat } from "@wendoo-lang/core/brain";
+import type { LiteralDisplayFormat } from "@wendoo/core/brain";
 import { useState } from "react";
 
 const FORMAT_OPTIONS: { value: LiteralDisplayFormat; label: string; description: string }[] = [

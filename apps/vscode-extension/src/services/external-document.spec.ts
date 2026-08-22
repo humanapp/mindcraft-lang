@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { FolderSessionErrorCode } from "@wendoo-lang/bridge-protocol";
+import { FolderSessionErrorCode } from "@wendoo/bridge-protocol";
 import type { ExternalDocumentAccess } from "./external-document";
 import { openExternalHtmlDocument } from "./external-document";
 

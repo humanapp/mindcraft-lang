@@ -1,5 +1,5 @@
-import type { FileContent, WendooProjectDocument } from "@wendoo-lang/service-api";
-import { fileContentFromWire } from "@wendoo-lang/service-api";
+import type { FileContent, WendooProjectDocument } from "@wendoo/service-api";
+import { fileContentFromWire } from "@wendoo/service-api";
 import type { ProjectContentManifest } from "./project-content-manifest.js";
 import { serializeProjectContentManifest, validateProjectContentManifest } from "./project-content-manifest.js";
 import { WENDOO_JSON_PATH } from "./wendoo-json.js";

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { BrainDef, coreModule, createWendooEnvironment, type WendooEnvironment } from "@wendoo-lang/core/app";
+import { BrainDef, coreModule, createWendooEnvironment, type WendooEnvironment } from "@wendoo/core/app";
 import type { Playground } from "../game/scenes/Playground";
 import type { EcosimEnvironmentStore } from "../services/ecosim-environment-store";
 import type { Actor, Archetype } from "./actor";

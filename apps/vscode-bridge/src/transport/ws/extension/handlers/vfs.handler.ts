@@ -1,5 +1,5 @@
-import type { FilesystemChangeMessage, FilesystemSyncMessage, SessionErrorMessage } from "@wendoo-lang/bridge-protocol";
-import { filesystemNotificationSchema } from "@wendoo-lang/bridge-protocol";
+import type { FilesystemChangeMessage, FilesystemSyncMessage, SessionErrorMessage } from "@wendoo/bridge-protocol";
+import { filesystemNotificationSchema } from "@wendoo/bridge-protocol";
 import type { WSContext } from "hono/ws";
 import { logger } from "#core/logging/logger.js";
 import { addPendingRequest } from "#core/pending-requests.js";

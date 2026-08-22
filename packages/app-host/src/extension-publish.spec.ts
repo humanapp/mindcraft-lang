@@ -5,7 +5,7 @@ import type {
   ExtensionPublishCommit,
   ExtensionPublishSource,
   PublishVersionBump,
-} from "@wendoo-lang/app-host";
+} from "@wendoo/app-host";
 import {
   bumpVersion,
   deriveCoordinateFromRemoteUrl,
@@ -14,7 +14,7 @@ import {
   publishExtensionVersion,
   serializeProjectContentManifest,
   validateProjectContentManifest,
-} from "@wendoo-lang/app-host";
+} from "@wendoo/app-host";
 
 const COORDINATE = "acme/position";
 

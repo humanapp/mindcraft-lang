@@ -4,14 +4,14 @@ import type {
   WendooProjectDocumentValidationError,
   WendooProjectExtensions,
   WendooProjectFileContent,
-} from "@wendoo-lang/service-api";
+} from "@wendoo/service-api";
 import {
   fileContentFromWire,
   fileContentToWire,
   isBinaryFileContent,
   parseWendooProjectDocument,
   WENDOO_PROJECT_FORMAT,
-} from "@wendoo-lang/service-api";
+} from "@wendoo/service-api";
 import { AppHostErrorCode, appHostError } from "./app-host-error.js";
 import type { ProjectContentManifest, ProjectContentManifestErrorCode } from "./project-content-manifest.js";
 import { projectContentManifestToJson, validateProjectContentManifest } from "./project-content-manifest.js";
@@ -23,7 +23,7 @@ import type { ProjectManifest } from "./project-manifest.js";
 import { WENDOO_JSON_PATH } from "./wendoo-json.js";
 import { contentManifestFromManifest } from "./wendoo-json-sync.js";
 
-export type { WendooProjectDocument, WendooProjectExtensions } from "@wendoo-lang/service-api";
+export type { WendooProjectDocument, WendooProjectExtensions } from "@wendoo/service-api";
 
 /** App-data key holding the project's serialized brains, keyed by brain key. */
 const BRAINS_APP_DATA_KEY = "brains";

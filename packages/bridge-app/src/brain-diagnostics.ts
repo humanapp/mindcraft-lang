@@ -1,8 +1,8 @@
-import type { IBrainDef } from "@wendoo-lang/core/app";
-import type { IBrainActionTileDef, IBrainRuleDef, IBrainTileSet } from "@wendoo-lang/core/brain";
-import { TypeDiagCode } from "@wendoo-lang/core/brain/compiler";
-import { BrainRuleDef } from "@wendoo-lang/core/brain/model";
-import type { ActionKey } from "@wendoo-lang/core/runtime";
+import type { IBrainDef } from "@wendoo/core/app";
+import type { IBrainActionTileDef, IBrainRuleDef, IBrainTileSet } from "@wendoo/core/brain";
+import { TypeDiagCode } from "@wendoo/core/brain/compiler";
+import { BrainRuleDef } from "@wendoo/core/brain/model";
+import type { ActionKey } from "@wendoo/core/runtime";
 import type { TileCompileDiagnostics } from "./user-tile-registration.js";
 
 /**

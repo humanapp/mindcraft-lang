@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { List, UniqueSet } from "@wendoo-lang/core";
+import { List, UniqueSet } from "@wendoo/core";
 import {
   type ActionDescriptor,
   type AsyncHandle,
@@ -34,8 +34,8 @@ import {
   TRUE_VALUE,
   type Value,
   VOID_VALUE,
-} from "@wendoo-lang/core/runtime";
-import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
+} from "@wendoo/core/runtime";
+import { __test__createPlatformServices } from "@wendoo/core/runtime/__test__";
 
 /** funcId of the root rule every fixture below runs. */
 const ROOT_FUNC_ID = 0;

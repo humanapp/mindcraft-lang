@@ -1,6 +1,6 @@
-import { assertUnreachable } from "@wendoo-lang/core";
-import type { BrainTileKind, IBrainTileDef } from "@wendoo-lang/core/brain";
-import { LiteralDisplayFormats } from "@wendoo-lang/core/brain";
+import { assertUnreachable } from "@wendoo/core";
+import type { BrainTileKind, IBrainTileDef } from "@wendoo/core/brain";
+import { LiteralDisplayFormats } from "@wendoo/core/brain";
 import {
   applyDisplayFormat,
   type BrainTileAccessorDef,
@@ -8,7 +8,7 @@ import {
   type BrainTileOutputDef,
   type BrainTileVariableDef,
   getCatalogFallbackLabel,
-} from "@wendoo-lang/core/brain/tiles";
+} from "@wendoo/core/brain/tiles";
 import { adjustColor, saturateColor } from "../lib/color";
 import type { BrainEditorConfig } from "./BrainEditorContext";
 import type { TileVisual } from "./types";

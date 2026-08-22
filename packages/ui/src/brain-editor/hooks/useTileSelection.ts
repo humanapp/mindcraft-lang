@@ -1,7 +1,7 @@
-import { type IBrainTileDef, isVariableFactoryTileId, type LiteralDisplayFormat } from "@wendoo-lang/core/brain";
-import type { BrainRuleDef } from "@wendoo-lang/core/brain/model";
-import type { BrainTileFactoryDef } from "@wendoo-lang/core/brain/tiles";
-import { manufactureLiteralTile, manufactureVariableTile } from "@wendoo-lang/core/brain/tiles";
+import { type IBrainTileDef, isVariableFactoryTileId, type LiteralDisplayFormat } from "@wendoo/core/brain";
+import type { BrainRuleDef } from "@wendoo/core/brain/model";
+import type { BrainTileFactoryDef } from "@wendoo/core/brain/tiles";
+import { manufactureLiteralTile, manufactureVariableTile } from "@wendoo/core/brain/tiles";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ArmedTargetEntry } from "../ArmedTargetContext";
 import { useBrainEditorConfig } from "../BrainEditorContext";

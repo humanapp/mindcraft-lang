@@ -9,11 +9,11 @@ import {
   Dict,
   List,
   type WendooEnvironment,
-} from "@wendoo-lang/core";
-import type { BrainServices, IBrainDef } from "@wendoo-lang/core/brain";
-import { mkActuatorTileId } from "@wendoo-lang/core/brain";
-import { BrainDef } from "@wendoo-lang/core/brain/model";
-import { BrainTileActuatorDef } from "@wendoo-lang/core/brain/tiles";
+} from "@wendoo/core";
+import type { BrainServices, IBrainDef } from "@wendoo/core/brain";
+import { mkActuatorTileId } from "@wendoo/core/brain";
+import { BrainDef } from "@wendoo/core/brain/model";
+import { BrainTileActuatorDef } from "@wendoo/core/brain/tiles";
 import {
   type BrainActionCallDef,
   BYTECODE_VERSION,
@@ -23,7 +23,7 @@ import {
   mkNumberValue,
   Op,
   param,
-} from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/runtime";
 
 /** Action key of the compiled user actuator these tests carry between environments. */
 const kNudgeKey = "user::nudge";

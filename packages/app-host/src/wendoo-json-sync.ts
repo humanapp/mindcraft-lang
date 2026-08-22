@@ -1,4 +1,4 @@
-import { fileContentText } from "@wendoo-lang/service-api";
+import { fileContentText } from "@wendoo/service-api";
 import type { ExtensionTarget, ProjectContentManifest } from "./project-content-manifest.js";
 import {
   parseProjectContentManifest,

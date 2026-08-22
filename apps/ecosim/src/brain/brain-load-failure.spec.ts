@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { AppHostErrorCode, appHostError } from "@wendoo-lang/app-host";
+import { AppHostErrorCode, appHostError } from "@wendoo/app-host";
 import { toBrainLoadFailure } from "./brain-load-failure";
 
 describe("classifying a failed brain load", () => {

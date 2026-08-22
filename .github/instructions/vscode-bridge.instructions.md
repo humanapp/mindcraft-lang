@@ -17,7 +17,7 @@ every resource as something that must eventually be reclaimed.
 ## Tech Stack
 
 Hono (HTTP + WS), @hono/node-ws, pino (logging), zod (env validation),
-`@wendoo-lang/bridge-protocol` (shared message types & schemas), Biome.
+`@wendoo/bridge-protocol` (shared message types & schemas), Biome.
 
 ## Path Aliases (Node.js subpath imports)
 
@@ -57,7 +57,7 @@ Two WS endpoints with independent upgrade, router, and handler layers:
 
 JSON shape: `{ type: string, id?: string, seq?: number, payload?: unknown }`.
 `type` routes to a handler. `id` correlates request/response pairs.
-Schema and types re-exported from `@wendoo-lang/bridge-protocol` via
+Schema and types re-exported from `@wendoo/bridge-protocol` via
 `transport/ws/types.ts`.
 
 ### Handler Pattern

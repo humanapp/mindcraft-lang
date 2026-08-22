@@ -1,4 +1,4 @@
-import { assertUnreachable } from "@wendoo-lang/core";
+import { assertUnreachable } from "@wendoo/core";
 import {
   CoreCapabilityBits,
   fixedFormat,
@@ -13,14 +13,14 @@ import {
   TilePlacement,
   timeMsFormat,
   timeSecondsFormat,
-} from "@wendoo-lang/core/brain";
-import type { TileSuggestion, TileSuggestionResult } from "@wendoo-lang/core/brain/language-service";
+} from "@wendoo/core/brain";
+import type { TileSuggestion, TileSuggestionResult } from "@wendoo/core/brain/language-service";
 import {
   applyDisplayFormat,
   type BrainTileFactoryDef,
   type BrainTileOperatorDef,
   type BrainTileVariableDef,
-} from "@wendoo-lang/core/brain/tiles";
+} from "@wendoo/core/brain/tiles";
 import {
   CoreHostActions,
   CoreOpId,
@@ -28,7 +28,7 @@ import {
   mkActuatorTileId,
   mkSensorTileId,
   type TypeId,
-} from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/runtime";
 import type { ArmedTileTarget } from "./ArmedTargetContext";
 import { groupTilesByLibrary, type TileSourceLibrary, tileSourceNamespace } from "./tile-library-groups";
 

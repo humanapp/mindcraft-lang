@@ -1,6 +1,6 @@
-import type { ITileCatalog } from "@wendoo-lang/core/brain";
-import { DocsPage as SharedDocsPage } from "@wendoo-lang/docs";
-import { Toaster } from "@wendoo-lang/ui";
+import type { ITileCatalog } from "@wendoo/core/brain";
+import { DocsPage as SharedDocsPage } from "@wendoo/docs";
+import { Toaster } from "@wendoo/ui";
 import { useMemo } from "react";
 import { dataTypeIconMap, dataTypeNameMap } from "./brain/editor/data-type-icons";
 import { createVfsAwareVisualProvider } from "./brain/editor/visual-provider";

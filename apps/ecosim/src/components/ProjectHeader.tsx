@@ -3,8 +3,8 @@ import type {
   ProjectCollectionState,
   ProjectCollectionSummary,
   ProjectCollectionSummaryChange,
-} from "@wendoo-lang/app-host";
-import { AppHostError, DEFAULT_PROJECT_COLLECTION_ID } from "@wendoo-lang/app-host";
+} from "@wendoo/app-host";
+import { AppHostError, DEFAULT_PROJECT_COLLECTION_ID } from "@wendoo/app-host";
 import {
   Button,
   Dialog,
@@ -22,7 +22,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
   Input,
-} from "@wendoo-lang/ui";
+} from "@wendoo/ui";
 import {
   Check,
   ChevronDown,

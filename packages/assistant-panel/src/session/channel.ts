@@ -1,4 +1,4 @@
-import type { RelayDownstreamMessage, RelayUpstreamMessage } from "@wendoo-lang/assistant-relay";
+import type { RelayDownstreamMessage, RelayUpstreamMessage } from "@wendoo/assistant-relay";
 
 /**
  * One open relay session, as the machine speaks to it.

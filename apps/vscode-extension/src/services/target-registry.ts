@@ -1,5 +1,5 @@
-import type { ExtensionCatalogDocumentEntry } from "@wendoo-lang/app-host";
-import { registryTargetEntry, validateExtensionCatalogDocument } from "@wendoo-lang/app-host";
+import type { ExtensionCatalogDocumentEntry } from "@wendoo/app-host";
+import { registryTargetEntry, validateExtensionCatalogDocument } from "@wendoo/app-host";
 import bundledTargetsRegistry from "../../../../packages/cli/targets.json";
 import type { FolderTargetDescriptor } from "./project-skeleton";
 

@@ -1,8 +1,8 @@
 import { writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { coreModule, createWendooEnvironment } from "@wendoo-lang/core/app";
-import { buildPlatformAmbientDeclarations } from "@wendoo-lang/ts-compiler";
+import { coreModule, createWendooEnvironment } from "@wendoo/core/app";
+import { buildPlatformAmbientDeclarations } from "@wendoo/ts-compiler";
 import { createEcosimModule } from "@/brain";
 
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");

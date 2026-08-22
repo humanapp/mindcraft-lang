@@ -7,7 +7,7 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { PluralRuleSpec } from "@wendoo-lang/core/localization";
+import type { PluralRuleSpec } from "@wendoo/core/localization";
 import {
   defaultPluralRule,
   parseTemplate,
@@ -15,7 +15,7 @@ import {
   renderTemplate,
   selectPluralCategory,
   TemplateDiagCode,
-} from "@wendoo-lang/core/localization";
+} from "@wendoo/core/localization";
 
 /**
  * CLDR plural rule for Russian: four categories keyed off the last one and two

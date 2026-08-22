@@ -1,4 +1,4 @@
-import type { WendooModuleApi } from "@wendoo-lang/core/app";
+import type { WendooModuleApi } from "@wendoo/core/app";
 import { TileIds } from "../tileids";
 import { EcosimTypeIds } from "../type-system";
 import { registerLiteralTiles } from "./literals";

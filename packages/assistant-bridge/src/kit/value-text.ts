@@ -1,10 +1,10 @@
-import type { BrainTileLiteralDef, ReadonlyList, Value } from "@wendoo-lang/core/app";
-import { NativeType } from "@wendoo-lang/core/app";
-import type { ITileCatalog } from "@wendoo-lang/core/brain";
-import { tileSentenceWord } from "@wendoo-lang/core/brain/language-service";
-import type { Localizer } from "@wendoo-lang/core/localization";
-import type { BrainActionArgSlot } from "@wendoo-lang/core/runtime";
-import { bufferToHex } from "@wendoo-lang/core/runtime";
+import type { BrainTileLiteralDef, ReadonlyList, Value } from "@wendoo/core/app";
+import { NativeType } from "@wendoo/core/app";
+import type { ITileCatalog } from "@wendoo/core/brain";
+import { tileSentenceWord } from "@wendoo/core/brain/language-service";
+import type { Localizer } from "@wendoo/core/localization";
+import type { BrainActionArgSlot } from "@wendoo/core/runtime";
+import { bufferToHex } from "@wendoo/core/runtime";
 
 /** Longest rendering a single value produces before it is cut. */
 const maxLength = 48;

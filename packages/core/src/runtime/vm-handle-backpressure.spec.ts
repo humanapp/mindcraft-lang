@@ -12,7 +12,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { List } from "@wendoo-lang/core";
+import { List } from "@wendoo/core";
 import {
   type AsyncHandle,
   BYTECODE_VERSION,
@@ -30,8 +30,8 @@ import {
   type Program,
   type Value,
   VM,
-} from "@wendoo-lang/core/runtime";
-import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
+} from "@wendoo/core/runtime";
+import { __test__createPlatformServices } from "@wendoo/core/runtime/__test__";
 
 const HOLD_FN_ID = 7101;
 const holdCallDef = mkCallDef({ type: "seq", items: [] });

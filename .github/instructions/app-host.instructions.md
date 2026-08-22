@@ -126,7 +126,7 @@ Current test files:
 - Zero dependencies on bridge-protocol, bridge-client, or bridge-app. This
   package is a foundation layer that host apps and bridge-app build on.
 - All exports go through `src/index.ts`. Consumers import from
-  `@wendoo-lang/app-host`.
+  `@wendoo/app-host`.
 - `ProjectFileSystem` is storage-agnostic. The in-memory implementation has no
   persistence logic; persistence is handled by `ProjectManager` + `ProjectStore`.
 - Use `import type` for type-only imports.

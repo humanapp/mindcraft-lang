@@ -1,7 +1,7 @@
-import type { ProjectFileChange, ProjectFileSnapshot, ProjectFileSystemEntry } from "@wendoo-lang/app-host";
-import { fileContentFromWire, fileContentToWire } from "@wendoo-lang/app-host";
-import type { FileSystemSnapshot } from "@wendoo-lang/bridge-client";
-import type { FileSystemNotification } from "@wendoo-lang/bridge-protocol";
+import type { ProjectFileChange, ProjectFileSnapshot, ProjectFileSystemEntry } from "@wendoo/app-host";
+import { fileContentFromWire, fileContentToWire } from "@wendoo/app-host";
+import type { FileSystemSnapshot } from "@wendoo/bridge-client";
+import type { FileSystemNotification } from "@wendoo/bridge-protocol";
 
 /** Convert an app-host project file snapshot into a bridge-client snapshot. */
 export function toFileSystemSnapshot(snapshot: ProjectFileSnapshot): FileSystemSnapshot {

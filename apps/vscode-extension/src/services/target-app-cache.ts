@@ -4,7 +4,7 @@ import type {
   FetchedExtensionFile,
   ProjectContentManifest,
   ProjectContentManifestParseResult,
-} from "@wendoo-lang/app-host";
+} from "@wendoo/app-host";
 import { WENDOO_JSON } from "../wendoo-json";
 import { isSafeRelativePath } from "./path-confinement";
 

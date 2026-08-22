@@ -1,4 +1,4 @@
-# @wendoo-lang/bridge-protocol
+# @wendoo/bridge-protocol
 
 WebSocket protocol types and schemas for the Wendoo bridge.
 
@@ -9,7 +9,7 @@ packages.
 ## Install
 
 ```sh
-npm install @wendoo-lang/bridge-protocol
+npm install @wendoo/bridge-protocol
 ```
 
 ## License

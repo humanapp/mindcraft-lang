@@ -1,5 +1,5 @@
-import type { ITileLanguageMetadata, TileSentenceFrame } from "@wendoo-lang/core/brain";
-import type { ActionKind } from "@wendoo-lang/core/runtime";
+import type { ITileLanguageMetadata, TileSentenceFrame } from "@wendoo/core/brain";
+import type { ActionKind } from "@wendoo/core/runtime";
 import ts from "typescript";
 import { DescriptorDiagCode } from "./diag-codes.js";
 import { shorthandValueExpression } from "./type-ref.js";

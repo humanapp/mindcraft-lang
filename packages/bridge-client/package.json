@@ -1,10 +1,10 @@
 {
-  "name": "@wendoo-lang/bridge-client",
+  "name": "@wendoo/bridge-client",
   "version": "0.2.6",
   "description": "Client SDK for the Wendoo Lang VSCode bridge",
   "license": "MIT",
   "type": "module",
-  "author": "humanapp",
+  "author": "wendoo-lang",
   "repository": {
     "type": "git",
     "url": "https://github.com/wendoo-lang/wendoo-lang.git",
@@ -74,9 +74,9 @@
     "release:major": "node ../../scripts/release.js major"
   },
   "dependencies": {
-    "@wendoo-lang/bridge-protocol": "file:../bridge-protocol",
-    "@wendoo-lang/core": "file:../core",
-    "@wendoo-lang/service-api": "file:../service-api",
+    "@wendoo/bridge-protocol": "file:../bridge-protocol",
+    "@wendoo/core": "file:../core",
+    "@wendoo/service-api": "file:../service-api",
     "zod": "^4.3.6"
   },
   "devDependencies": {

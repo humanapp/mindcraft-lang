@@ -5,7 +5,7 @@
  * application-specific data injected into the ExecutionContext.
  */
 
-import { type ExecutionContext, getRuleVariable, isNumberValue } from "@wendoo-lang/core/app";
+import { type ExecutionContext, getRuleVariable, isNumberValue } from "@wendoo/core/app";
 import type { Actor } from "./actor";
 
 /**

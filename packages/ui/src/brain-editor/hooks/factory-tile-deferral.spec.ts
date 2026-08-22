@@ -14,17 +14,17 @@
 
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import type { BrainServices, IBrainTileDef } from "@wendoo-lang/core/brain";
+import type { BrainServices, IBrainTileDef } from "@wendoo/core/brain";
 import {
   CoreLiteralFactoryId,
   CoreVariableFactoryId,
   mkLiteralFactoryTileId,
   mkVariableFactoryTileId,
   RuleSide,
-} from "@wendoo-lang/core/brain";
-import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
-import { AddTileCommand, BrainCommandHistory, BrainDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
-import type { BrainTileFactoryDef, BrainTileVariableDef } from "@wendoo-lang/core/brain/tiles";
+} from "@wendoo/core/brain";
+import { __test__createBrainServices } from "@wendoo/core/brain/__test__";
+import { AddTileCommand, BrainCommandHistory, BrainDef, type BrainRuleDef } from "@wendoo/core/brain/model";
+import type { BrainTileFactoryDef, BrainTileVariableDef } from "@wendoo/core/brain/tiles";
 import type { CaretPosition } from "../caret-run";
 import { composeAfterTileCreation, routeTileSelection, type TileSelectionDeferralEffects } from "./useTileSelection";
 

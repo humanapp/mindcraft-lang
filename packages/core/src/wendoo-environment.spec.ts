@@ -11,21 +11,21 @@ import {
   type ReadonlyList,
   type WendooEnvironment,
   type WendooModule,
-} from "@wendoo-lang/core";
+} from "@wendoo/core";
 import {
   type BrainServices,
   type ITileCatalog,
   mkVariableFactoryTileId,
   mkVariableTileId,
   TilePlacement,
-} from "@wendoo-lang/core/brain";
-import { BrainDef } from "@wendoo-lang/core/brain/model";
+} from "@wendoo/core/brain";
+import { BrainDef } from "@wendoo/core/brain/model";
 import {
   BrainTileParameterDef,
   BrainTileSensorDef,
   BrainTileVariableDef,
   getCatalogFallbackLabel,
-} from "@wendoo-lang/core/brain/tiles";
+} from "@wendoo/core/brain/tiles";
 import {
   BYTECODE_VERSION,
   CoreTypeIds,
@@ -38,7 +38,7 @@ import {
   type StructTypeDef,
   TRUE_VALUE,
   type Value,
-} from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/runtime";
 
 const noopCodec = {
   encode(): void {},

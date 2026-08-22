@@ -8,14 +8,14 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { LocaleCatalog, SentenceCaseSpec } from "@wendoo-lang/core/localization";
+import type { LocaleCatalog, SentenceCaseSpec } from "@wendoo/core/localization";
 import {
   applySentenceCase,
   createDefaultLocalizer,
   createLocalizer,
   defaultPluralRule,
   defaultSentenceCaseSpec,
-} from "@wendoo-lang/core/localization";
+} from "@wendoo/core/localization";
 
 /** A catalog translating nothing, carrying only `locale` and its sentence-case rule. */
 function catalogFor(locale: string, sentenceCase?: SentenceCaseSpec): LocaleCatalog {

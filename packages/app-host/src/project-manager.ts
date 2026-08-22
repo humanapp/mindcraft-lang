@@ -1,4 +1,4 @@
-import { logger } from "@wendoo-lang/core";
+import { logger } from "@wendoo/core";
 import { AppHostError, AppHostErrorCode, appHostError } from "./app-host-error.js";
 import type { InMemoryProjectFileSystemOptions } from "./in-memory-project-file-system.js";
 import { createInMemoryProjectFileSystem } from "./in-memory-project-file-system.js";

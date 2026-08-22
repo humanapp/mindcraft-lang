@@ -7,7 +7,7 @@ import type {
   ProjectManifest,
   ProjectRef,
   ProjectStore,
-} from "@wendoo-lang/app-host";
+} from "@wendoo/app-host";
 import {
   AppHostErrorCode,
   appHostError,
@@ -17,8 +17,8 @@ import {
   parseProjectContentManifest,
   serializeProjectContentManifest,
   WENDOO_JSON_PATH,
-} from "@wendoo-lang/app-host";
-import type { FileSystemNotification } from "@wendoo-lang/bridge-protocol";
+} from "@wendoo/app-host";
+import type { FileSystemNotification } from "@wendoo/bridge-protocol";
 import type { InstalledExtensionSnapshots } from "./fetched-extension-snapshots.js";
 import {
   INSTALLED_EXTENSIONS_APP_DATA_KEY,

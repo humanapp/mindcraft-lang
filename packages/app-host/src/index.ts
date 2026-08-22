@@ -1,4 +1,4 @@
-export type { FileContent, WireFileContent } from "@wendoo-lang/service-api";
+export type { FileContent, WireFileContent } from "@wendoo/service-api";
 export {
   base64ToBytes,
   bytesToBase64,
@@ -11,7 +11,7 @@ export {
   fileContentToWire,
   isBinaryFileContent,
   LOWEST_CONTENT_VERSION,
-} from "@wendoo-lang/service-api";
+} from "@wendoo/service-api";
 export { AppHostError, AppHostErrorCode, appHostError } from "./app-host-error.js";
 export type { DependencyPinProbe, UnstableDependency } from "./dependency-stability.js";
 export { collectUnstableDependencies, UnstableDependencyCode } from "./dependency-stability.js";

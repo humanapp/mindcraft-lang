@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { before, describe, it } from "node:test";
-import type { ExtensionFetchTransport } from "@wendoo-lang/app-host";
+import type { ExtensionFetchTransport } from "@wendoo/app-host";
 import {
   checkExtensionReferenceUpdate,
   createJsDelivrExtensionTransport,
@@ -8,7 +8,7 @@ import {
   highestListedRelease,
   JSDELIVR_CDN_BASE_URL,
   resolveExtensionAddInput,
-} from "@wendoo-lang/app-host";
+} from "@wendoo/app-host";
 
 const LIVE_COORDINATE = "wendoo-lang/lib-codal-position";
 

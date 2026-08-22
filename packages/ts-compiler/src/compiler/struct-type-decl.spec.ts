@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { List } from "@wendoo-lang/core";
+import { List } from "@wendoo/core";
 import {
   type BrainServices,
   type IBrainTileDef,
@@ -20,16 +20,16 @@ import {
   mkVariableTileId,
   RuleSide,
   TilePlacement,
-} from "@wendoo-lang/core/brain";
-import { __test__appendTile, __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
-import type { Expr } from "@wendoo-lang/core/brain/compiler";
+} from "@wendoo/core/brain";
+import { __test__appendTile, __test__createBrainServices } from "@wendoo/core/brain/__test__";
+import type { Expr } from "@wendoo/core/brain/compiler";
 import {
   type InsertionContext,
   parseTilesForSuggestions,
   suggestTiles,
   type TileSuggestionResult,
-} from "@wendoo-lang/core/brain/language-service";
-import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
+} from "@wendoo/core/brain/language-service";
+import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@wendoo/core/brain/model";
 import {
   type BrainTileFactoryDef,
   BrainTileLiteralDef,
@@ -37,7 +37,7 @@ import {
   BrainTileVariableDef,
   getCatalogFallbackLabel,
   TileCatalog,
-} from "@wendoo-lang/core/brain/tiles";
+} from "@wendoo/core/brain/tiles";
 import {
   CoreOpId,
   CoreTypeIds,
@@ -47,7 +47,7 @@ import {
   type StructTypeDef,
   type TypeId,
   type Value,
-} from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/runtime";
 import ts from "typescript";
 import { buildCompiledActionBundle } from "../runtime/action-bundle.js";
 import { registerUserTile } from "../runtime/registration-bridge.js";

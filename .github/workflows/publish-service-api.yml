@@ -1,4 +1,4 @@
-name: Publish @wendoo-lang/service-api
+name: Publish @wendoo/service-api
 
 on:
   push:

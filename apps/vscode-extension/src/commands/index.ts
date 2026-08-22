@@ -1,5 +1,5 @@
-import { fileContentText } from "@wendoo-lang/app-host";
-import { addManifestFilesEntry, removeManifestFilesEntry } from "@wendoo-lang/bridge-app/manifest-files";
+import { fileContentText } from "@wendoo/app-host";
+import { addManifestFilesEntry, removeManifestFilesEntry } from "@wendoo/bridge-app/manifest-files";
 import * as vscode from "vscode";
 import { isBuildMembershipPath } from "../services/build-membership-tracker";
 import type { ProjectManager } from "../services/project-manager";

@@ -1,5 +1,5 @@
-import { RuleSide } from "@wendoo-lang/core/brain";
-import type { DiagCode, DiagParams } from "@wendoo-lang/core/brain/compiler";
+import { RuleSide } from "@wendoo/core/brain";
+import type { DiagCode, DiagParams } from "@wendoo/core/brain/compiler";
 import type { RuleSideName } from "./tool-schemas.js";
 
 /**

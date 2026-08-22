@@ -1,4 +1,4 @@
-# @wendoo-lang/assistant-bridge
+# @wendoo/assistant-bridge
 
 The open integration contract an Assistant harness drives a Wendoo target
 through: the tool surface, its validation and diagnostics, the catalog digest,
@@ -7,14 +7,14 @@ orchestration, no keys -- a harness supplies those.
 
 ## Entry points
 
-- `@wendoo-lang/assistant-bridge` -- the tool contract (definitions,
+- `@wendoo/assistant-bridge` -- the tool contract (definitions,
   executors, name/JSON dispatch, the proposal rejection policy), catalog
   serialization, the trace summarizer, and the `TargetAdapter` interface with
   its contract version and conformance check.
-- `@wendoo-lang/assistant-bridge/kit` -- the rehearsal adapter kit: the
+- `@wendoo/assistant-bridge/kit` -- the rehearsal adapter kit: the
   shared implementation of everything target-invariant in a rehearsal adapter,
   plus the conformance suite a target runs against its own adapter. Node only.
-- `@wendoo-lang/assistant-bridge/testing` -- a fake target adapter over the
+- `@wendoo/assistant-bridge/testing` -- a fake target adapter over the
   kit, for exercising the tools and the suite without a target. Node only.
 
 ## Implementing a target

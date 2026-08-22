@@ -1,4 +1,4 @@
-name: Publish @wendoo-lang/core
+name: Publish @wendoo/core
 
 on:
   push:

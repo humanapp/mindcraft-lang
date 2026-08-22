@@ -1,8 +1,8 @@
-import { RuleSide } from "@wendoo-lang/core/brain";
-import { tileSentenceWord } from "@wendoo-lang/core/brain/language-service";
-import type { BrainRuleDef } from "@wendoo-lang/core/brain/model";
-import type { BrainTileVariableDef } from "@wendoo-lang/core/brain/tiles";
-import type { Localizer } from "@wendoo-lang/core/localization";
+import { RuleSide } from "@wendoo/core/brain";
+import { tileSentenceWord } from "@wendoo/core/brain/language-service";
+import type { BrainRuleDef } from "@wendoo/core/brain/model";
+import type { BrainTileVariableDef } from "@wendoo/core/brain/tiles";
+import type { Localizer } from "@wendoo/core/localization";
 import {
   ArrowLeftFromLine,
   ArrowRightFromLine,

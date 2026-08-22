@@ -12,12 +12,12 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
-import { type Dict, List } from "@wendoo-lang/core";
-import type { BrainServices, IBrainRuleDef } from "@wendoo-lang/core/brain";
-import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
-import { compileBrain, runBrainLinkPipeline } from "@wendoo-lang/core/brain/compiler";
-import { BrainDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
-import type { BrainLinkEnvironment } from "@wendoo-lang/core/runtime";
+import { type Dict, List } from "@wendoo/core";
+import type { BrainServices, IBrainRuleDef } from "@wendoo/core/brain";
+import { __test__createBrainServices } from "@wendoo/core/brain/__test__";
+import { compileBrain, runBrainLinkPipeline } from "@wendoo/core/brain/compiler";
+import { BrainDef, type BrainRuleDef } from "@wendoo/core/brain/model";
+import type { BrainLinkEnvironment } from "@wendoo/core/runtime";
 
 let services: BrainServices;
 

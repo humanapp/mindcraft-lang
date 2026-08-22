@@ -1,4 +1,4 @@
-export { CORE_LIB_COORDINATE, CORE_LIB_REFERENCE } from "@wendoo-lang/bridge-app";
+export { CORE_LIB_COORDINATE, CORE_LIB_REFERENCE } from "@wendoo/bridge-app";
 
 /**
  * The sim layer's `<owner>/<repo>` coordinate: its identity, its compiler

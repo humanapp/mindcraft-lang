@@ -8,7 +8,7 @@
  * `@lib/<owner>/<repo>` resolves to the declaring extension's registration.
  */
 
-import type { FileContent } from "@wendoo-lang/service-api";
+import type { FileContent } from "@wendoo/service-api";
 import { qualifiedClassName } from "./symbol-keys.js";
 
 /**

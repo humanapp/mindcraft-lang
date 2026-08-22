@@ -9,7 +9,7 @@ import type {
   FetchedExtensionFile,
   ProjectContentManifest,
   ProjectContentManifestParseResult,
-} from "@wendoo-lang/app-host";
+} from "@wendoo/app-host";
 import {
   APP_BUNDLE_FETCH_CONCURRENCY,
   deriveTargetAppCacheDir,

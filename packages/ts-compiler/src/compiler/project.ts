@@ -1,7 +1,7 @@
-import { List } from "@wendoo-lang/core";
-import { type BrainServices, compiler } from "@wendoo-lang/core/brain";
-import type { BrainTileParameterDef } from "@wendoo-lang/core/brain/tiles";
-import type { FunctionBytecode, ITypeRegistry, TypeId } from "@wendoo-lang/core/runtime";
+import { List } from "@wendoo/core";
+import { type BrainServices, compiler } from "@wendoo/core/brain";
+import type { BrainTileParameterDef } from "@wendoo/core/brain/tiles";
+import type { FunctionBytecode, ITypeRegistry, TypeId } from "@wendoo/core/runtime";
 import {
   CoreFuncId,
   CoreTypeIds,
@@ -10,9 +10,9 @@ import {
   mkModifierTileId,
   mkParameterTileId,
   Op,
-} from "@wendoo-lang/core/runtime";
-import type { FileContent } from "@wendoo-lang/service-api";
-import { fileContentText } from "@wendoo-lang/service-api";
+} from "@wendoo/core/runtime";
+import type { FileContent } from "@wendoo/service-api";
+import { fileContentText } from "@wendoo/service-api";
 import ts from "typescript";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { collectModifiers, collectParams } from "./arg-spec-utils.js";

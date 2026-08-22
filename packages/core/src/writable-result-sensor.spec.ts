@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { coreModule, createHostSensor, createWendooEnvironment, List, type WendooModule } from "@wendoo-lang/core";
-import { type BrainServices, mkOperatorTileId, TilePlacement } from "@wendoo-lang/core/brain";
-import { __test__appendTile } from "@wendoo-lang/core/brain/__test__";
-import { BrainDef } from "@wendoo-lang/core/brain/model";
-import { BrainTileAccessorDef, BrainTileLiteralDef, BrainTileSensorDef } from "@wendoo-lang/core/brain/tiles";
+import { coreModule, createHostSensor, createWendooEnvironment, List, type WendooModule } from "@wendoo/core";
+import { type BrainServices, mkOperatorTileId, TilePlacement } from "@wendoo/core/brain";
+import { __test__appendTile } from "@wendoo/core/brain/__test__";
+import { BrainDef } from "@wendoo/core/brain/model";
+import { BrainTileAccessorDef, BrainTileLiteralDef, BrainTileSensorDef } from "@wendoo/core/brain/tiles";
 import {
   CoreOpId,
   CoreTypeIds,
@@ -17,7 +17,7 @@ import {
   type NumberValue,
   TRUE_VALUE,
   type TypeId,
-} from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/runtime";
 
 /** Host-owned state a native "actor" struct reads from and writes to by reference. */
 interface ActorState {

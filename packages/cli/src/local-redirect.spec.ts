@@ -9,7 +9,7 @@ import { findLocalCliMain, isLocalBuild, runLocalBuild, shouldRedirect } from ".
 const tempRoots: string[] = [];
 
 function tempRoot(): string {
-  const dir = mkdtempSync(path.join(tmpdir(), "wendoo-cli-redirect-"));
+  const dir = mkdtempSync(path.join(tmpdir(), "wendoo-redirect-"));
   tempRoots.push(dir);
   return dir;
 }
@@ -44,14 +44,14 @@ describe("findLocalCliMain", () => {
   it("finds the direct wendoo-lang layout (packages/cli)", () => {
     const root = tempRoot();
     const cliDir = path.join(root, "packages", "cli");
-    makeCliCandidate(cliDir, "wendoo-cli", true);
+    makeCliCandidate(cliDir, "wendoo", true);
     assert.equal(findLocalCliMain(deepStart(cliDir)), path.join(cliDir, "dist", "main.js"));
   });
 
   it("finds the mcu-embedded layout (external/wendoo-lang/packages/cli)", () => {
     const root = tempRoot();
     const cliDir = path.join(root, "external", "wendoo-lang", "packages", "cli");
-    makeCliCandidate(cliDir, "wendoo-cli", true);
+    makeCliCandidate(cliDir, "wendoo", true);
     assert.equal(findLocalCliMain(deepStart(root)), path.join(cliDir, "dist", "main.js"));
   });
 
@@ -63,7 +63,7 @@ describe("findLocalCliMain", () => {
 
   it("ignores a name-matching package that has no dist/main.js", () => {
     const root = tempRoot();
-    makeCliCandidate(path.join(root, "packages", "cli"), "wendoo-cli", false);
+    makeCliCandidate(path.join(root, "packages", "cli"), "wendoo", false);
     assert.equal(findLocalCliMain(deepStart(root)), undefined);
   });
 

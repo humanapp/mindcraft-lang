@@ -1,4 +1,4 @@
-import type { BrainJsonMigration } from "@wendoo-lang/core/app";
+import type { BrainJsonMigration } from "@wendoo/core/app";
 
 const kTypeIdRenames: Record<string, string> = {
   "struct:<actorRef>": "struct:<ActorRef>",

@@ -1,5 +1,5 @@
 /**
- * Test-support entry point, published as `@wendoo-lang/ts-compiler/testing`.
+ * Test-support entry point, published as `@wendoo/ts-compiler/testing`.
  * Symbols here are test-harness surface for spec suites that compile user
  * code; they are not part of the product compiler API.
  */

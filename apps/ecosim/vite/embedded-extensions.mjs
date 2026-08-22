@@ -1,4 +1,4 @@
-import { embeddedExtensionsVitePlugin } from "@wendoo-lang/bridge-app/node";
+import { embeddedExtensionsVitePlugin } from "@wendoo/bridge-app/node";
 import path from "path";
 
 // The extensions apps/ecosim offers, by coordinate and source directory. The file

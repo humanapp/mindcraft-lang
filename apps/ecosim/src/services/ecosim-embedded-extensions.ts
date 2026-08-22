@@ -1,5 +1,5 @@
 import embeddedExtensionBundles from "virtual:wendoo-embedded-extensions";
-import type { EmbeddedExtension } from "@wendoo-lang/bridge-app";
+import type { EmbeddedExtension } from "@wendoo/bridge-app";
 
 export {
   CORE_LIB_COORDINATE,

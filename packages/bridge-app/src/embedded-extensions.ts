@@ -1,9 +1,4 @@
-import type {
-  CatalogMoveVersionLookup,
-  ExtensionCatalogMoves,
-  ExtensionTarget,
-  FileContent,
-} from "@wendoo-lang/app-host";
+import type { CatalogMoveVersionLookup, ExtensionCatalogMoves, ExtensionTarget, FileContent } from "@wendoo/app-host";
 import {
   applyCatalogMove,
   CatalogMoveApplyErrorCode,
@@ -14,8 +9,8 @@ import {
   parseExtensionReference,
   parseProjectContentManifest,
   WENDOO_JSON_PATH,
-} from "@wendoo-lang/app-host";
-import type { DependencyMount, ProjectDependency } from "@wendoo-lang/ts-compiler";
+} from "@wendoo/app-host";
+import type { DependencyMount, ProjectDependency } from "@wendoo/ts-compiler";
 
 /** An extensions list keyed by `<owner>/<repo>` coordinate; each value is an extension reference string. */
 type ExtensionsMap = Readonly<Record<string, string>>;

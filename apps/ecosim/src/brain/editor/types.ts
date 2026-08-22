@@ -1,4 +1,4 @@
-import type { ITileMetadata } from "@wendoo-lang/core/app";
+import type { ITileMetadata } from "@wendoo/core/app";
 
 export type TileColorDef = { when: string; do: string };
 

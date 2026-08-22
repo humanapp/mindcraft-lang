@@ -1,6 +1,6 @@
-import { fileContentText } from "@wendoo-lang/app-host";
-import { findMissingListedFiles, isFileInBuild, readManifestFilesList } from "@wendoo-lang/bridge-app/manifest-files";
-import type { IFileSystem } from "@wendoo-lang/bridge-client";
+import { fileContentText } from "@wendoo/app-host";
+import { findMissingListedFiles, isFileInBuild, readManifestFilesList } from "@wendoo/bridge-app/manifest-files";
+import type { IFileSystem } from "@wendoo/bridge-client";
 import * as vscode from "vscode";
 import { WENDOO_JSON } from "../wendoo-json";
 

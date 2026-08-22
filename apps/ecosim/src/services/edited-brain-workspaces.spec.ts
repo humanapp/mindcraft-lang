@@ -7,22 +7,22 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { AuthoringWorkspace, TargetAdapter } from "@wendoo-lang/assistant-bridge";
-import { serveToolCalls } from "@wendoo-lang/assistant-bridge/relay";
-import { ruleIdAt } from "@wendoo-lang/assistant-bridge/testing";
-import type { EditedBrainWorkspaces, PersonActivity } from "@wendoo-lang/assistant-panel";
+import type { AuthoringWorkspace, TargetAdapter } from "@wendoo/assistant-bridge";
+import { serveToolCalls } from "@wendoo/assistant-bridge/relay";
+import { ruleIdAt } from "@wendoo/assistant-bridge/testing";
+import type { EditedBrainWorkspaces, PersonActivity } from "@wendoo/assistant-panel";
 import {
   createEditedBrainWorkspaces,
   createPersonActivity,
   NoEditedBrain,
   NoEditedBrainCode,
   personInteractionWindowMs,
-} from "@wendoo-lang/assistant-panel";
-import type { WendooEnvironment } from "@wendoo-lang/core/app";
-import { coreModule, createWendooEnvironment, List } from "@wendoo-lang/core/app";
-import type { BrainPageDef, BrainRuleDef } from "@wendoo-lang/core/brain/model";
-import { AddRuleCommand, BrainCommandHistory, BrainDef, BrainEditOrigin } from "@wendoo-lang/core/brain/model";
-import type { EditedBrain, EditedBrainPlace } from "@wendoo-lang/ui";
+} from "@wendoo/assistant-panel";
+import type { WendooEnvironment } from "@wendoo/core/app";
+import { coreModule, createWendooEnvironment, List } from "@wendoo/core/app";
+import type { BrainPageDef, BrainRuleDef } from "@wendoo/core/brain/model";
+import { AddRuleCommand, BrainCommandHistory, BrainDef, BrainEditOrigin } from "@wendoo/core/brain/model";
+import type { EditedBrain, EditedBrainPlace } from "@wendoo/ui";
 import { createEcosimModule } from "@/brain/index";
 import { TileIds } from "@/brain/tileids";
 import { createTargetAdapter } from "@/rehearsal/adapter";

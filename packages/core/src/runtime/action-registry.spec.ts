@@ -8,7 +8,7 @@ import {
   mkCallDef,
   NIL_VALUE,
   TARGET_ACTION_ID_BASE,
-} from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/runtime";
 
 function mkHostAction(key: string, id: number, isAsync = false): HostActionBinding {
   const descriptor: ActionDescriptor = {

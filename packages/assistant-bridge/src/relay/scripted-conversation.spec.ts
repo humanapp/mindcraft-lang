@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { RelayLoopback } from "@wendoo-lang/assistant-relay/testing";
-import { createRelayLoopback } from "@wendoo-lang/assistant-relay/testing";
+import type { RelayLoopback } from "@wendoo/assistant-relay/testing";
+import { createRelayLoopback } from "@wendoo/assistant-relay/testing";
 import { createTargetAdapter, FAKE_SUBJECT, ruleIdAt } from "../testing/index.js";
 import { executeToolCall } from "../tools/dispatch.js";
 import type { AuthoringWorkspace } from "../tools/workspace.js";

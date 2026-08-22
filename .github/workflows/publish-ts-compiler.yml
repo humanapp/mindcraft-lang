@@ -1,4 +1,4 @@
-name: Publish @wendoo-lang/ts-compiler
+name: Publish @wendoo/ts-compiler
 
 on:
   push:

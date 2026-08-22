@@ -1,5 +1,5 @@
-import type { IBrainTileDef } from "@wendoo-lang/core/brain";
-import type { BrainDef, BrainPageDef, BrainRuleDef } from "@wendoo-lang/core/brain/model";
+import type { IBrainTileDef } from "@wendoo/core/brain";
+import type { BrainDef, BrainPageDef, BrainRuleDef } from "@wendoo/core/brain/model";
 import { Fragment } from "react";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { resolveTileVisual } from "./tile-visual-utils";

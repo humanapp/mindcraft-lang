@@ -12,7 +12,7 @@ import {
   type IBrainTileDef,
   List,
   type WendooEnvironment,
-} from "@wendoo-lang/core/app";
+} from "@wendoo/core/app";
 
 /**
  * Plain, comparable form of a registered artifact. Every snapshot this module

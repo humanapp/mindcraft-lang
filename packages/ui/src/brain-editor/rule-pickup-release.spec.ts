@@ -8,8 +8,8 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { BrainCommand } from "@wendoo-lang/core/brain/model";
-import { BrainCommandHistory, BrainEditOrigin } from "@wendoo-lang/core/brain/model";
+import type { BrainCommand } from "@wendoo/core/brain/model";
+import { BrainCommandHistory, BrainEditOrigin } from "@wendoo/core/brain/model";
 import type { RulePickup, RulePickupController } from "./RulePickupContext";
 import { releaseHeldRule } from "./rule-pickup-release";
 

@@ -1,4 +1,4 @@
-import { APP_CAPABILITY_BIT_OFFSET, BitSet } from "@wendoo-lang/core/app";
+import { APP_CAPABILITY_BIT_OFFSET, BitSet } from "@wendoo/core/app";
 
 export const TileIds = {
   Modifier: {

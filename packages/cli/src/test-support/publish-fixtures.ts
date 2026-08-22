@@ -87,7 +87,7 @@ export function githubRewriteEnv(root: string): NodeJS.ProcessEnv {
 
 /** Create a fresh scratch directory under the OS temp dir. */
 export function makeScratchDir(): Promise<string> {
-  return mkdtemp(path.join(tmpdir(), "wendoo-cli-test-"));
+  return mkdtemp(path.join(tmpdir(), "wendoo-test-"));
 }
 
 /** Initialize a bare git repository with default branch `main` and return its path. */

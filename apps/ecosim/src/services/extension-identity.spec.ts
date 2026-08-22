@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { EmbeddedExtension } from "@wendoo-lang/bridge-app";
-import { resolveProjectExtensions } from "@wendoo-lang/bridge-app";
+import type { EmbeddedExtension } from "@wendoo/bridge-app";
+import { resolveProjectExtensions } from "@wendoo/bridge-app";
 
 /**
  * A mounted extension whose own manifest declares an identity that differs

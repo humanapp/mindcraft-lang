@@ -1,16 +1,10 @@
-import type { ReadonlyList, WendooEnvironment } from "@wendoo-lang/core";
-import type { IBrainDef } from "@wendoo-lang/core/app";
-import { coreModule, createEntropySeededRng, createWendooEnvironment, List } from "@wendoo-lang/core/app";
-import type { IBrainTileDef, ITileCatalog } from "@wendoo-lang/core/brain";
-import { childRulePath, RuleSide, rootRulePath } from "@wendoo-lang/core/brain";
-import type {
-  BrainCommand,
-  BrainEditOrigin,
-  BrainJson,
-  BrainPageDef,
-  BrainRuleDef,
-} from "@wendoo-lang/core/brain/model";
-import { BrainCommandHistory, BrainDef } from "@wendoo-lang/core/brain/model";
+import type { ReadonlyList, WendooEnvironment } from "@wendoo/core";
+import type { IBrainDef } from "@wendoo/core/app";
+import { coreModule, createEntropySeededRng, createWendooEnvironment, List } from "@wendoo/core/app";
+import type { IBrainTileDef, ITileCatalog } from "@wendoo/core/brain";
+import { childRulePath, RuleSide, rootRulePath } from "@wendoo/core/brain";
+import type { BrainCommand, BrainEditOrigin, BrainJson, BrainPageDef, BrainRuleDef } from "@wendoo/core/brain/model";
+import { BrainCommandHistory, BrainDef } from "@wendoo/core/brain/model";
 import type { TargetAdapter } from "../target/adapter.js";
 import { sessionTileDescriptions } from "./tile-descriptions.js";
 import type { RuleSideName } from "./tool-schemas.js";

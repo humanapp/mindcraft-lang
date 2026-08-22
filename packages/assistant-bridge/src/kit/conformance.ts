@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
-import type { IBrainDef } from "@wendoo-lang/core/app";
+import type { IBrainDef } from "@wendoo/core/app";
 import { summarizeRun } from "../simulate/summarizer.js";
 import type { AdapterExpectation, SimulationRun, SimulationScenario, TargetAdapter } from "../target/adapter.js";
 import {

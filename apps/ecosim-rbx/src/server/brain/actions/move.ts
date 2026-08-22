@@ -28,7 +28,7 @@ import {
   type Value,
   Vector2,
   VOID_VALUE,
-} from "@wendoo-lang/core/app";
+} from "@wendoo/core/app";
 import { EcosimHostActions } from "../abi-ids";
 import type { Actor } from "../actor";
 import { getSelf } from "../execution-context-types";

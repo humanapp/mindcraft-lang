@@ -1,4 +1,4 @@
-import { BrainDef, type WendooEnvironment } from "@wendoo-lang/core/app";
+import { BrainDef, type WendooEnvironment } from "@wendoo/core/app";
 
 function normalizeBrainDef(brainDef: unknown): BrainDef {
   if (!(brainDef instanceof BrainDef)) {

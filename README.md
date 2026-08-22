@@ -23,18 +23,18 @@ Wendoo draws inspiration from other tile-based programming systems past and pres
 
 | Package | Description |
 |---------|-------------|
-| [@wendoo-lang/core](packages/core/) | Wendoo Language runtime -- tiles, parser, compiler, VM (multi-target: Roblox, Node.js, ESM) |
-| [@wendoo-lang/app-host](packages/app-host/) | Project management, workspace storage, and IDB persistence for Wendoo apps |
-| [@wendoo-lang/ui](packages/ui/) | Shared React UI -- shadcn/ui primitives + brain editor components |
-| [@wendoo-lang/docs](packages/docs/) | Shared documentation subsystem -- renders as in-app sidebar or full-screen SPA |
-| [@wendoo-lang/ts-compiler](packages/ts-compiler/) | TypeScript-to-Wendoo bytecode compiler |
-| [@wendoo-lang/assistant-bridge](packages/assistant-bridge/) | Assistant bridge -- the open tool contract, catalog digest, trace summarizer, target adapter interface, and rehearsal adapter kit |
-| [@wendoo-lang/assistant-relay](packages/assistant-relay/) | Assistant relay protocol -- the session handshake, turn events, and tool-call wire an assistant service speaks with a client |
-| [@wendoo-lang/service-api](packages/service-api/) | Request/response schemas, shared enums, error shapes, and serialization formats for backend service APIs |
-| [@wendoo-lang/cli](packages/cli/) | Command-line tools for Wendoo projects |
-| [@wendoo-lang/bridge-protocol](packages/bridge-protocol/) | VS Code bridge network protocol types and schemas |
-| [@wendoo-lang/bridge-client](packages/bridge-client/) | Client SDK for the VS Code bridge |
-| [@wendoo-lang/bridge-app](packages/bridge-app/) | Opinionated layer atop bridge-client for the VS Code bridge |
+| [@wendoo/core](packages/core/) | Wendoo Language runtime -- tiles, parser, compiler, VM (multi-target: Roblox, Node.js, ESM) |
+| [@wendoo/app-host](packages/app-host/) | Project management, workspace storage, and IDB persistence for Wendoo apps |
+| [@wendoo/ui](packages/ui/) | Shared React UI -- shadcn/ui primitives + brain editor components |
+| [@wendoo/docs](packages/docs/) | Shared documentation subsystem -- renders as in-app sidebar or full-screen SPA |
+| [@wendoo/ts-compiler](packages/ts-compiler/) | TypeScript-to-Wendoo bytecode compiler |
+| [@wendoo/assistant-bridge](packages/assistant-bridge/) | Assistant bridge -- the open tool contract, catalog digest, trace summarizer, target adapter interface, and rehearsal adapter kit |
+| [@wendoo/assistant-relay](packages/assistant-relay/) | Assistant relay protocol -- the session handshake, turn events, and tool-call wire an assistant service speaks with a client |
+| [@wendoo/service-api](packages/service-api/) | Request/response schemas, shared enums, error shapes, and serialization formats for backend service APIs |
+| [@wendoo/cli](packages/cli/) | Command-line tools for Wendoo projects |
+| [@wendoo/bridge-protocol](packages/bridge-protocol/) | VS Code bridge network protocol types and schemas |
+| [@wendoo/bridge-client](packages/bridge-client/) | Client SDK for the VS Code bridge |
+| [@wendoo/bridge-app](packages/bridge-app/) | Opinionated layer atop bridge-client for the VS Code bridge |
 
 ## Apps
 
@@ -51,13 +51,13 @@ Install the packages you need:
 
 ```bash
 # Core only (language runtime, compiler, VM)
-npm install @wendoo-lang/core
+npm install @wendoo/core
 
 # Core + UI (adds brain editor and shadcn/ui components)
-npm install @wendoo-lang/core @wendoo-lang/ui
+npm install @wendoo/core @wendoo/ui
 
 # Full stack (adds documentation sidebar and renderer)
-npm install @wendoo-lang/core @wendoo-lang/ui @wendoo-lang/docs
+npm install @wendoo/core @wendoo/ui @wendoo/docs
 
 # For VS Code integration, see apps/ecosim for example implementation.
 ```

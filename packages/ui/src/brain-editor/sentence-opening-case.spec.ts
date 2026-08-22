@@ -6,11 +6,11 @@
 
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import type { BrainServices } from "@wendoo-lang/core/brain";
-import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
-import { projectRuleSentence, segmentDisplayText, sentenceText } from "@wendoo-lang/core/brain/language-service";
-import type { Localizer } from "@wendoo-lang/core/localization";
-import { createDefaultLocalizer, createLocalizer, defaultPluralRule } from "@wendoo-lang/core/localization";
+import type { BrainServices } from "@wendoo/core/brain";
+import { __test__createBrainServices } from "@wendoo/core/brain/__test__";
+import { projectRuleSentence, segmentDisplayText, sentenceText } from "@wendoo/core/brain/language-service";
+import type { Localizer } from "@wendoo/core/localization";
+import { createDefaultLocalizer, createLocalizer, defaultPluralRule } from "@wendoo/core/localization";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { type BrainEditorConfig, BrainEditorProvider } from "./BrainEditorContext";

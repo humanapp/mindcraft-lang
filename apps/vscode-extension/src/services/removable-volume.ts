@@ -1,5 +1,5 @@
-import type { FolderSessionErrorCode as FolderSessionErrorCodeType } from "@wendoo-lang/bridge-protocol";
-import { FolderSessionErrorCode } from "@wendoo-lang/bridge-protocol";
+import type { FolderSessionErrorCode as FolderSessionErrorCodeType } from "@wendoo/bridge-protocol";
+import { FolderSessionErrorCode } from "@wendoo/bridge-protocol";
 
 /** A directory under which mounted removable volumes appear. */
 export interface RemovableVolumeRoot {

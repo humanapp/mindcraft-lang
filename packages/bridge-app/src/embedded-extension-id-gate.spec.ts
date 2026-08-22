@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { coreModule, createWendooEnvironment } from "@wendoo-lang/core";
+import { coreModule, createWendooEnvironment } from "@wendoo/core";
 import {
   findEmbeddedExtensionsMissingStableIds,
   formatEmbeddedExtensionIdViolations,

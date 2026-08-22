@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { describe, test } from "node:test";
-import type { ScenarioInput } from "@wendoo-lang/assistant-bridge";
-import { createRehearsalEnvironment, createSeededRng } from "@wendoo-lang/assistant-bridge/kit";
+import type { ScenarioInput } from "@wendoo/assistant-bridge";
+import { createRehearsalEnvironment, createSeededRng } from "@wendoo/assistant-bridge/kit";
 import type { Actor, Archetype } from "@/brain/actor";
 import { ARCHETYPE_NAMES, ARCHETYPES } from "@/brain/archetypes";
 import { createEcosimModule } from "@/brain/index";

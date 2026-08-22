@@ -1,12 +1,12 @@
-import { assertUnreachable } from "@wendoo-lang/core";
+import { assertUnreachable } from "@wendoo/core";
 import type {
   BrainTileAccessorDef,
   BrainTileKind,
   BrainTileLiteralDef,
   BrainTileVariableDef,
   IBrainTileDef,
-} from "@wendoo-lang/core/app";
-import { getCatalogFallbackLabel } from "@wendoo-lang/core/app";
+} from "@wendoo/core/app";
+import { getCatalogFallbackLabel } from "@wendoo/core/app";
 import { ICON_BASE } from "../icon-base";
 import { dataTypeIconMap } from "./data-type-icons";
 import { tileVisuals } from "./tile-visuals";

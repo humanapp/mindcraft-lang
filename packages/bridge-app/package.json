@@ -1,10 +1,10 @@
 {
-  "name": "@wendoo-lang/bridge-app",
+  "name": "@wendoo/bridge-app",
   "version": "0.2.1",
   "description": "App-side client for the Wendoo bridge",
   "license": "MIT",
   "type": "module",
-  "author": "humanapp",
+  "author": "wendoo-lang",
   "repository": {
     "type": "git",
     "url": "https://github.com/wendoo-lang/wendoo-lang.git",
@@ -88,11 +88,11 @@
     "release:major": "node ../../scripts/release.js major"
   },
   "dependencies": {
-    "@wendoo-lang/app-host": "file:../app-host",
-    "@wendoo-lang/bridge-client": "file:../bridge-client",
-    "@wendoo-lang/bridge-protocol": "file:../bridge-protocol",
-    "@wendoo-lang/core": "file:../core",
-    "@wendoo-lang/ts-compiler": "file:../ts-compiler"
+    "@wendoo/app-host": "file:../app-host",
+    "@wendoo/bridge-client": "file:../bridge-client",
+    "@wendoo/bridge-protocol": "file:../bridge-protocol",
+    "@wendoo/core": "file:../core",
+    "@wendoo/ts-compiler": "file:../ts-compiler"
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.15",

@@ -1,7 +1,7 @@
-import type { WendooEnvironment, WendooModule } from "@wendoo-lang/core/app";
-import { coreModule, createWendooEnvironment, Rng } from "@wendoo-lang/core/app";
-import type { NumberPrecision } from "@wendoo-lang/core/runtime";
-import { createProfileNumerics } from "@wendoo-lang/core/runtime";
+import type { WendooEnvironment, WendooModule } from "@wendoo/core/app";
+import { coreModule, createWendooEnvironment, Rng } from "@wendoo/core/app";
+import type { NumberPrecision } from "@wendoo/core/runtime";
+import { createProfileNumerics } from "@wendoo/core/runtime";
 
 /**
  * A seeded pseudo-random generator producing values in `[0, 1)`. The same seed

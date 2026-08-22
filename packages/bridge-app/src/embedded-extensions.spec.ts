@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { DependencyMount } from "@wendoo-lang/ts-compiler";
+import type { DependencyMount } from "@wendoo/ts-compiler";
 import type { EmbeddedExtension, OriginCandidate } from "./embedded-extensions.js";
 import {
   CatalogMoveWarningCode,

@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { List } from "@wendoo-lang/core";
+import { List } from "@wendoo/core";
 import {
   type BrainServices,
   type IBrainTileDef,
@@ -18,16 +18,16 @@ import {
   mkVariableFactoryTileId,
   mkVariableTileId,
   RuleSide,
-} from "@wendoo-lang/core/brain";
-import { __test__appendTile, __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
-import type { Expr } from "@wendoo-lang/core/brain/compiler";
+} from "@wendoo/core/brain";
+import { __test__appendTile, __test__createBrainServices } from "@wendoo/core/brain/__test__";
+import type { Expr } from "@wendoo/core/brain/compiler";
 import {
   type InsertionContext,
   parseTilesForSuggestions,
   suggestTiles,
   type TileSuggestionResult,
-} from "@wendoo-lang/core/brain/language-service";
-import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
+} from "@wendoo/core/brain/language-service";
+import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@wendoo/core/brain/model";
 import {
   type BrainTileAccessorDef,
   type BrainTileFactoryDef,
@@ -35,7 +35,7 @@ import {
   BrainTileOperatorDef,
   BrainTileVariableDef,
   TileCatalog,
-} from "@wendoo-lang/core/brain/tiles";
+} from "@wendoo/core/brain/tiles";
 import {
   CoreTypeIds,
   extractNumberValue,
@@ -43,7 +43,7 @@ import {
   NativeType,
   type TypeId,
   type Value,
-} from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/runtime";
 import { registerUserTile } from "../runtime/registration-bridge.js";
 import { buildUserTileMetadata } from "../runtime/user-tile-metadata.js";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";

@@ -1,4 +1,4 @@
-import { Input } from "@wendoo-lang/ui";
+import { Input } from "@wendoo/ui";
 import { Eye, EyeOff } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 

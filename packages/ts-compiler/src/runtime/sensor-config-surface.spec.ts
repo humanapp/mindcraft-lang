@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { coreModule, createWendooEnvironment, List } from "@wendoo-lang/core";
+import { coreModule, createWendooEnvironment, List } from "@wendoo/core";
 import {
   type BrainServices,
   CoreCapabilityBits,
@@ -8,12 +8,12 @@ import {
   mkOperatorTileId,
   RuleSide,
   TilePlacement,
-} from "@wendoo-lang/core/brain";
-import { __test__appendTile, __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
-import { parseTilesForSuggestions, suggestTiles } from "@wendoo-lang/core/brain/language-service";
-import { BrainDef } from "@wendoo-lang/core/brain/model";
-import { BrainTileLiteralDef } from "@wendoo-lang/core/brain/tiles";
-import { CoreOpId, CoreTypeIds, mkActuatorTileId, mkSensorTileId } from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/brain";
+import { __test__appendTile, __test__createBrainServices } from "@wendoo/core/brain/__test__";
+import { parseTilesForSuggestions, suggestTiles } from "@wendoo/core/brain/language-service";
+import { BrainDef } from "@wendoo/core/brain/model";
+import { BrainTileLiteralDef } from "@wendoo/core/brain/tiles";
+import { CoreOpId, CoreTypeIds, mkActuatorTileId, mkSensorTileId } from "@wendoo/core/runtime";
 import { UserTileProject } from "../compiler/compile.js";
 import { CompileDiagCode, DescriptorDiagCode } from "../compiler/diag-codes.js";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";

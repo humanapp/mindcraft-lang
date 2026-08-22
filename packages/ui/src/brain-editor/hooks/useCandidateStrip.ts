@@ -1,13 +1,13 @@
-import { List, type ReadonlyBitSet, type ReadonlyList, type UniqueSet } from "@wendoo-lang/core";
-import { type IBrainTileDef, type ITileCatalog, RuleSide } from "@wendoo-lang/core/brain";
+import { List, type ReadonlyBitSet, type ReadonlyList, type UniqueSet } from "@wendoo/core";
+import { type IBrainTileDef, type ITileCatalog, RuleSide } from "@wendoo/core/brain";
 import {
   buildInsertionContext,
   suggestTiles,
   type TileSuggestion,
   tileSentenceWord,
-} from "@wendoo-lang/core/brain/language-service";
-import type { BrainRuleDef } from "@wendoo-lang/core/brain/model";
-import { manufactureLiteralTile, manufactureVariableTile } from "@wendoo-lang/core/brain/tiles";
+} from "@wendoo/core/brain/language-service";
+import type { BrainRuleDef } from "@wendoo/core/brain/model";
+import { manufactureLiteralTile, manufactureVariableTile } from "@wendoo/core/brain/tiles";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type ArmedTileTarget, useArmedTargetActions } from "../ArmedTargetContext";
 import { useBrainEditorConfig, useLocalizer } from "../BrainEditorContext";

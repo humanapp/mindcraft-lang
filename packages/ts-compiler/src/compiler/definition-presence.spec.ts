@@ -10,9 +10,9 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { coreModule, createWendooEnvironment, type WendooEnvironment } from "@wendoo-lang/core";
-import { BrainDef } from "@wendoo-lang/core/brain/model";
-import { CoreTypeIds, mkActuatorTileId, mkParameterTileId } from "@wendoo-lang/core/runtime";
+import { coreModule, createWendooEnvironment, type WendooEnvironment } from "@wendoo/core";
+import { BrainDef } from "@wendoo/core/brain/model";
+import { CoreTypeIds, mkActuatorTileId, mkParameterTileId } from "@wendoo/core/runtime";
 import { buildCompiledActionBundle } from "../runtime/action-bundle.js";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { CompileDiagCode } from "./diag-codes.js";

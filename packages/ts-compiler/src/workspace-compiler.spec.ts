@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { coreModule, createWendooEnvironment, List, type WendooModule } from "@wendoo-lang/core";
-import { type EnumTypeDef, mkTypeId, NativeType } from "@wendoo-lang/core/runtime";
-import { fileContentText } from "@wendoo-lang/service-api";
+import { coreModule, createWendooEnvironment, List, type WendooModule } from "@wendoo/core";
+import { type EnumTypeDef, mkTypeId, NativeType } from "@wendoo/core/runtime";
+import { fileContentText } from "@wendoo/service-api";
 import { buildAmbientDeclarations } from "./compiler/ambient.js";
 import type { DependencyMount, ProjectDependency } from "./compiler/extension-mounts.js";
 import { declarationMount, type Mount } from "./compiler/mounts.js";

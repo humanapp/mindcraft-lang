@@ -7,15 +7,15 @@
 
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { UniqueSet } from "@wendoo-lang/core";
-import type { BrainServices, IBrainTileDef } from "@wendoo-lang/core/brain";
-import { CoreControlFlowId, mkControlFlowTileId, RuleSide } from "@wendoo-lang/core/brain";
-import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
-import { buildInsertionContext, parseTilesForSuggestions } from "@wendoo-lang/core/brain/language-service";
-import { BrainDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
-import { BrainTileLiteralDef } from "@wendoo-lang/core/brain/tiles";
-import { CoreTypeIds } from "@wendoo-lang/core/runtime";
-import { BitSet } from "@wendoo-lang/core/util";
+import { UniqueSet } from "@wendoo/core";
+import type { BrainServices, IBrainTileDef } from "@wendoo/core/brain";
+import { CoreControlFlowId, mkControlFlowTileId, RuleSide } from "@wendoo/core/brain";
+import { __test__createBrainServices } from "@wendoo/core/brain/__test__";
+import { buildInsertionContext, parseTilesForSuggestions } from "@wendoo/core/brain/language-service";
+import { BrainDef, type BrainRuleDef } from "@wendoo/core/brain/model";
+import { BrainTileLiteralDef } from "@wendoo/core/brain/tiles";
+import { CoreTypeIds } from "@wendoo/core/runtime";
+import { BitSet } from "@wendoo/core/util";
 
 let services: BrainServices;
 

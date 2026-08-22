@@ -1,17 +1,17 @@
-import type { AuthoringWorkspace } from "@wendoo-lang/assistant-bridge";
-import type { ToolCallMediator } from "@wendoo-lang/assistant-bridge/relay";
-import { serveToolCalls, unservedToolResults } from "@wendoo-lang/assistant-bridge/relay";
+import type { AuthoringWorkspace } from "@wendoo/assistant-bridge";
+import type { ToolCallMediator } from "@wendoo/assistant-bridge/relay";
+import { serveToolCalls, unservedToolResults } from "@wendoo/assistant-bridge/relay";
 import type {
   ConversationTurnEnding,
   RelayToolCallBatch,
   RelayToolManifest,
   RelayToolResultBatch,
-} from "@wendoo-lang/assistant-relay";
+} from "@wendoo/assistant-relay";
 import {
   ASSISTANT_RELAY_PROTOCOL_VERSION,
   ConversationTurnFailureCode,
   RelayTakeoverCode,
-} from "@wendoo-lang/assistant-relay";
+} from "@wendoo/assistant-relay";
 import type { PersonActivity } from "../app/person-activity";
 import type { ConversationStore, ConversationUpdate } from "../conversation/store";
 import { emptyConversationStore, recordFor, withActiveBrain, withUpdate } from "../conversation/store";

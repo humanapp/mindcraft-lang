@@ -1,6 +1,6 @@
-import type { IBrainTileDef, ITileCatalog, RuleSide } from "@wendoo-lang/core/brain";
-import { isVariableFactoryTileId, mkPageTileId } from "@wendoo-lang/core/brain";
-import type { BrainCommand, BrainDef, BrainPageDef, BrainRuleDef } from "@wendoo-lang/core/brain/model";
+import type { IBrainTileDef, ITileCatalog, RuleSide } from "@wendoo/core/brain";
+import { isVariableFactoryTileId, mkPageTileId } from "@wendoo/core/brain";
+import type { BrainCommand, BrainDef, BrainPageDef, BrainRuleDef } from "@wendoo/core/brain/model";
 import {
   AddPageCommand,
   AddRuleCommand,
@@ -13,9 +13,9 @@ import {
   RemovePageCommand,
   RemoveTileCommand,
   ReplaceTileCommand,
-} from "@wendoo-lang/core/brain/model";
-import type { BrainTileFactoryDef } from "@wendoo-lang/core/brain/tiles";
-import { manufactureLiteralTile, manufactureVariableTile } from "@wendoo-lang/core/brain/tiles";
+} from "@wendoo/core/brain/model";
+import type { BrainTileFactoryDef } from "@wendoo/core/brain/tiles";
+import { manufactureLiteralTile, manufactureVariableTile } from "@wendoo/core/brain/tiles";
 import type { SerializedDiagParams, ToolDiagnostic } from "./diagnostics.js";
 import { toToolDiagnostic } from "./diagnostics.js";
 import type { ProjectPageRef, ProjectRule } from "./read-project.js";

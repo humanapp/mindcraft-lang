@@ -28,7 +28,7 @@ import {
   type Value,
   Vector2,
   VOID_VALUE,
-} from "@wendoo-lang/core/app";
+} from "@wendoo/core/app";
 import { EcosimHostActions } from "@/brain/abi-ids";
 import { hasArg, resolveTargetPosition } from "@/brain/actions/utils";
 import type { Actor } from "@/brain/actor";

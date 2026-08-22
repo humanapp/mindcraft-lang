@@ -2,7 +2,7 @@ import type {
   FileSystemNotification,
   FilesystemChangeMessage,
   GeneralErrorMessage,
-} from "@wendoo-lang/bridge-protocol";
+} from "@wendoo/bridge-protocol";
 import type { WSContext } from "hono/ws";
 import { logger } from "#core/logging/logger.js";
 import { takePendingRequest } from "#core/pending-requests.js";

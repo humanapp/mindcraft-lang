@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { compiler } from "@wendoo-lang/core/brain";
-import { type FunctionBytecode, Op, type Program, type Value } from "@wendoo-lang/core/runtime";
+import { compiler } from "@wendoo/core/brain";
+import { type FunctionBytecode, Op, type Program, type Value } from "@wendoo/core/runtime";
 
 describe("core brain imports", () => {
   test("Op enum is importable and has expected members", () => {

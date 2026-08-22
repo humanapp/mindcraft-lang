@@ -7,8 +7,8 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { LocaleCatalog } from "@wendoo-lang/core/localization";
-import { createDefaultLocalizer, createLocalizer, defaultPluralRule } from "@wendoo-lang/core/localization";
+import type { LocaleCatalog } from "@wendoo/core/localization";
+import { createDefaultLocalizer, createLocalizer, defaultPluralRule } from "@wendoo/core/localization";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { type BrainEditorConfig, BrainEditorProvider, useTr } from "./BrainEditorContext";

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { createInMemoryProjectFileSystem } from "@wendoo-lang/app-host";
-import { FileSystem } from "@wendoo-lang/bridge-client";
-import { coreModule, createWendooEnvironment } from "@wendoo-lang/core";
+import { createInMemoryProjectFileSystem } from "@wendoo/app-host";
+import { FileSystem } from "@wendoo/bridge-client";
+import { coreModule, createWendooEnvironment } from "@wendoo/core";
 import {
   buildAmbientDeclarations,
   createWorkspaceCompiler,
@@ -10,7 +10,7 @@ import {
   declarationMount,
   isCompilerControlledPath,
   type Mount,
-} from "@wendoo-lang/ts-compiler";
+} from "@wendoo/ts-compiler";
 import { augmentProjectFileSystem } from "./compilation.js";
 import { toFileSystemSnapshot } from "./project-file-bridge.js";
 

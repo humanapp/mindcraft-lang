@@ -1,16 +1,16 @@
-import { List } from "@wendoo-lang/core";
-import type { IBrainTileDef } from "@wendoo-lang/core/brain";
-import { RuleSide } from "@wendoo-lang/core/brain";
-import type { InsertionContext, TileSuggestion } from "@wendoo-lang/core/brain/language-service";
+import { List } from "@wendoo/core";
+import type { IBrainTileDef } from "@wendoo/core/brain";
+import { RuleSide } from "@wendoo/core/brain";
+import type { InsertionContext, TileSuggestion } from "@wendoo/core/brain/language-service";
 import {
   buildInsertionContext,
   collectRuleHierarchyCapabilities,
   collectRuleHierarchyOutputKeys,
   suggestTiles as coreSuggestTiles,
   tileSentenceWord,
-} from "@wendoo-lang/core/brain/language-service";
-import type { BrainRuleDef } from "@wendoo-lang/core/brain/model";
-import type { Localizer } from "@wendoo-lang/core/localization";
+} from "@wendoo/core/brain/language-service";
+import type { BrainRuleDef } from "@wendoo/core/brain/model";
+import type { Localizer } from "@wendoo/core/localization";
 import type { ToolInput } from "./tool-schemas.js";
 import { type AuthoringWorkspace, findRule, toRuleSide } from "./workspace.js";
 

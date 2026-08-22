@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { List } from "@wendoo-lang/core";
-import type { WendooEnvironment } from "@wendoo-lang/core/app";
-import type { BrainServices } from "@wendoo-lang/core/brain";
+import { List } from "@wendoo/core";
+import type { WendooEnvironment } from "@wendoo/core/app";
+import type { BrainServices } from "@wendoo/core/brain";
 import type {
   BrainSyncFunctionEntry,
   ExecutionContext,
   IBrainRuntime,
   NumberPrecision,
   Value,
-} from "@wendoo-lang/core/runtime";
-import { CoreFuncId, extractNumberValue } from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/runtime";
+import { CoreFuncId, extractNumberValue } from "@wendoo/core/runtime";
 import { createFakeModule } from "../testing/fake-module.js";
 import { FAKE_SUBJECT, FAKE_TARGET_IDENTITY } from "../testing/index.js";
 import { createAuthoringWorkspace } from "../tools/workspace.js";

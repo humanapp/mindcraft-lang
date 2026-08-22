@@ -8,7 +8,7 @@ const fontFileName = "latinmodern-math.woff2";
 const fontPublicPath = `/assets/fonts/${fontFileName}`;
 
 /**
- * Vite plugin for @wendoo-lang/ui.
+ * Vite plugin for @wendoo/ui.
  *
  * Handles the Latin Modern Math font, which lives in the ui package but must
  * be served as a static asset by each consuming app:

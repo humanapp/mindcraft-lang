@@ -1,10 +1,10 @@
-import type { FileContent } from "@wendoo-lang/app-host";
+import type { FileContent } from "@wendoo/app-host";
 import {
   fileContentFromBytes,
   fileContentFromWire,
   fileContentToBytes,
   fileContentToWire,
-} from "@wendoo-lang/app-host";
+} from "@wendoo/app-host";
 import type {
   FileContentPayload,
   FileSystemNotification,
@@ -12,14 +12,14 @@ import type {
   FolderCompilerFilesPayload,
   FolderHostMessage,
   FolderSessionErrorCode as FolderSessionErrorCodeType,
-} from "@wendoo-lang/bridge-protocol";
+} from "@wendoo/bridge-protocol";
 import {
   EXTENSIONS_TREE_PATH,
   FOLDER_SESSION_PROTOCOL_VERSION,
   FolderSessionErrorCode,
   filesystemNotificationSchema,
   MAX_FILE_CONTENT_BYTES,
-} from "@wendoo-lang/bridge-protocol";
+} from "@wendoo/bridge-protocol";
 import * as vscode from "vscode";
 import { WENDOO_JSON } from "../wendoo-json";
 import type { DiagnosticsManager } from "./diagnostics-manager";

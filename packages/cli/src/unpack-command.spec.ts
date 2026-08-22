@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { after, describe, it } from "node:test";
-import { WENDOO_PROJECT_FORMAT } from "@wendoo-lang/service-api";
+import { WENDOO_PROJECT_FORMAT } from "@wendoo/service-api";
 import { listProjectFiles, makeScratchDir, runCliBin, writeProjectFiles } from "./test-support/publish-fixtures.js";
 
 const scratchDirs: string[] = [];

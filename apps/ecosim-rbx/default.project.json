@@ -18,8 +18,8 @@
           "@rbxts": {
             "$path": "node_modules/@rbxts"
           },
-          "@wendoo-lang": {
-            "$path": "node_modules/@wendoo-lang"
+          "@wendoo": {
+            "$path": "node_modules/@wendoo"
           }
         }
       },

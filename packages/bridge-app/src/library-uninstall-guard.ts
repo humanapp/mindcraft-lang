@@ -1,7 +1,7 @@
-import type { FileContent } from "@wendoo-lang/app-host";
-import { fileContentText } from "@wendoo-lang/app-host";
-import { renameBrainNamespaces } from "@wendoo-lang/core/app";
-import { EXTENSION_IMPORT_PREFIX } from "@wendoo-lang/ts-compiler";
+import type { FileContent } from "@wendoo/app-host";
+import { fileContentText } from "@wendoo/app-host";
+import { renameBrainNamespaces } from "@wendoo/core/app";
+import { EXTENSION_IMPORT_PREFIX } from "@wendoo/ts-compiler";
 import type { EmbeddedExtension, FetchedExtensionContentMap } from "./embedded-extensions.js";
 import { resolveProjectExtensions } from "./embedded-extensions.js";
 

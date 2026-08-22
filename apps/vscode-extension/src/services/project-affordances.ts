@@ -1,7 +1,7 @@
-import type { FileContent } from "@wendoo-lang/app-host";
-import { fileContentEquals, fileContentFromWire, fileContentText } from "@wendoo-lang/app-host";
-import type { FolderCompilerFilesPayload } from "@wendoo-lang/bridge-protocol";
-import { EXTENSIONS_TREE_PATH, INSTALLED_EXTENSIONS_METADATA_PATH } from "@wendoo-lang/bridge-protocol";
+import type { FileContent } from "@wendoo/app-host";
+import { fileContentEquals, fileContentFromWire, fileContentText } from "@wendoo/app-host";
+import type { FolderCompilerFilesPayload } from "@wendoo/bridge-protocol";
+import { EXTENSIONS_TREE_PATH, INSTALLED_EXTENSIONS_METADATA_PATH } from "@wendoo/bridge-protocol";
 
 /** Project-relative path of the generated TypeScript project configuration. */
 export const GENERATED_TSCONFIG_PATH = "tsconfig.json";

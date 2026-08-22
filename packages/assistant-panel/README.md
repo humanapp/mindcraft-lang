@@ -1,4 +1,4 @@
-# @wendoo-lang/assistant-panel
+# @wendoo/assistant-panel
 
 The Assistant's conversation machinery for **Wendoo** web applications. This
 package owns the relay session, the conversation a brain accumulates, and the
@@ -13,11 +13,11 @@ owns where the conversation is shown.
 - **Session machine** (`AssistantStatus`, `AssistantChannel`,
   `AssistantConnect`) -- one session per brain, opened when the brain's panel
   opens or on its first send, one turn at a time per brain, tool calls served
-  through `@wendoo-lang/assistant-bridge`
+  through `@wendoo/assistant-bridge`
 - **WebSocket channel** (`createWebSocketConnect`) -- relay sessions over
   browser WebSockets to the service address the app configures
 - **Per-brain conversations** -- one `ConversationRecord` per brain, the record
-  format `@wendoo-lang/assistant-relay` defines; a turn keeps filling the
+  format `@wendoo/assistant-relay` defines; a turn keeps filling the
   brain it was sent for whatever the host makes active afterwards
 - **Conversation surface** (`AssistantSurface`) -- the entity whose mind is
   open, the conversation it has had with the person, and the box the next thing
@@ -36,7 +36,7 @@ resolve the source directly via Vite aliases and tsconfig path mappings.
 ```js
 resolve: {
   alias: {
-    "@wendoo-lang/assistant-panel": path.resolve(__dirname, "../../packages/assistant-panel/src"),
+    "@wendoo/assistant-panel": path.resolve(__dirname, "../../packages/assistant-panel/src"),
   },
 },
 ```
@@ -47,8 +47,8 @@ resolve: {
 {
   "compilerOptions": {
     "paths": {
-      "@wendoo-lang/assistant-panel": ["../../packages/assistant-panel/src/index.ts"],
-      "@wendoo-lang/assistant-panel/*": ["../../packages/assistant-panel/src/*"]
+      "@wendoo/assistant-panel": ["../../packages/assistant-panel/src/index.ts"],
+      "@wendoo/assistant-panel/*": ["../../packages/assistant-panel/src/*"]
     }
   }
 }
@@ -61,7 +61,7 @@ tool manifest the handshake declares, and the workspace a brain's tool calls run
 against. Nothing connects until a brain's session is opened or its first `send`.
 
 ```tsx
-import { AssistantProvider, AssistantSurface, createWebSocketConnect } from "@wendoo-lang/assistant-panel";
+import { AssistantProvider, AssistantSurface, createWebSocketConnect } from "@wendoo/assistant-panel";
 
 <AssistantProvider
   connect={createWebSocketConnect(serviceUrl)}
@@ -107,8 +107,8 @@ src/
 
 ## Dependencies
 
-- **@wendoo-lang/assistant-relay** -- the relay wire and the conversation record format
-- **@wendoo-lang/assistant-bridge** -- the tools a turn's calls are served with
+- **@wendoo/assistant-relay** -- the relay wire and the conversation record format
+- **@wendoo/assistant-bridge** -- the tools a turn's calls are served with
 - **React 19** (peer dependency)
 
 ## Development

@@ -51,7 +51,7 @@ plant off its anchor makes it visibly spring back.
   npm --prefix apps/ecosim-rbx install
   ```
 
-  `@wendoo-lang/core` is a `file:` dependency, so npm links it from
+  `@wendoo/core` is a `file:` dependency, so npm links it from
   `packages/core`.
 
 ## Build
@@ -190,5 +190,5 @@ faults. Walk your character into a creature to shove it.
   (the headless host), and `suites/`. Also outside `src/`.
 
 `default.project.json` also mounts `node_modules/@rbxts` and
-`node_modules/@wendoo-lang` under `ReplicatedStorage.rbxts_include.node_modules`
+`node_modules/@wendoo` under `ReplicatedStorage.rbxts_include.node_modules`
 so compiled `require` calls resolve at runtime.

@@ -1,6 +1,6 @@
-import { assertUnreachable } from "@wendoo-lang/core";
-import type { BrainServices } from "@wendoo-lang/core/brain";
-import type { ActionDescriptor, BytecodeResolvedAction } from "@wendoo-lang/core/runtime";
+import { assertUnreachable } from "@wendoo/core";
+import type { BrainServices } from "@wendoo/core/brain";
+import type { ActionDescriptor, BytecodeResolvedAction } from "@wendoo/core/runtime";
 import type { UserAuthoredProgram } from "../compiler/types.js";
 import { buildStructTypeTiles, buildUserTileMetadata } from "./user-tile-metadata.js";
 

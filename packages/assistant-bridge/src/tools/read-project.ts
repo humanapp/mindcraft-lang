@@ -1,9 +1,9 @@
-import type { ReadonlyList } from "@wendoo-lang/core";
-import type { IBrainTileDef } from "@wendoo-lang/core/brain";
-import { RuleSide } from "@wendoo-lang/core/brain";
-import { tileSentenceWord } from "@wendoo-lang/core/brain/language-service";
-import type { BrainPageDef, BrainRuleDef } from "@wendoo-lang/core/brain/model";
-import type { Localizer } from "@wendoo-lang/core/localization";
+import type { ReadonlyList } from "@wendoo/core";
+import type { IBrainTileDef } from "@wendoo/core/brain";
+import { RuleSide } from "@wendoo/core/brain";
+import { tileSentenceWord } from "@wendoo/core/brain/language-service";
+import type { BrainPageDef, BrainRuleDef } from "@wendoo/core/brain/model";
+import type { Localizer } from "@wendoo/core/localization";
 import type { AuthoringWorkspace } from "./workspace.js";
 
 /** One tile as it appears on a rule side. */

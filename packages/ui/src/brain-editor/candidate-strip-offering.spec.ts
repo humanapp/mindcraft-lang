@@ -18,13 +18,13 @@
 
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List } from "@wendoo-lang/core";
-import type { BrainServices, ITileCatalog } from "@wendoo-lang/core/brain";
-import { RuleSide } from "@wendoo-lang/core/brain";
-import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
-import { buildInsertionContext, suggestTiles } from "@wendoo-lang/core/brain/language-service";
-import { BrainCommandHistory, type BrainPageDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
-import { CoreHostActions, mkSensorTileId } from "@wendoo-lang/core/runtime";
+import { List } from "@wendoo/core";
+import type { BrainServices, ITileCatalog } from "@wendoo/core/brain";
+import { RuleSide } from "@wendoo/core/brain";
+import { __test__createBrainServices } from "@wendoo/core/brain/__test__";
+import { buildInsertionContext, suggestTiles } from "@wendoo/core/brain/language-service";
+import { BrainCommandHistory, type BrainPageDef, type BrainRuleDef } from "@wendoo/core/brain/model";
+import { CoreHostActions, mkSensorTileId } from "@wendoo/core/runtime";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {

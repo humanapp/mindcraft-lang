@@ -1,5 +1,5 @@
-import { assertUnreachable, List } from "@wendoo-lang/core";
-import type { BrainServices } from "@wendoo-lang/core/brain";
+import { assertUnreachable, List } from "@wendoo/core";
+import type { BrainServices } from "@wendoo/core/brain";
 import {
   ContextTypeIds,
   CoreOpId,
@@ -18,7 +18,7 @@ import {
   type TypeId,
   type UnionTypeDef,
   type Value,
-} from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/runtime";
 import ts from "typescript";
 import { type ArgSlot, collectArgSlots } from "./arg-spec-utils.js";
 import { CompileDiagCode, LoweringDiagCode } from "./diag-codes.js";

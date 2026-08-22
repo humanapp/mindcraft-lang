@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, before, describe, it } from "node:test";
-import { createJsDelivrExtensionTransport, highestListedRelease } from "@wendoo-lang/app-host";
+import { createJsDelivrExtensionTransport, highestListedRelease } from "@wendoo/app-host";
 
 /** A captured fetch invocation: the URL requested and the init the transport passed. */
 interface CapturedCall {

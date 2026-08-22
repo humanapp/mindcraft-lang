@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { ExtensionFetchResult } from "@wendoo-lang/app-host";
-import { bytesToBase64, ExtensionFetchErrorCode } from "@wendoo-lang/app-host";
-import type { WorkspaceDiagnosticEntry } from "@wendoo-lang/ts-compiler";
+import type { ExtensionFetchResult } from "@wendoo/app-host";
+import { bytesToBase64, ExtensionFetchErrorCode } from "@wendoo/app-host";
+import type { WorkspaceDiagnosticEntry } from "@wendoo/ts-compiler";
 import type { EmbeddedExtension } from "./embedded-extensions.js";
 import {
   collectExtensionFetchClosure,

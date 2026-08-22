@@ -3,7 +3,7 @@ import type {
   FilesystemChangeMessage,
   FilesystemSyncPayload,
   WsMessage,
-} from "@wendoo-lang/bridge-protocol";
+} from "@wendoo/bridge-protocol";
 import { ErrorCode, ProtocolError } from "../error-codes.js";
 import type { FileSystemSnapshot } from "../filesystem.js";
 import { ProjectFiles, type ProjectFilesOptions } from "./files.js";

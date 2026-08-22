@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { ReadonlyList } from "@wendoo-lang/core";
-import { coreModule, createWendooEnvironment, type WendooEnvironment, type WendooModule } from "@wendoo-lang/core";
-import type { IBrainDef } from "@wendoo-lang/core/brain";
-import { type BrainServices, LinkDiagCode, RuleSide, TilePlacement } from "@wendoo-lang/core/brain";
-import type { BrainBuildDiagnostic, BrainBuildResult } from "@wendoo-lang/core/brain/compiler";
-import { CompilationDiagCode, ParseDiagCode } from "@wendoo-lang/core/brain/compiler";
-import type { BrainJson, BrainRuleDef } from "@wendoo-lang/core/brain/model";
-import { BrainDef, brainJsonWithRulesEmptied } from "@wendoo-lang/core/brain/model";
-import { BrainTileSensorDef } from "@wendoo-lang/core/brain/tiles";
-import { CoreTypeIds, linkedBrainProgramToJson, mkCallDef, Rng, TRUE_VALUE } from "@wendoo-lang/core/runtime";
+import type { ReadonlyList } from "@wendoo/core";
+import { coreModule, createWendooEnvironment, type WendooEnvironment, type WendooModule } from "@wendoo/core";
+import type { IBrainDef } from "@wendoo/core/brain";
+import { type BrainServices, LinkDiagCode, RuleSide, TilePlacement } from "@wendoo/core/brain";
+import type { BrainBuildDiagnostic, BrainBuildResult } from "@wendoo/core/brain/compiler";
+import { CompilationDiagCode, ParseDiagCode } from "@wendoo/core/brain/compiler";
+import type { BrainJson, BrainRuleDef } from "@wendoo/core/brain/model";
+import { BrainDef, brainJsonWithRulesEmptied } from "@wendoo/core/brain/model";
+import { BrainTileSensorDef } from "@wendoo/core/brain/tiles";
+import { CoreTypeIds, linkedBrainProgramToJson, mkCallDef, Rng, TRUE_VALUE } from "@wendoo/core/runtime";
 
 function getEnvironmentServices(environment: WendooEnvironment): BrainServices {
   return (environment as unknown as { brainServices: BrainServices }).brainServices;

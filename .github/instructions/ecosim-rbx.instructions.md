@@ -20,7 +20,7 @@ position and velocity.
 ## Tech Stack
 
 roblox-ts 3.0 (TypeScript -> Luau), Rojo 7.4.1 (pinned in the root
-`aftman.toml`), `@rbxts/services`, `@rbxts/types`, `@wendoo-lang/core` via a
+`aftman.toml`), `@rbxts/services`, `@rbxts/types`, `@wendoo/core` via a
 `file:` dependency, Biome.
 
 ## Mirroring Discipline

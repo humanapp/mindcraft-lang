@@ -1,4 +1,4 @@
-import type { CompileDiagnosticsPayload } from "@wendoo-lang/bridge-protocol";
+import type { CompileDiagnosticsPayload } from "@wendoo/bridge-protocol";
 import * as vscode from "vscode";
 import { WENDOO_SCHEME } from "./wendoo-fs-provider";
 

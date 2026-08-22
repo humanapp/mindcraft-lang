@@ -1,5 +1,5 @@
-import type { BrainServices, DiagnosticSeverity, ITileLanguageMetadata } from "@wendoo-lang/core/brain";
-import type { ActionKind, ConstantOffsets, TypeId, UserActionArtifact } from "@wendoo-lang/core/runtime";
+import type { BrainServices, DiagnosticSeverity, ITileLanguageMetadata } from "@wendoo/core/brain";
+import type { ActionKind, ConstantOffsets, TypeId, UserActionArtifact } from "@wendoo/core/runtime";
 import type ts from "typescript";
 import type { TsDiagCode } from "./diag-codes.js";
 import type { DependencyMount, ProjectDependency } from "./extension-mounts.js";

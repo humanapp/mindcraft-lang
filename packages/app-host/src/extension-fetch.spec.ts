@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { ExtensionFetchTransport } from "@wendoo-lang/app-host";
-import { ExtensionFetchErrorCode, fetchExtensionSnapshot } from "@wendoo-lang/app-host";
+import type { ExtensionFetchTransport } from "@wendoo/app-host";
+import { ExtensionFetchErrorCode, fetchExtensionSnapshot } from "@wendoo/app-host";
 
 const encoder = new TextEncoder();
 

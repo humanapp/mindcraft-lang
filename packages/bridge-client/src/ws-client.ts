@@ -1,4 +1,4 @@
-import type { WsMessage } from "@wendoo-lang/bridge-protocol";
+import type { WsMessage } from "@wendoo/bridge-protocol";
 
 type MessageHandler = (msg: WsMessage) => void;
 

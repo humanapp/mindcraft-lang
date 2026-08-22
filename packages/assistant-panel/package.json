@@ -1,9 +1,9 @@
 {
-  "name": "@wendoo-lang/assistant-panel",
+  "name": "@wendoo/assistant-panel",
   "description": "Assistant conversation provider: relay session lifecycle, per-brain conversation records, and client-side tool serving",
   "version": "0.1.0",
   "type": "module",
-  "author": "humanapp",
+  "author": "wendoo-lang",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -47,10 +47,10 @@
     "release:major": "node ../../scripts/release.js major"
   },
   "dependencies": {
-    "@wendoo-lang/assistant-bridge": "file:../assistant-bridge",
-    "@wendoo-lang/assistant-relay": "file:../assistant-relay",
-    "@wendoo-lang/core": "file:../core",
-    "@wendoo-lang/ui": "file:../ui"
+    "@wendoo/assistant-bridge": "file:../assistant-bridge",
+    "@wendoo/assistant-relay": "file:../assistant-relay",
+    "@wendoo/core": "file:../core",
+    "@wendoo/ui": "file:../ui"
   },
   "peerDependencies": {
     "react": "^19.0.0",

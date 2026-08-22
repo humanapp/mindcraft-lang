@@ -7,7 +7,7 @@ import {
   logger,
   type Vector2,
   type WendooBrain,
-} from "@wendoo-lang/core/app";
+} from "@wendoo/core/app";
 import { ARCHETYPES } from "./archetypes";
 import { Engine } from "./engine";
 import { Mover, type MoverConfig, type Steering, steerAvoidObstacles } from "./movement";

@@ -1,6 +1,6 @@
-import type { EditedBrainWorkspaces } from "@wendoo-lang/assistant-panel";
-import { AssistantSurface, useAssistant } from "@wendoo-lang/assistant-panel";
-import { useEditedBrain } from "@wendoo-lang/ui";
+import type { EditedBrainWorkspaces } from "@wendoo/assistant-panel";
+import { AssistantSurface, useAssistant } from "@wendoo/assistant-panel";
+import { useEditedBrain } from "@wendoo/ui";
 import { useEffect } from "react";
 
 /** What the side region's tenant is given by the app that put it there. */

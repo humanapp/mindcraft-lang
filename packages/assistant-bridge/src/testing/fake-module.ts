@@ -7,7 +7,7 @@ import type {
   Value,
   WendooModule,
   WendooModuleApi,
-} from "@wendoo-lang/core/app";
+} from "@wendoo/core/app";
 import {
   bag,
   CoreParameterId,
@@ -26,8 +26,8 @@ import {
   TARGET_FUNC_ID_BASE,
   TRUE_VALUE,
   VOID_VALUE,
-} from "@wendoo-lang/core/app";
-import type { HandleId } from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/app";
+import type { HandleId } from "@wendoo/core/runtime";
 import type { OperationEndingReport } from "../kit/index.js";
 import { DispatchOutcome } from "../target/adapter.js";
 

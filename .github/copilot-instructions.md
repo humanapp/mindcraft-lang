@@ -74,7 +74,7 @@ These instructions apply to all Copilot features, including inline tab completio
 - This is a source-only package -- no build step. Consuming apps resolve the source
   directly via Vite aliases and tsconfig paths.
 - Use relative imports within the package (no path aliases). Consuming apps map
-  `@wendoo-lang/ui` to the source directory.
+  `@wendoo/ui` to the source directory.
 - All shadcn/ui primitives live here. Do not duplicate them in app directories.
 - The brain editor is decoupled from app-specific concepts via `BrainEditorProvider`
   context. App-specific tile visuals, data type icons, and custom literal types are

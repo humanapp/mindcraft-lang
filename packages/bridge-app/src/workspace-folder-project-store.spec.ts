@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { ProjectFileChange } from "@wendoo-lang/app-host";
-import type { FileSystemNotification, FolderAppMessage, FolderHostMessage } from "@wendoo-lang/bridge-protocol";
-import { FOLDER_SESSION_PROTOCOL_VERSION, FolderSessionErrorCode } from "@wendoo-lang/bridge-protocol";
+import type { ProjectFileChange } from "@wendoo/app-host";
+import type { FileSystemNotification, FolderAppMessage, FolderHostMessage } from "@wendoo/bridge-protocol";
+import { FOLDER_SESSION_PROTOCOL_VERSION, FolderSessionErrorCode } from "@wendoo/bridge-protocol";
 import type { FolderAppDataCodec, FolderHostPort, FolderHostSession } from "./folder-host-session.js";
 import { connectFolderHostSession, FolderSessionError } from "./folder-host-session.js";
 import { WorkspaceFolderStoreError, WorkspaceFolderStoreErrorCode } from "./workspace-folder-project-store.js";

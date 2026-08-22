@@ -8,8 +8,8 @@ import type {
   StructTypeDef,
   TypeDef,
   UnionTypeDef,
-} from "@wendoo-lang/core/runtime";
-import { NativeType } from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/runtime";
+import { NativeType } from "@wendoo/core/runtime";
 
 const AMBIENT_HEADER = `/// <reference no-default-lib="true"/>
 

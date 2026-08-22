@@ -1,4 +1,4 @@
-import { LOWEST_CONTENT_VERSION } from "@wendoo-lang/service-api";
+import { LOWEST_CONTENT_VERSION } from "@wendoo/service-api";
 import { type DBSchema, type IDBPDatabase, openDB } from "idb";
 import { AppHostErrorCode, appHostError } from "./app-host-error.js";
 import { applyProjectFileChangeToSnapshot } from "./in-memory-project-file-system.js";

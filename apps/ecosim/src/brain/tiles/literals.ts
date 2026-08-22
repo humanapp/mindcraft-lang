@@ -1,4 +1,4 @@
-import { BrainTileLiteralDef, mkNativeStructValue, type WendooModuleApi } from "@wendoo-lang/core/app";
+import { BrainTileLiteralDef, mkNativeStructValue, type WendooModuleApi } from "@wendoo/core/app";
 import { getSelf, getTargetActor } from "../execution-context-types";
 import { ICON_BASE } from "../icon-base";
 import { TargetActorCapabilityBitSet } from "../tileids";

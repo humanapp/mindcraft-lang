@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
-import type { ExtensionCatalogDocumentError, ExtensionCatalogDocumentWarning } from "@wendoo-lang/app-host";
-import { parseExtensionCatalogDocument } from "@wendoo-lang/app-host";
+import type { ExtensionCatalogDocumentError, ExtensionCatalogDocumentWarning } from "@wendoo/app-host";
+import { parseExtensionCatalogDocument } from "@wendoo/app-host";
 
 /** Stable identifiers for target registry failures. */
 export const TargetRegistryErrorCode = {

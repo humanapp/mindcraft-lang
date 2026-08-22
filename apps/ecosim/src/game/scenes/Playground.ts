@@ -1,4 +1,4 @@
-import type { BrainDef, Vector2 } from "@wendoo-lang/core/app";
+import type { BrainDef, Vector2 } from "@wendoo/core/app";
 import { Scene } from "phaser";
 import type { Actor, Archetype } from "@/brain/actor";
 import { ARCHETYPES, type ArchetypePhysicsConfig } from "@/brain/archetypes";

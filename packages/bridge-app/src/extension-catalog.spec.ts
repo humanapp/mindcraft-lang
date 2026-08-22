@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { ExtensionCatalogDocument } from "@wendoo-lang/app-host";
+import type { ExtensionCatalogDocument } from "@wendoo/app-host";
 import type { EmbeddedExtension } from "./embedded-extensions.js";
 import { resolveProjectExtensions } from "./embedded-extensions.js";
 import type { ExtensionCatalogEntry, PlatformStackLayer } from "./extension-catalog.js";

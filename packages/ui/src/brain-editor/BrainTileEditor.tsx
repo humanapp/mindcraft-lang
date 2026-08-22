@@ -1,5 +1,5 @@
-import type { IBrainTileDef, RuleSide } from "@wendoo-lang/core/brain";
-import type { BrainCommandHistory, BrainRuleDef } from "@wendoo-lang/core/brain/model";
+import type { IBrainTileDef, RuleSide } from "@wendoo/core/brain";
+import type { BrainCommandHistory, BrainRuleDef } from "@wendoo/core/brain/model";
 import { useId, useState } from "react";
 import { type ArmedTileTarget, isTileTargetForTile } from "./ArmedTargetContext";
 import { useBrainEditorConfig } from "./BrainEditorContext";

@@ -6,9 +6,9 @@ import {
   isUnpackRefusal,
   parseExtensionReference,
   seedProjectTargets,
-} from "@wendoo-lang/app-host";
-import type { WendooProjectDocumentValidationError } from "@wendoo-lang/service-api";
-import { parseWendooProjectDocument } from "@wendoo-lang/service-api";
+} from "@wendoo/app-host";
+import type { WendooProjectDocumentValidationError } from "@wendoo/service-api";
+import { parseWendooProjectDocument } from "@wendoo/service-api";
 import * as vscode from "vscode";
 import {
   activeFolderSessionFolder,

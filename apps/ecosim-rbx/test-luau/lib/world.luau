@@ -18,7 +18,7 @@ local rbx = require("./roblox-env")
 
 local World = {}
 
-local CORE_PACKAGE_DIR = "node_modules/@wendoo-lang/core"
+local CORE_PACKAGE_DIR = "node_modules/@wendoo/core"
 
 local function requireDir(path, hint)
 	if not fs.isDir(path) then
@@ -60,7 +60,7 @@ function World.build()
 
 	local nodeModules = rbx.addChild(include, rbx.newFolder("node_modules"))
 	rbx.addChild(nodeModules, rbx.mount(appRoot .. "node_modules/@rbxts", "@rbxts"))
-	local scope = rbx.addChild(nodeModules, rbx.newFolder("@wendoo-lang"))
+	local scope = rbx.addChild(nodeModules, rbx.newFolder("@wendoo"))
 	local coreNode = rbx.addChild(scope, rbx.mount(corePath, coreProject.name))
 
 	rbx.addChild(replicatedStorage, rbx.mount(appRoot .. "out/shared", "TS"))

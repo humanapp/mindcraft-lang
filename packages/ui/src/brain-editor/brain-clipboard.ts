@@ -1,5 +1,5 @@
-import { logger } from "@wendoo-lang/core";
-import type { BrainDef, BrainJson } from "@wendoo-lang/core/brain/model";
+import { logger } from "@wendoo/core";
+import type { BrainDef, BrainJson } from "@wendoo/core/brain/model";
 import { isClipboardLoggingEnabled } from "../settings";
 
 /**

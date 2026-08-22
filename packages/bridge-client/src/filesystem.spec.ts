@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
-import { filesystemNotificationSchema, MAX_FILE_CONTENT_BYTES } from "@wendoo-lang/bridge-protocol";
+import { filesystemNotificationSchema, MAX_FILE_CONTENT_BYTES } from "@wendoo/bridge-protocol";
 import { ErrorCode } from "./error-codes.js";
 import { FileSystem, type FileSystemNotification, type FileSystemSnapshot, NotifyingFileSystem } from "./filesystem.js";
 

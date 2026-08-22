@@ -5,7 +5,7 @@ import type {
   ExtensionFetchResult,
   ExtensionVersionListResult,
   FileContent,
-} from "@wendoo-lang/app-host";
+} from "@wendoo/app-host";
 import {
   applyCatalogMove,
   fileContentText,
@@ -14,11 +14,11 @@ import {
   parseExtensionReference,
   parseProjectContentManifest,
   WENDOO_JSON_PATH,
-} from "@wendoo-lang/app-host";
-import type { IBrainDef } from "@wendoo-lang/core/app";
-import type { IBrainRuleDef } from "@wendoo-lang/core/brain";
-import { BrainRuleDef } from "@wendoo-lang/core/brain/model";
-import type { WorkspaceDiagnosticEntry } from "@wendoo-lang/ts-compiler";
+} from "@wendoo/app-host";
+import type { IBrainDef } from "@wendoo/core/app";
+import type { IBrainRuleDef } from "@wendoo/core/brain";
+import { BrainRuleDef } from "@wendoo/core/brain/model";
+import type { WorkspaceDiagnosticEntry } from "@wendoo/ts-compiler";
 import type { EmbeddedExtension, ExtensionResolutionWarning } from "./embedded-extensions.js";
 import { CatalogMoveWarningCode, createCatalogMoveVersionLookup } from "./embedded-extensions.js";
 import type { InstalledExtensionSnapshot, InstalledExtensionSnapshots } from "./fetched-extension-snapshots.js";

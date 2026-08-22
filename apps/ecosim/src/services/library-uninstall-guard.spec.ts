@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { EmbeddedExtension } from "@wendoo-lang/bridge-app";
+import type { EmbeddedExtension } from "@wendoo/bridge-app";
 import { collectSimLibraryUninstallImpact, type UninstallGuardHost } from "./library-uninstall-guard";
 
 const DETECT = "acme/lib-ecosim-detect";

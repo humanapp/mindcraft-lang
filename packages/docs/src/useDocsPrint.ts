@@ -1,4 +1,4 @@
-import { type PrintTransport, printPortalViaTransport } from "@wendoo-lang/ui/print/standalone-print-document";
+import { type PrintTransport, printPortalViaTransport } from "@wendoo/ui/print/standalone-print-document";
 import { useCallback, useRef, useState } from "react";
 
 /**

@@ -1,6 +1,6 @@
-import type { LiteralDisplayFormat } from "@wendoo-lang/core/brain";
-import { applyDisplayFormat } from "@wendoo-lang/core/brain/tiles";
-import { CoreTypeIds } from "@wendoo-lang/core/runtime";
+import type { LiteralDisplayFormat } from "@wendoo/core/brain";
+import { applyDisplayFormat } from "@wendoo/core/brain/tiles";
+import { CoreTypeIds } from "@wendoo/core/runtime";
 
 /**
  * Formats a value according to its type for display.

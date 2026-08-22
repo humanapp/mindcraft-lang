@@ -2,7 +2,7 @@ import {
   highestListedRelease,
   parseProjectContentManifest,
   serializeProjectContentManifest,
-} from "@wendoo-lang/app-host";
+} from "@wendoo/app-host";
 
 /** Stable identifiers for the outcome of one Update Target run. */
 export const TargetUpdateOutcome = {

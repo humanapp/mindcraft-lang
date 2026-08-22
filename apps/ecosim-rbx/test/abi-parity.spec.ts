@@ -13,7 +13,7 @@ import {
   type IBrainDef,
   type IBrainRuleDef,
   type WendooEnvironment,
-} from "@wendoo-lang/core/app";
+} from "@wendoo/core/app";
 import { createEcosimModule as createWebEcosimModule } from "@/brain/index";
 import { EcosimFuncId, EcosimHostActions, EcosimTypeAtomId } from "../src/server/brain/abi-ids";
 import { ECOSIM_RBX_NAMESPACE } from "../src/server/brain/engine-constants";
@@ -175,7 +175,7 @@ describe("ecosim-rbx mirrors ecosim's brain source files byte for byte", () => {
 });
 
 describe("ecosim and ecosim-rbx register the same ABI", () => {
-  it("shares one @wendoo-lang/core instance across both registrations", () => {
+  it("shares one @wendoo/core instance across both registrations", () => {
     assert.equal(
       webEnv.brainServices.constructor,
       rbxEnv.brainServices.constructor,

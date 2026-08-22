@@ -1,10 +1,10 @@
 {
-  "name": "@wendoo-lang/bridge-protocol",
+  "name": "@wendoo/bridge-protocol",
   "version": "0.2.9",
   "description": "WebSocket protocol types and schemas for the Wendoo VS Code Bridge",
   "license": "MIT",
   "type": "module",
-  "author": "humanapp",
+  "author": "wendoo-lang",
   "repository": {
     "type": "git",
     "url": "https://github.com/wendoo-lang/wendoo-lang.git",

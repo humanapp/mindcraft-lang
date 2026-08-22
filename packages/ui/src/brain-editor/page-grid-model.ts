@@ -1,4 +1,4 @@
-import { RuleSide } from "@wendoo-lang/core/brain";
+import { RuleSide } from "@wendoo/core/brain";
 import type { CaretPosition } from "./caret-run";
 import { isUndoChord } from "./history-shortcut";
 

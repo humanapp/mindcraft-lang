@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { coreModule, createWendooEnvironment } from "@wendoo-lang/core";
-import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
-import { BrainDef } from "@wendoo-lang/core/brain/model";
+import { coreModule, createWendooEnvironment } from "@wendoo/core";
+import { __test__createBrainServices } from "@wendoo/core/brain/__test__";
+import { BrainDef } from "@wendoo/core/brain/model";
 import { buildCompiledActionBundle } from "../runtime/action-bundle.js";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";

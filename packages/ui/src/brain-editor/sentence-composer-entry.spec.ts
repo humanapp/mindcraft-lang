@@ -17,10 +17,10 @@
 
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import type { BrainServices, IBrainTileDef } from "@wendoo-lang/core/brain";
-import { RuleSide } from "@wendoo-lang/core/brain";
-import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
-import { whenTriggerWord } from "@wendoo-lang/core/brain/language-service";
+import type { BrainServices, IBrainTileDef } from "@wendoo/core/brain";
+import { RuleSide } from "@wendoo/core/brain";
+import { __test__createBrainServices } from "@wendoo/core/brain/__test__";
+import { whenTriggerWord } from "@wendoo/core/brain/language-service";
 import {
   BrainCommandHistory,
   BrainDef,
@@ -28,9 +28,9 @@ import {
   type BrainRuleDef,
   IndentRuleCommand,
   InsertRuleCommand,
-} from "@wendoo-lang/core/brain/model";
-import { BrainTileActuatorDef, BrainTileModifierDef, BrainTileSensorDef } from "@wendoo-lang/core/brain/tiles";
-import { createDefaultLocalizer } from "@wendoo-lang/core/localization";
+} from "@wendoo/core/brain/model";
+import { BrainTileActuatorDef, BrainTileModifierDef, BrainTileSensorDef } from "@wendoo/core/brain/tiles";
+import { createDefaultLocalizer } from "@wendoo/core/localization";
 import {
   bag,
   CoreTypeIds,
@@ -40,7 +40,7 @@ import {
   mod,
   NIL_VALUE,
   optional,
-} from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/runtime";
 import { createElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {

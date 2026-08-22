@@ -1,7 +1,7 @@
 // Curated barrel for app integrators.
 // Provides the symbols apps typically need from a single import path
-// (`@wendoo-lang/core/app`) instead of spreading imports across
-// `@wendoo-lang/core`, `/brain`, `/brain/model`, and `/brain/tiles`.
+// (`@wendoo/core/app`) instead of spreading imports across
+// `@wendoo/core`, `/brain`, `/brain/model`, and `/brain/tiles`.
 
 // -- Environment & module API ---------------------------------------------------
 

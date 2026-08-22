@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { CatalogMoveVersionLookup, ExtensionCatalogMoves } from "@wendoo-lang/app-host";
+import type { CatalogMoveVersionLookup, ExtensionCatalogMoves } from "@wendoo/app-host";
 import {
   applyCatalogMove,
   CatalogMoveApplyErrorCode,
@@ -10,7 +10,7 @@ import {
   parseExtensionCatalogDocument,
   validateExtensionCatalogDocument,
   WENDOO_CATALOG_FORMAT,
-} from "@wendoo-lang/app-host";
+} from "@wendoo/app-host";
 
 const PIN_SHA = "b19b80b029a77303ee575d3ff9b29adbf7021b23";
 

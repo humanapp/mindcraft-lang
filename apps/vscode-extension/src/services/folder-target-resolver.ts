@@ -1,4 +1,4 @@
-import { parseProjectContentManifest } from "@wendoo-lang/app-host";
+import { parseProjectContentManifest } from "@wendoo/app-host";
 import * as vscode from "vscode";
 import { WENDOO_JSON } from "../wendoo-json";
 import { type FolderTargetDescriptor, readDevTargetDescriptor } from "./project-skeleton";

@@ -1,6 +1,6 @@
-[![Publish @wendoo-lang/ui](https://github.com/wendoo-lang/wendoo-lang/actions/workflows/publish-ui.yml/badge.svg)](https://github.com/wendoo-lang/wendoo-lang/actions/workflows/publish-ui.yml)
+[![Publish @wendoo/ui](https://github.com/wendoo-lang/wendoo-lang/actions/workflows/publish-ui.yml/badge.svg)](https://github.com/wendoo-lang/wendoo-lang/actions/workflows/publish-ui.yml)
 
-# @wendoo-lang/ui
+# @wendoo/ui
 
 Shared React UI components for **Wendoo** web applications. This package provides shadcn/ui primitives and the full brain editor component tree, designed to be consumed by any webapp in the monorepo.
 
@@ -21,7 +21,7 @@ For step-by-step setup instructions in your own project, see the [Integration Gu
 ```js
 resolve: {
   alias: {
-    "@wendoo-lang/ui": path.resolve(__dirname, "../../packages/ui/src"),
+    "@wendoo/ui": path.resolve(__dirname, "../../packages/ui/src"),
   },
 },
 ```
@@ -32,8 +32,8 @@ resolve: {
 {
   "compilerOptions": {
     "paths": {
-      "@wendoo-lang/ui": ["../../packages/ui/src/index.ts"],
-      "@wendoo-lang/ui/*": ["../../packages/ui/src/*"]
+      "@wendoo/ui": ["../../packages/ui/src/index.ts"],
+      "@wendoo/ui/*": ["../../packages/ui/src/*"]
     }
   }
 }
@@ -42,9 +42,9 @@ resolve: {
 ### Imports
 
 ```typescript
-import { Button, Dialog, Slider } from "@wendoo-lang/ui";
-import { BrainEditorDialog, BrainEditorProvider } from "@wendoo-lang/ui";
-import { cn } from "@wendoo-lang/ui";
+import { Button, Dialog, Slider } from "@wendoo/ui";
+import { BrainEditorDialog, BrainEditorProvider } from "@wendoo/ui";
+import { cn } from "@wendoo/ui";
 ```
 
 ## Brain Editor Integration
@@ -52,8 +52,8 @@ import { cn } from "@wendoo-lang/ui";
 The brain editor is decoupled from app-specific concepts through a context provider. Host apps supply tile visuals, data type icons, and optional custom literal types via `BrainEditorProvider`.
 
 ```tsx
-import { BrainEditorProvider, BrainEditorDialog } from "@wendoo-lang/ui";
-import type { BrainEditorConfig } from "@wendoo-lang/ui";
+import { BrainEditorProvider, BrainEditorDialog } from "@wendoo/ui";
+import type { BrainEditorConfig } from "@wendoo/ui";
 
 const config: BrainEditorConfig = {
   dataTypeIcons: new Map([...]),   // type ID -> icon URL
@@ -121,7 +121,7 @@ src/
 
 ## Dependencies
 
-- **@wendoo-lang/core** -- brain data model, tile definitions, compiler
+- **@wendoo/core** -- brain data model, tile definitions, compiler
 - **Radix UI** -- Dialog, DropdownMenu, Slider, Slot
 - **class-variance-authority + clsx + tailwind-merge** -- styling utilities
 - **lucide-react** -- icons

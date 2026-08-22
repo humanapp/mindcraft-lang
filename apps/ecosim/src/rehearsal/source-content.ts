@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readTargetIdentity, readTileDocContent } from "@wendoo-lang/assistant-bridge/kit/node";
+import { readTargetIdentity, readTileDocContent } from "@wendoo/assistant-bridge/kit/node";
 import type { RehearsalContent, ShippedBrainDefs } from "./content";
 
 /** The app directory, from this module's own location. */

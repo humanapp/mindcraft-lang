@@ -4,7 +4,7 @@ import { chmod, cp, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { after, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import { deriveCoordinateFromRemoteUrl } from "@wendoo-lang/app-host";
+import { deriveCoordinateFromRemoteUrl } from "@wendoo/app-host";
 import { resolvePublishTarget } from "./publish-command.js";
 import {
   cloneAtTag,

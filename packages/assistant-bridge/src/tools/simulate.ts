@@ -1,4 +1,4 @@
-import type { DiagCode } from "@wendoo-lang/core/brain/compiler";
+import type { DiagCode } from "@wendoo/core/brain/compiler";
 import type { ExcludedRule, TraceSummary } from "../simulate/summarizer.js";
 import { summarizeRun } from "../simulate/summarizer.js";
 import type { CompileDiagnostic } from "./compile.js";

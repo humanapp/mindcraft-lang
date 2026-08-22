@@ -1,4 +1,4 @@
-import type { CompiledActionBundle, IBrainDef, WendooModule } from "@wendoo-lang/core/app";
+import type { CompiledActionBundle, IBrainDef, WendooModule } from "@wendoo/core/app";
 
 /**
  * Version of the adapter contract this package defines. A loader compares it

@@ -6,10 +6,10 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { brain, coreModule, createWendooEnvironment } from "@wendoo-lang/core";
-import { BrainDef } from "@wendoo-lang/core/brain/model";
-import type { Localizer } from "@wendoo-lang/core/localization";
-import { createDefaultLocalizer, createLocalizer, defaultPluralRule } from "@wendoo-lang/core/localization";
+import { brain, coreModule, createWendooEnvironment } from "@wendoo/core";
+import { BrainDef } from "@wendoo/core/brain/model";
+import type { Localizer } from "@wendoo/core/localization";
+import { createDefaultLocalizer, createLocalizer, defaultPluralRule } from "@wendoo/core/localization";
 
 /** A localizer whose locale identifies it, for tracing which instance was threaded. */
 function markerLocalizer(): Localizer {
@@ -52,7 +52,7 @@ describe("edit-time access path", () => {
 
 describe("retired translator surface", () => {
   test("the i18n subpath no longer resolves", async () => {
-    const retiredSubpath = ["@wendoo-lang", "core", "i18n"].join("/");
+    const retiredSubpath = ["@wendoo", "core", "i18n"].join("/");
     await assert.rejects(async () => {
       await import(retiredSubpath);
     });

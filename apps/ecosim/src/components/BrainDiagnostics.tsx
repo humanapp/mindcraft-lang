@@ -1,4 +1,4 @@
-import type { BrainDiagnosticEntry } from "@wendoo-lang/bridge-app";
+import type { BrainDiagnosticEntry } from "@wendoo/bridge-app";
 import { ChevronDown, ChevronRight, CircleAlert } from "lucide-react";
 import { ConsoleOutputList } from "./ConsoleOutputList";
 

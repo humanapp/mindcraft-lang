@@ -1,4 +1,4 @@
-import { task } from "@wendoo-lang/core";
+import { task } from "@wendoo/core";
 import { useEffect, useState } from "react";
 
 /**

@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { basename, relative, resolve, sep } from "node:path";
-import { parseProjectContentManifest, WENDOO_JSON_PATH } from "@wendoo-lang/app-host";
+import { parseProjectContentManifest, WENDOO_JSON_PATH } from "@wendoo/app-host";
 import type { EmbeddedExtension, EmbeddedExtensionFile } from "./embedded-extensions.js";
 import { findMissingListedFiles } from "./manifest-files.js";
 

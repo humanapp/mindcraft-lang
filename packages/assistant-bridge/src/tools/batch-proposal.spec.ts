@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { ParseDiagCode } from "@wendoo-lang/core/brain/compiler";
+import { ParseDiagCode } from "@wendoo/core/brain/compiler";
 import { createTargetAdapter } from "../testing/index.js";
 import type { BatchAccepted, BatchResult, ProposalRejected, ProposalUnresolved } from "./propose-edit.js";
 import { batchReplayStepMs, proposeEdit, proposeEditBatch } from "./propose-edit.js";

@@ -7,14 +7,14 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { coreModule, createWendooEnvironment } from "@wendoo-lang/core";
-import type { BrainServices, IBrainRuleDef, IBrainTileDef, ITileCatalog } from "@wendoo-lang/core/brain";
-import { CoreCapabilityBits, mkOperatorTileId } from "@wendoo-lang/core/brain";
-import { __test__appendTile, __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
-import { projectRuleSentence, sentenceText, tileSentenceWord } from "@wendoo-lang/core/brain/language-service";
-import { BrainDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
-import { BrainTileLiteralDef } from "@wendoo-lang/core/brain/tiles";
-import { CoreOpId, CoreTypeIds, mkActuatorTileId, mkParameterTileId, mkSensorTileId } from "@wendoo-lang/core/runtime";
+import { coreModule, createWendooEnvironment } from "@wendoo/core";
+import type { BrainServices, IBrainRuleDef, IBrainTileDef, ITileCatalog } from "@wendoo/core/brain";
+import { CoreCapabilityBits, mkOperatorTileId } from "@wendoo/core/brain";
+import { __test__appendTile, __test__createBrainServices } from "@wendoo/core/brain/__test__";
+import { projectRuleSentence, sentenceText, tileSentenceWord } from "@wendoo/core/brain/language-service";
+import { BrainDef, type BrainRuleDef } from "@wendoo/core/brain/model";
+import { BrainTileLiteralDef } from "@wendoo/core/brain/tiles";
+import { CoreOpId, CoreTypeIds, mkActuatorTileId, mkParameterTileId, mkSensorTileId } from "@wendoo/core/runtime";
 import { UserTileProject } from "../compiler/compile.js";
 import { DescriptorDiagCode } from "../compiler/diag-codes.js";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";

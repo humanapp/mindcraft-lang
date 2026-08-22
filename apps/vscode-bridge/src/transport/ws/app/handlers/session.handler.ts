@@ -1,5 +1,5 @@
-import type { AppSessionWelcomeMessage, SessionErrorMessage } from "@wendoo-lang/bridge-protocol";
-import { PROTOCOL_VERSION, sessionHelloPayloadSchema } from "@wendoo-lang/bridge-protocol";
+import type { AppSessionWelcomeMessage, SessionErrorMessage } from "@wendoo/bridge-protocol";
+import { PROTOCOL_VERSION, sessionHelloPayloadSchema } from "@wendoo/bridge-protocol";
 import { createBindingToken } from "#core/binding-token.js";
 import { logger } from "#core/logging/logger.js";
 import {

@@ -8,9 +8,9 @@ import {
   parseProjectContentManifest,
   satisfiesRange,
   WENDOO_JSON_PATH,
-} from "@wendoo-lang/app-host";
+} from "@wendoo/app-host";
 
-export { satisfiesRange } from "@wendoo-lang/app-host";
+export { satisfiesRange } from "@wendoo/app-host";
 
 import type { EmbeddedExtension, FetchedExtensionContentMap } from "./embedded-extensions.js";
 import { resolveProjectExtensions } from "./embedded-extensions.js";

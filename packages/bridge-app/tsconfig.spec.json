@@ -6,8 +6,8 @@
     "rootDir": ".",
     "types": ["node"],
     "paths": {
-      "@wendoo-lang/bridge-app": ["./src/index.ts"],
-      "@wendoo-lang/bridge-app/compilation": ["./src/compilation.ts"]
+      "@wendoo/bridge-app": ["./src/index.ts"],
+      "@wendoo/bridge-app/compilation": ["./src/compilation.ts"]
     }
   },
   "include": ["src/**/*.spec.ts"],

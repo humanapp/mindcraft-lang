@@ -1,9 +1,9 @@
 {
-  "name": "@wendoo-lang/core",
+  "name": "@wendoo/core",
   "version": "0.2.16",
   "description": "Core implementation of the Wendoo tile-based visual programming language",
   "license": "MIT",
-  "author": "humanapp",
+  "author": "wendoo-lang",
   "repository": {
     "type": "git",
     "url": "https://github.com/wendoo-lang/wendoo-lang.git",

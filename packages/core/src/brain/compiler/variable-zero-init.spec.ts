@@ -10,12 +10,12 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
-import { List } from "@wendoo-lang/core";
-import { type BrainServices, mkVariableTileId } from "@wendoo-lang/core/brain";
-import { __test__appendTile, __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
-import { type BrainBuildDiagnostic, CompilationDiagCode, compileBrain } from "@wendoo-lang/core/brain/compiler";
-import { BrainDef } from "@wendoo-lang/core/brain/model";
-import { BrainTileLiteralDef, BrainTileOperatorDef, BrainTileVariableDef } from "@wendoo-lang/core/brain/tiles";
+import { List } from "@wendoo/core";
+import { type BrainServices, mkVariableTileId } from "@wendoo/core/brain";
+import { __test__appendTile, __test__createBrainServices } from "@wendoo/core/brain/__test__";
+import { type BrainBuildDiagnostic, CompilationDiagCode, compileBrain } from "@wendoo/core/brain/compiler";
+import { BrainDef } from "@wendoo/core/brain/model";
+import { BrainTileLiteralDef, BrainTileOperatorDef, BrainTileVariableDef } from "@wendoo/core/brain/tiles";
 import {
   CoreTypeIds,
   extractBooleanValue,
@@ -33,7 +33,7 @@ import {
   type TypeId,
   type Value,
   variableInitAt,
-} from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/runtime";
 
 let services: BrainServices;
 let opAssign: BrainTileOperatorDef;

@@ -1,4 +1,4 @@
-import { createHostActuator, createHostSensor, type WendooModule, type WendooModuleApi } from "@wendoo-lang/core/app";
+import { createHostActuator, createHostSensor, type WendooModule, type WendooModuleApi } from "@wendoo/core/app";
 import fnBump, { modifiers as bumpModifiers } from "./actions/bump";
 import fnEat, { parameters as eatParameters } from "./actions/eat";
 import fnMove, { modifiers as moveModifiers, parameters as moveParameters } from "./actions/move";

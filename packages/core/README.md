@@ -1,6 +1,6 @@
-[![Publish @wendoo-lang/core](https://github.com/wendoo-lang/wendoo-lang/actions/workflows/publish-core.yml/badge.svg)](https://github.com/wendoo-lang/wendoo-lang/actions/workflows/publish-core.yml)
+[![Publish @wendoo/core](https://github.com/wendoo-lang/wendoo-lang/actions/workflows/publish-core.yml/badge.svg)](https://github.com/wendoo-lang/wendoo-lang/actions/workflows/publish-core.yml)
 
-# @wendoo-lang/core
+# @wendoo/core
 
 The core implementation of the **Wendoo** programming language -- a tile-based visual language designed for creating behaviors in interactive worlds.
 
@@ -46,7 +46,7 @@ To use this package in your own app, see the [Integration Guide](https://github.
 The main app integration entry point is `createWendooEnvironment()`:
 
 ```typescript
-import { createWendooEnvironment, coreModule } from "@wendoo-lang/core";
+import { createWendooEnvironment, coreModule } from "@wendoo/core";
 
 const environment = createWendooEnvironment({
   modules: [coreModule(), createAppModule()],
@@ -57,7 +57,7 @@ brain.startup();
 brain.think(now);
 ```
 
-Sub-path imports (`@wendoo-lang/core/brain`, `@wendoo-lang/core/brain/model`, etc.)
+Sub-path imports (`@wendoo/core/brain`, `@wendoo/core/brain/model`, etc.)
 remain available for esoteric use cases (like Roblox) and internal consumption, but webapps should
 prefer the root-level `createWendooEnvironment` / `coreModule` api.
 
@@ -97,7 +97,7 @@ Each target build has three steps: TypeScript compilation, platform file resolut
 npm test
 ```
 
-Tests use `node:test` and `node:assert/strict`, run via `tsx`. A `pretest` step builds the Node target first because spec files use package imports (`@wendoo-lang/core/brain/compiler`, etc.) that resolve against `dist/node/`.
+Tests use `node:test` and `node:assert/strict`, run via `tsx`. A `pretest` step builds the Node target first because spec files use package imports (`@wendoo/core/brain/compiler`, etc.) that resolve against `dist/node/`.
 
 ## Development Guide
 
@@ -116,14 +116,14 @@ Generate the file from `packages/core/`:
 npm run generate:ambient
 ```
 
-The command builds the Node target and `@wendoo-lang/ts-compiler`, then writes
+The command builds the Node target and `@wendoo/ts-compiler`, then writes
 `lib/wendoo.core.d.ts` from the runtime registry installed by `coreModule()`.
 Regenerate it whenever core changes the user-code type surface: registered core types,
 context fields, sensors, actuators, operators, arg-spec helper types, or the ambient
 generator itself.
 
 The generated file should be checked in. Apps and command-line tooling consume it as a
-package asset via `@wendoo-lang/core/lib/wendoo.core.d.ts`, and the sim exposes
+package asset via `@wendoo/core/lib/wendoo.core.d.ts`, and the sim exposes
 it to its workspace VFS as the readonly root file `wendoo.core.d.ts`. Biome ignores
 `lib/wendoo.core.d.ts` because the file intentionally contains `no-default-lib`
 declarations and TypeScript built-in shapes that do not follow source-code lint rules.
@@ -172,19 +172,19 @@ Breaking these rules creates circular dependencies that fail the Roblox build.
 Tests are colocated as `*.spec.ts` files next to the code they test.
 
 1. Create `<module>.spec.ts` beside the source file
-2. Import from package exports (`@wendoo-lang/core/brain/compiler`), not relative paths
+2. Import from package exports (`@wendoo/core/brain/compiler`), not relative paths
 3. Use `describe`/`it` from `node:test` and `assert` from `node:assert/strict`
 4. `npm test` picks up new files automatically via the glob `src/**/*.spec.ts`
 
 ### Package Exports
 
 ```typescript
-import { List } from "@wendoo-lang/core/platform";
-import { fourCC } from "@wendoo-lang/core/primitives";
-import * as brainModel from "@wendoo-lang/core/brain/model";
-import * as brainTiles from "@wendoo-lang/core/brain/tiles";
-import * as brainCompiler from "@wendoo-lang/core/brain/compiler";
-import * as brainRuntime from "@wendoo-lang/core/brain/runtime";
+import { List } from "@wendoo/core/platform";
+import { fourCC } from "@wendoo/core/primitives";
+import * as brainModel from "@wendoo/core/brain/model";
+import * as brainTiles from "@wendoo/core/brain/tiles";
+import * as brainCompiler from "@wendoo/core/brain/compiler";
+import * as brainRuntime from "@wendoo/core/brain/runtime";
 ```
 
 ## Where to Start Reading

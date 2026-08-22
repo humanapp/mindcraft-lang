@@ -3,10 +3,10 @@ import type {
   ConversationRecord,
   ConversationTurnEnding,
   ConversationTurnStep,
-} from "@wendoo-lang/assistant-relay";
-import { ConversationTurnFailureCode, RelayTurnEndCode } from "@wendoo-lang/assistant-relay";
-import { kBrainDeskFill } from "@wendoo-lang/ui/brain-editor/brain-desk";
-import { SafeMarkdown } from "@wendoo-lang/ui/markdown/SafeMarkdown";
+} from "@wendoo/assistant-relay";
+import { ConversationTurnFailureCode, RelayTurnEndCode } from "@wendoo/assistant-relay";
+import { kBrainDeskFill } from "@wendoo/ui/brain-editor/brain-desk";
+import { SafeMarkdown } from "@wendoo/ui/markdown/SafeMarkdown";
 import { useEffect, useRef } from "react";
 import type { ToolActivity } from "./conversation/activity";
 import { toolActivity } from "./conversation/activity";

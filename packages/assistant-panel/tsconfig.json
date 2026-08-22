@@ -20,7 +20,7 @@
 
     /* Path mapping */
     "paths": {
-      "@wendoo-lang/ui/*": ["../ui/src/*"]
+      "@wendoo/ui/*": ["../ui/src/*"]
     }
   },
   "include": ["src"],

@@ -1,4 +1,4 @@
-import type { BrainActionCallSpec } from "@wendoo-lang/core/runtime";
+import type { BrainActionCallSpec } from "@wendoo/core/runtime";
 import type { ExtractedParam } from "./compiler/types.js";
 
 /** Type guard: narrow `value` to a non-null object record. */

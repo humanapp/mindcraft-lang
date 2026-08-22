@@ -1,4 +1,4 @@
-import { BrainDef, type WendooEnvironment } from "@wendoo-lang/core/app";
+import { BrainDef, type WendooEnvironment } from "@wendoo/core/app";
 import type { Archetype } from "./actor";
 import type { MoverConfig } from "./movement";
 

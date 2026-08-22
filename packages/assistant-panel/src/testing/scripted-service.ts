@@ -1,7 +1,7 @@
-import type { RelayDownstreamMessage, RelayRefusalCode, RelayUpstreamMessage } from "@wendoo-lang/assistant-relay";
-import { ASSISTANT_RELAY_PROTOCOL_VERSION } from "@wendoo-lang/assistant-relay";
-import type { RelayLoopback, RelayLoopbackEnd } from "@wendoo-lang/assistant-relay/testing";
-import { RelayLoopbackClosed } from "@wendoo-lang/assistant-relay/testing";
+import type { RelayDownstreamMessage, RelayRefusalCode, RelayUpstreamMessage } from "@wendoo/assistant-relay";
+import { ASSISTANT_RELAY_PROTOCOL_VERSION } from "@wendoo/assistant-relay";
+import type { RelayLoopback, RelayLoopbackEnd } from "@wendoo/assistant-relay/testing";
+import { RelayLoopbackClosed } from "@wendoo/assistant-relay/testing";
 
 /** One tool call a scripted step asks the client for. */
 export interface ScriptedCall {

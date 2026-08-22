@@ -8,19 +8,15 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { List } from "@wendoo-lang/core";
-import { coreModule, createWendooEnvironment, mkActuatorTileId, type WendooEnvironment } from "@wendoo-lang/core/app";
-import { type IBrainTileDef, type ITileCatalog, RuleSide } from "@wendoo-lang/core/brain";
-import { CompilationDiagCode } from "@wendoo-lang/core/brain/compiler";
-import {
-  type InsertionContext,
-  parseTilesForSuggestions,
-  suggestTiles,
-} from "@wendoo-lang/core/brain/language-service";
-import { BrainDef } from "@wendoo-lang/core/brain/model";
-import { mkModifierTileId, mkParameterTileId } from "@wendoo-lang/core/runtime";
-import { buildCompiledActionBundle, UserTileProject, type WorkspaceCompileResult } from "@wendoo-lang/ts-compiler";
-import { TEST_PROJECT_NAMESPACE } from "@wendoo-lang/ts-compiler/testing";
+import { List } from "@wendoo/core";
+import { coreModule, createWendooEnvironment, mkActuatorTileId, type WendooEnvironment } from "@wendoo/core/app";
+import { type IBrainTileDef, type ITileCatalog, RuleSide } from "@wendoo/core/brain";
+import { CompilationDiagCode } from "@wendoo/core/brain/compiler";
+import { type InsertionContext, parseTilesForSuggestions, suggestTiles } from "@wendoo/core/brain/language-service";
+import { BrainDef } from "@wendoo/core/brain/model";
+import { mkModifierTileId, mkParameterTileId } from "@wendoo/core/runtime";
+import { buildCompiledActionBundle, UserTileProject, type WorkspaceCompileResult } from "@wendoo/ts-compiler";
+import { TEST_PROJECT_NAMESPACE } from "@wendoo/ts-compiler/testing";
 import { applyCompiledUserTiles } from "./user-tile-registration.js";
 
 const MINE_ID = "acmine0000000001";

@@ -15,7 +15,7 @@ import {
   type ReadonlyList,
   type Value,
   VOID_VALUE,
-} from "@wendoo-lang/core/app";
+} from "@wendoo/core/app";
 import { EcosimHostActions } from "@/brain/abi-ids";
 import { hasArg } from "@/brain/actions/utils";
 import { getSelf } from "@/brain/execution-context-types";

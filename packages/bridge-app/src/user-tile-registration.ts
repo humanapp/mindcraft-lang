@@ -1,6 +1,6 @@
-import type { ActionKind, BrainActionCallSpec, WendooEnvironment } from "@wendoo-lang/core/app";
-import { logger, mkActionTileId } from "@wendoo-lang/core/app";
-import type { ActionKey } from "@wendoo-lang/core/runtime";
+import type { ActionKind, BrainActionCallSpec, WendooEnvironment } from "@wendoo/core/app";
+import { logger, mkActionTileId } from "@wendoo/core/app";
+import type { ActionKey } from "@wendoo/core/runtime";
 import type {
   CompileDiagnostic,
   ExtractedArgSpec,
@@ -8,7 +8,7 @@ import type {
   UserAuthoredProgram,
   UserTileDefinition,
   WorkspaceCompileResult,
-} from "@wendoo-lang/ts-compiler";
+} from "@wendoo/ts-compiler";
 
 /** Metadata describing a user-authored sensor or actuator tile. */
 export interface UserTileMetadata {

@@ -11,7 +11,7 @@ import {
   type ProjectCollection,
   type ProjectManifest,
   type ProjectStore,
-} from "@wendoo-lang/app-host";
+} from "@wendoo/app-host";
 import { type DBSchema, type IDBPDatabase, openDB } from "idb";
 import type { ProjectFileSystemEntry } from "./project-file-snapshot.js";
 import { assertRejectsWithCode } from "./test-support/error-assertions.js";

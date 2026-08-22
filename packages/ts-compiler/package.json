@@ -1,10 +1,10 @@
 {
-  "name": "@wendoo-lang/ts-compiler",
+  "name": "@wendoo/ts-compiler",
   "version": "0.2.2",
   "description": "TypeScript-to-Wendoo bytecode compiler for sensors and actuators implemented in TypeScript",
   "license": "MIT",
   "type": "module",
-  "author": "humanapp",
+  "author": "wendoo-lang",
   "repository": {
     "type": "git",
     "url": "https://github.com/wendoo-lang/wendoo-lang.git",
@@ -77,8 +77,8 @@
     "release:major": "node ../../scripts/release.js major"
   },
   "dependencies": {
-    "@wendoo-lang/core": "file:../core",
-    "@wendoo-lang/service-api": "file:../service-api",
+    "@wendoo/core": "file:../core",
+    "@wendoo/service-api": "file:../service-api",
     "typescript": "~5.9.3"
   },
   "devDependencies": {

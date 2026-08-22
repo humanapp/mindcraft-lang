@@ -1,17 +1,17 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
-import type { EmbeddedExtension } from "@wendoo-lang/bridge-app";
+import type { EmbeddedExtension } from "@wendoo/bridge-app";
 import {
   CORE_LIB_COORDINATE,
   collectMetadataFromCompile,
   findEmbeddedExtensionsMissingStableIds,
   formatEmbeddedExtensionIdViolations,
   resolveProjectExtensions,
-} from "@wendoo-lang/bridge-app";
-import { buildEmbeddedExtensionFromDir } from "@wendoo-lang/bridge-app/node";
-import { coreModule, createWendooEnvironment } from "@wendoo-lang/core/app";
-import { createWorkspaceCompiler, type Mount, type WorkspaceSnapshot } from "@wendoo-lang/ts-compiler";
+} from "@wendoo/bridge-app";
+import { buildEmbeddedExtensionFromDir } from "@wendoo/bridge-app/node";
+import { coreModule, createWendooEnvironment } from "@wendoo/core/app";
+import { createWorkspaceCompiler, type Mount, type WorkspaceSnapshot } from "@wendoo/ts-compiler";
 import { createEcosimModule } from "../brain";
 import { buildEcosimExtensionEntries } from "./ecosim-extension-browser";
 import {

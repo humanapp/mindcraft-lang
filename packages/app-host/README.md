@@ -1,4 +1,4 @@
-# @wendoo-lang/app-host
+# @wendoo/app-host
 
 Project management and project file storage for Wendoo apps.
 

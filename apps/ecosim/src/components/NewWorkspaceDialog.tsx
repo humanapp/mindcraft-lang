@@ -7,7 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
   Input,
-} from "@wendoo-lang/ui";
+} from "@wendoo/ui";
 import { useEffect, useRef, useState } from "react";
 
 interface NewWorkspaceDialogProps {

@@ -1,5 +1,5 @@
-import type { ScenarioInput, ScenarioInputKind } from "@wendoo-lang/assistant-bridge";
-import type { IBrainDef, Vector2, WendooEnvironment } from "@wendoo-lang/core/app";
+import type { ScenarioInput, ScenarioInputKind } from "@wendoo/assistant-bridge";
+import type { IBrainDef, Vector2, WendooEnvironment } from "@wendoo/core/app";
 import MatterBodyModule from "phaser/src/physics/matter-js/lib/body/Body.js";
 import MatterCompositeModule from "phaser/src/physics/matter-js/lib/body/Composite.js";
 import MatterEngineModule from "phaser/src/physics/matter-js/lib/core/Engine.js";

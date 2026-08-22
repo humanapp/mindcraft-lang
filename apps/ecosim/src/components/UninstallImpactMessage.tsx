@@ -1,4 +1,4 @@
-import type { LibraryUninstallImpact } from "@wendoo-lang/bridge-app";
+import type { LibraryUninstallImpact } from "@wendoo/bridge-app";
 
 interface UninstallImpactMessageProps {
   /** The computed impact: the brains and files still using the library. */

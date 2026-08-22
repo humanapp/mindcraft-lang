@@ -1,5 +1,5 @@
-import type { BrainServices } from "@wendoo-lang/core/brain";
-import { CompileDiagCode, MultiRootSession, type ProjectRoot } from "@wendoo-lang/ts-compiler";
+import type { BrainServices } from "@wendoo/core/brain";
+import { CompileDiagCode, MultiRootSession, type ProjectRoot } from "@wendoo/ts-compiler";
 import type { EmbeddedExtension } from "./embedded-extensions.js";
 import { resolveProjectExtensions } from "./embedded-extensions.js";
 

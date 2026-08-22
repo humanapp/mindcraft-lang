@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { FetchedExtensionSnapshot } from "@wendoo-lang/app-host";
-import { base64ToBytes, bytesToBase64 } from "@wendoo-lang/app-host";
+import type { FetchedExtensionSnapshot } from "@wendoo/app-host";
+import { base64ToBytes, bytesToBase64 } from "@wendoo/app-host";
 import {
   decodeInstalledSnapshotFiles,
   fetchedContentFromSnapshots,

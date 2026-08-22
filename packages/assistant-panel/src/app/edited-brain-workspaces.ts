@@ -1,11 +1,11 @@
-import type { AuthoringWorkspace, BrainEditHistory, TargetAdapter } from "@wendoo-lang/assistant-bridge";
-import { sessionTileDescriptions } from "@wendoo-lang/assistant-bridge";
-import type { WendooEnvironment } from "@wendoo-lang/core/app";
-import { List } from "@wendoo-lang/core/app";
-import type { ITileCatalog } from "@wendoo-lang/core/brain";
-import type { BrainCommandHistory } from "@wendoo-lang/core/brain/model";
-import { BrainEditOrigin } from "@wendoo-lang/core/brain/model";
-import type { EditedBrain } from "@wendoo-lang/ui/brain-editor/EditedBrainContext";
+import type { AuthoringWorkspace, BrainEditHistory, TargetAdapter } from "@wendoo/assistant-bridge";
+import { sessionTileDescriptions } from "@wendoo/assistant-bridge";
+import type { WendooEnvironment } from "@wendoo/core/app";
+import { List } from "@wendoo/core/app";
+import type { ITileCatalog } from "@wendoo/core/brain";
+import type { BrainCommandHistory } from "@wendoo/core/brain/model";
+import { BrainEditOrigin } from "@wendoo/core/brain/model";
+import type { EditedBrain } from "@wendoo/ui/brain-editor/EditedBrainContext";
 import type { PersonActivity } from "./person-activity";
 import { watchPersonInteraction } from "./person-activity";
 

@@ -11,8 +11,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { stream } from "@wendoo-lang/core";
-import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { stream } from "@wendoo/core";
+import { __test__createBrainServices } from "@wendoo/core/brain/__test__";
 import {
   BINARY_PROGRAM_FORMAT_VERSION,
   type BrainProgramInstructionJson,
@@ -34,7 +34,7 @@ import {
   Op,
   type OperandSpec,
   WENDOO_BINARY_PROGRAM_IMAGE_MAGIC,
-} from "@wendoo-lang/core/runtime";
+} from "@wendoo/core/runtime";
 
 const { MemoryStream, byteArrayFromUint8Array, byteArrayToUint8Array } = stream;
 

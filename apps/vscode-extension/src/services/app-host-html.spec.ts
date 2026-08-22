@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { FOLDER_HOST_MODE_FOLDER, FOLDER_HOST_MODE_GLOBAL } from "@wendoo-lang/bridge-protocol";
+import { FOLDER_HOST_MODE_FOLDER, FOLDER_HOST_MODE_GLOBAL } from "@wendoo/bridge-protocol";
 import { buildAppHostHtml, buildAppLoadFailureHtml } from "./app-host-html";
 
 const FAVICON_DATA_URI =

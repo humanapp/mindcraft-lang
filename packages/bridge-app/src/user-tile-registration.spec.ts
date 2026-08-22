@@ -6,9 +6,9 @@ import {
   createWendooEnvironment,
   mkSensorTileId,
   type WendooEnvironment,
-} from "@wendoo-lang/core/app";
-import { BrainDef } from "@wendoo-lang/core/brain/model";
-import type { BrainTileSensorDef } from "@wendoo-lang/core/brain/tiles";
+} from "@wendoo/core/app";
+import { BrainDef } from "@wendoo/core/brain/model";
+import type { BrainTileSensorDef } from "@wendoo/core/brain/tiles";
 import {
   buildCompiledActionBundle,
   buildMultiRootActionBundle,
@@ -16,8 +16,8 @@ import {
   type ProjectCompileResult,
   UserTileProject,
   type WorkspaceCompileResult,
-} from "@wendoo-lang/ts-compiler";
-import { TEST_PROJECT_NAMESPACE } from "@wendoo-lang/ts-compiler/testing";
+} from "@wendoo/ts-compiler";
+import { TEST_PROJECT_NAMESPACE } from "@wendoo/ts-compiler/testing";
 import {
   applyCompiledUserTiles,
   collectMetadataFromCompile,

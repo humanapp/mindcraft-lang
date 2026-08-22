@@ -6,8 +6,8 @@
 // pre-loaded content maps. Core docs are loaded internally.
 // ---------------------------------------------------------------------------
 
-import { coreConceptDocs, coreTileDocs } from "@wendoo-lang/core/docs";
-import { conceptContent as coreConceptContent, tileContent as coreTileContent } from "@wendoo-lang/core/docs/en";
+import { coreConceptDocs, coreTileDocs } from "@wendoo/core/docs";
+import { conceptContent as coreConceptContent, tileContent as coreTileContent } from "@wendoo/core/docs/en";
 import type { DocsEntries } from "./DocsRegistry";
 import { DocsRegistry } from "./DocsRegistry";
 

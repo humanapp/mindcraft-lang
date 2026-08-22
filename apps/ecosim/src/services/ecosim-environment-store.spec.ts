@@ -8,17 +8,17 @@ import {
   type ProjectCollection,
   type ProjectFileSystem,
   type ProjectManager,
-} from "@wendoo-lang/app-host";
+} from "@wendoo/app-host";
 import {
   AppEnvironmentHost,
   collectBrainErrorDiagnostics,
   collectBrainTileCompileDiagnostics,
   type EmbeddedExtension,
   type TileCompileDiagnosticsLookup,
-} from "@wendoo-lang/bridge-app";
-import { BrainDef, coreModule } from "@wendoo-lang/core/app";
-import type { IBrainActionTileDef, IBrainTileDef } from "@wendoo-lang/core/brain";
-import { type CompileDiagnostic, declarationMount, type WorkspaceCompileResult } from "@wendoo-lang/ts-compiler";
+} from "@wendoo/bridge-app";
+import { BrainDef, coreModule } from "@wendoo/core/app";
+import type { IBrainActionTileDef, IBrainTileDef } from "@wendoo/core/brain";
+import { type CompileDiagnostic, declarationMount, type WorkspaceCompileResult } from "@wendoo/ts-compiler";
 import { createEcosimModule } from "../brain";
 
 // `EcosimEnvironmentStore` cannot be value-imported in this test process: the

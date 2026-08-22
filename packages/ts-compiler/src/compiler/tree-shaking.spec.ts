@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { Dict, List, runtime } from "@wendoo-lang/core";
-import type { BrainServices } from "@wendoo-lang/core/brain";
-import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
-import { treeshakeProgram as treeshakeLinked } from "@wendoo-lang/core/brain/compiler";
-import type { BytecodeExecutableAction, ExecutionContext } from "@wendoo-lang/core/runtime";
+import { Dict, List, runtime } from "@wendoo/core";
+import type { BrainServices } from "@wendoo/core/brain";
+import { __test__createBrainServices } from "@wendoo/core/brain/__test__";
+import { treeshakeProgram as treeshakeLinked } from "@wendoo/core/brain/compiler";
+import type { BytecodeExecutableAction, ExecutionContext } from "@wendoo/core/runtime";
 import {
   HandleTable,
   type LinkedBrainProgram,
@@ -16,8 +16,8 @@ import {
   type StringValue,
   type Value,
   VmStatus,
-} from "@wendoo-lang/core/runtime";
-import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
+} from "@wendoo/core/runtime";
+import { __test__createPlatformServices } from "@wendoo/core/runtime/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { UserTileProject } from "./project.js";

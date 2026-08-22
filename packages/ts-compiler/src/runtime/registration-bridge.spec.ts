@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import type { BrainServices } from "@wendoo-lang/core/brain";
-import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
-import { mkActuatorTileId, mkParameterTileId, mkSensorTileId } from "@wendoo-lang/core/runtime";
+import type { BrainServices } from "@wendoo/core/brain";
+import { __test__createBrainServices } from "@wendoo/core/brain/__test__";
+import { mkActuatorTileId, mkParameterTileId, mkSensorTileId } from "@wendoo/core/runtime";
 import { compileUserTile } from "../compiler/compile.js";
 import type { ExtractedParam } from "../compiler/types.js";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";

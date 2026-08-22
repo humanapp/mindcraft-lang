@@ -1,4 +1,4 @@
-import { BrainDef, type IBrainDef, logger, Vector2, type WendooEnvironment } from "@wendoo-lang/core/app";
+import { BrainDef, type IBrainDef, logger, Vector2, type WendooEnvironment } from "@wendoo/core/app";
 import carnivoreBrainJson from "shared/brains/default-carnivore.json";
 import herbivoreBrainJson from "shared/brains/default-herbivore.json";
 import plantBrainJson from "shared/brains/default-plant.json";
