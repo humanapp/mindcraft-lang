@@ -1,6 +1,6 @@
 {
   "name": "@wendoo/assistant-relay",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Assistant relay protocol: the session handshake, turn events, and tool-call wire the hosted Assistant's split loop speaks",
   "license": "MIT",
   "type": "module",
