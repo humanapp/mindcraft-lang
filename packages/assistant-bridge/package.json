@@ -1,6 +1,6 @@
 {
   "name": "@wendoo/assistant-bridge",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Assistant bridge: the open tool contract, catalog digest, trace summarizer, target adapter interface, and the rehearsal adapter kit",
   "license": "MIT",
   "type": "module",
