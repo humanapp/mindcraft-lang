@@ -1,4 +1,4 @@
-import type { BrainCommandHistory, BrainDef } from "@mindcraft-lang/core/brain/model";
+import type { BrainCommandHistory, BrainDef } from "@wendoo-lang/core/brain/model";
 import { createContext, type ReactNode, useContext } from "react";
 
 /** A place in the edited brain: a page, and the rule of it to show when there is one. */

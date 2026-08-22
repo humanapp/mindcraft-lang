@@ -5,5 +5,5 @@
     "noEmit": true,
     "types": []
   },
-  "include": ["mindcraft.core.d.ts"]
+  "include": ["wendoo.core.d.ts"]
 }

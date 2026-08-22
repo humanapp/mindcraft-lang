@@ -1,4 +1,4 @@
-name: Publish @mindcraft-lang/app-host
+name: Publish @wendoo-lang/app-host
 
 on:
   push:

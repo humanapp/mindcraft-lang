@@ -1,4 +1,4 @@
-import type { BrainDef } from "@mindcraft-lang/core/brain/model";
+import type { BrainDef } from "@wendoo-lang/core/brain/model";
 import { locateRules } from "../tools/workspace.js";
 
 /**

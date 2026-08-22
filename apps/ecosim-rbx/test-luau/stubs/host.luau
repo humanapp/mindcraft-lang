@@ -106,7 +106,7 @@ Engine.__index = Engine
 --[[
 	Creates the headless engine.
 
-	environment: the Mindcraft environment the actors' brains are built from.
+	environment: the Wendoo environment the actors' brains are built from.
 	vision:      the compiled `server/brain/vision` module.
 	Vector2:     core's Vector2 constructor, used for spawn positions.
 ]]

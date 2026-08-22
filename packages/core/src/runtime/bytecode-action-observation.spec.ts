@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { List, UniqueSet } from "@mindcraft-lang/core";
+import { List, UniqueSet } from "@wendoo-lang/core";
 import {
   type ActionDescriptor,
   BrainRuntime,
@@ -30,8 +30,8 @@ import {
   param,
   TRUE_VALUE,
   type Value,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 
 /** funcId of the single rule function every fixture below runs. */
 const RULE_FUNC_ID = 0;

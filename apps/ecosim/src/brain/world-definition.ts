@@ -1,4 +1,4 @@
-import { Vector2 } from "@mindcraft-lang/core/app";
+import { Vector2 } from "@wendoo-lang/core/app";
 import type { Archetype } from "./actor";
 import { ARCHETYPE_NAMES, ARCHETYPES, type ArchetypePhysicsConfig } from "./archetypes";
 

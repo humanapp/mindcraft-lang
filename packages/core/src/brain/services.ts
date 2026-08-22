@@ -24,7 +24,7 @@ export class BrainServices {
 
   /**
    * Host-supplied capabilities shared across every brain in the process.
-   * The same reference is exposed by {@link MindcraftEnvironment.appServices}.
+   * The same reference is exposed by {@link WendooEnvironment.appServices}.
    */
   public readonly app: AppServices;
 

@@ -17,12 +17,12 @@ import type {
   ConversationRecord,
   ConversationToolCall,
   ConversationTurnEnding,
-} from "@mindcraft-lang/assistant-relay";
+} from "@wendoo-lang/assistant-relay";
 import {
   CONVERSATION_RECORD_VERSION,
   ConversationTurnFailureCode,
   RelayTurnEndCode,
-} from "@mindcraft-lang/assistant-relay";
+} from "@wendoo-lang/assistant-relay";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ConversationViewProps } from "./ConversationView";
 import { ConversationView, intentKeyAction, landKeyboardInIntent } from "./ConversationView";

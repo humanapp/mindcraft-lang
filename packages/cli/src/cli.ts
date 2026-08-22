@@ -5,15 +5,15 @@ import { runPublishCommand } from "./publish-command.js";
 import { runUnpackCommand } from "./unpack-command.js";
 import { runVersionCommand } from "./version-command.js";
 
-const CLI_USAGE = `usage: mindcraft <command> [arguments]
+const CLI_USAGE = `usage: wendoo <command> [arguments]
 
 commands:
-  publish   publish a version of a Mindcraft project to GitHub
-  version   increment a Mindcraft project's version in its mindcraft.json
-  unpack    convert a .mindcraft export into a publishable project directory
+  publish   publish a version of a Wendoo project to GitHub
+  version   increment a Wendoo project's version in its wendoo.json
+  unpack    convert a .wendoo export into a publishable project directory
 
 options:
-  -v, --version   print the mindcraft-cli version
+  -v, --version   print the wendoo-cli version
 `;
 
 /** Location of the CLI's own package.json, resolved relative to this module. */
@@ -45,7 +45,7 @@ export function formatCliVersion(version: string, runningMainPath: string): stri
 }
 
 /**
- * Run the `mindcraft` command line with `argv` (the arguments after the
+ * Run the `wendoo` command line with `argv` (the arguments after the
  * program name). Returns the process exit code.
  */
 export async function runCli(argv: readonly string[]): Promise<number> {
@@ -65,6 +65,6 @@ export async function runCli(argv: readonly string[]): Promise<number> {
   if (command === "unpack") {
     return runUnpackCommand(rest);
   }
-  process.stderr.write(command === undefined ? CLI_USAGE : `mindcraft: unknown command "${command}"\n${CLI_USAGE}`);
+  process.stderr.write(command === undefined ? CLI_USAGE : `wendoo: unknown command "${command}"\n${CLI_USAGE}`);
   return 1;
 }

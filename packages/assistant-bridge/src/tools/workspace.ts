@@ -1,16 +1,16 @@
-import type { MindcraftEnvironment, ReadonlyList } from "@mindcraft-lang/core";
-import type { IBrainDef } from "@mindcraft-lang/core/app";
-import { coreModule, createEntropySeededRng, createMindcraftEnvironment, List } from "@mindcraft-lang/core/app";
-import type { IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
-import { childRulePath, RuleSide, rootRulePath } from "@mindcraft-lang/core/brain";
+import type { ReadonlyList, WendooEnvironment } from "@wendoo-lang/core";
+import type { IBrainDef } from "@wendoo-lang/core/app";
+import { coreModule, createEntropySeededRng, createWendooEnvironment, List } from "@wendoo-lang/core/app";
+import type { IBrainTileDef, ITileCatalog } from "@wendoo-lang/core/brain";
+import { childRulePath, RuleSide, rootRulePath } from "@wendoo-lang/core/brain";
 import type {
   BrainCommand,
   BrainEditOrigin,
   BrainJson,
   BrainPageDef,
   BrainRuleDef,
-} from "@mindcraft-lang/core/brain/model";
-import { BrainCommandHistory, BrainDef } from "@mindcraft-lang/core/brain/model";
+} from "@wendoo-lang/core/brain/model";
+import { BrainCommandHistory, BrainDef } from "@wendoo-lang/core/brain/model";
 import type { TargetAdapter } from "../target/adapter.js";
 import { sessionTileDescriptions } from "./tile-descriptions.js";
 import type { RuleSideName } from "./tool-schemas.js";
@@ -67,7 +67,7 @@ export interface LandedEdit {
  * that reach the model, and the target the session authors for.
  */
 export interface AuthoringWorkspace {
-  readonly environment: MindcraftEnvironment;
+  readonly environment: WendooEnvironment;
   readonly brainDef: BrainDef;
   readonly history: BrainEditHistory;
   readonly catalogs: ReadonlyList<ITileCatalog>;
@@ -103,7 +103,7 @@ export function createAuthoringWorkspace(
   brainName: string,
   options?: AuthoringWorkspaceOptions
 ): AuthoringWorkspace {
-  const environment = createMindcraftEnvironment({
+  const environment = createWendooEnvironment({
     modules: [coreModule(), ...adapter.modules()],
     rng: createEntropySeededRng(),
   });

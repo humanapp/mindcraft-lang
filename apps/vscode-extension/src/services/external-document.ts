@@ -1,5 +1,5 @@
-import type { FolderSessionErrorCode as FolderSessionErrorCodeType } from "@mindcraft-lang/bridge-protocol";
-import { FolderSessionErrorCode } from "@mindcraft-lang/bridge-protocol";
+import type { FolderSessionErrorCode as FolderSessionErrorCodeType } from "@wendoo-lang/bridge-protocol";
+import { FolderSessionErrorCode } from "@wendoo-lang/bridge-protocol";
 
 /** Operations opening an app-generated HTML document outside the extension host. */
 export interface ExternalDocumentAccess {

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { FileContent } from "@mindcraft-lang/service-api";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { FileContent } from "@wendoo-lang/service-api";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { CompileDiagCode, DescriptorDiagCode } from "./diag-codes.js";
@@ -26,7 +26,7 @@ function compileProject(files: Record<string, FileContent>, dependencyMounts?: r
 }
 
 const SENSOR_WITH_METADATA = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test-sensor",
@@ -41,7 +41,7 @@ export default Sensor({
 `;
 
 const SENSOR_MINIMAL = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "bare-sensor",
@@ -122,7 +122,7 @@ describe("tile metadata extraction", () => {
 
   test("icon path in a subdirectory resolves correctly", () => {
     const sensorSource = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "sub-sensor",
@@ -144,7 +144,7 @@ export default Sensor({
 
   test("an icon whose bytes are a real png resolves and is kept out of the TypeScript program", () => {
     const sensorSource = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "png-sensor",
@@ -187,7 +187,7 @@ export default Sensor({
       ]),
     };
     const sensorSource = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { widgetRate } from "@lib/acme/widget";
 
 export default Sensor({
@@ -207,7 +207,7 @@ export default Sensor({
 
   test("a docs reference naming a binary file reports the metadata-not-found warning", () => {
     const sensorSource = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "binary-docs-sensor",
@@ -233,7 +233,7 @@ export default Sensor({
 
   test("read-only extension root resolves leading-slash asset keys to a namespace-aware icon URL", () => {
     const sensorSource = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "widget-sensor",
@@ -276,7 +276,7 @@ export default Sensor({
 
   test("label must be a string literal", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 const myLabel = "dynamic";
 export default Sensor({
   name: "bad-label",
@@ -295,7 +295,7 @@ export default Sensor({
 
   test("tags must be an array literal of strings", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 export default Sensor({
   name: "bad-tags",
   tags: "not-an-array" as any,
@@ -313,7 +313,7 @@ export default Sensor({
 
   test("tag elements must be string literals", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 const x = "dynamic";
 export default Sensor({
   name: "bad-tag-elem",

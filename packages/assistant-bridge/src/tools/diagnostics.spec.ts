@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { List } from "@mindcraft-lang/core";
-import { RuleSide } from "@mindcraft-lang/core/brain";
-import { ParseDiagCode } from "@mindcraft-lang/core/brain/compiler";
+import { List } from "@wendoo-lang/core";
+import { RuleSide } from "@wendoo-lang/core/brain";
+import { ParseDiagCode } from "@wendoo-lang/core/brain/compiler";
 import { ruleSideName, serializeDiagParams, toToolDiagnostic } from "./diagnostics.js";
 
 /** No rule path resolves, for the diagnostics that place themselves by no rule. */

@@ -24,12 +24,12 @@
     /* Path mapping */
     "paths": {
       "@/*": ["./src/*"],
-      "@mindcraft-lang/assistant-panel": ["../../packages/assistant-panel/src/index.ts"],
-      "@mindcraft-lang/assistant-panel/*": ["../../packages/assistant-panel/src/*"],
-      "@mindcraft-lang/docs": ["../../packages/docs/src/index.ts"],
-      "@mindcraft-lang/docs/*": ["../../packages/docs/src/*"],
-      "@mindcraft-lang/ui": ["../../packages/ui/src/index.ts"],
-      "@mindcraft-lang/ui/*": ["../../packages/ui/src/*"]
+      "@wendoo-lang/assistant-panel": ["../../packages/assistant-panel/src/index.ts"],
+      "@wendoo-lang/assistant-panel/*": ["../../packages/assistant-panel/src/*"],
+      "@wendoo-lang/docs": ["../../packages/docs/src/index.ts"],
+      "@wendoo-lang/docs/*": ["../../packages/docs/src/*"],
+      "@wendoo-lang/ui": ["../../packages/ui/src/index.ts"],
+      "@wendoo-lang/ui/*": ["../../packages/ui/src/*"]
     }
   },
   "include": ["src"],

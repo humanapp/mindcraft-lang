@@ -5,15 +5,15 @@ import {
   type CompiledActionArtifact,
   type CompiledActionBundle,
   coreModule,
-  createMindcraftEnvironment,
+  createWendooEnvironment,
   Dict,
   List,
-  type MindcraftEnvironment,
-} from "@mindcraft-lang/core";
-import type { BrainServices, IBrainDef } from "@mindcraft-lang/core/brain";
-import { mkActuatorTileId } from "@mindcraft-lang/core/brain";
-import { BrainDef } from "@mindcraft-lang/core/brain/model";
-import { BrainTileActuatorDef } from "@mindcraft-lang/core/brain/tiles";
+  type WendooEnvironment,
+} from "@wendoo-lang/core";
+import type { BrainServices, IBrainDef } from "@wendoo-lang/core/brain";
+import { mkActuatorTileId } from "@wendoo-lang/core/brain";
+import { BrainDef } from "@wendoo-lang/core/brain/model";
+import { BrainTileActuatorDef } from "@wendoo-lang/core/brain/tiles";
 import {
   type BrainActionCallDef,
   BYTECODE_VERSION,
@@ -23,7 +23,7 @@ import {
   mkNumberValue,
   Op,
   param,
-} from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
 
 /** Action key of the compiled user actuator these tests carry between environments. */
 const kNudgeKey = "user::nudge";
@@ -37,7 +37,7 @@ const kRevision = "nudge.bundle.rev1";
 /** The nudge call signature: one anonymous number slot. */
 const nudgeCallDef: BrainActionCallDef = mkCallDef(bag(param(CoreParameterId.AnonymousNumber, { anonymous: true })));
 
-function getEnvironmentServices(environment: MindcraftEnvironment): BrainServices {
+function getEnvironmentServices(environment: WendooEnvironment): BrainServices {
   return (environment as unknown as { brainServices: BrainServices }).brainServices;
 }
 
@@ -65,7 +65,7 @@ function nudgeArtifact(): CompiledActionArtifact {
   };
 }
 
-/** The bundle a compile would hand {@link MindcraftEnvironment.replaceActionBundle}. */
+/** The bundle a compile would hand {@link WendooEnvironment.replaceActionBundle}. */
 function nudgeBundle(): CompiledActionBundle {
   const actions = new Dict<string, CompiledActionArtifact>();
   actions.set(kNudgeKey, nudgeArtifact());
@@ -79,7 +79,7 @@ function nudgeBundle(): CompiledActionBundle {
 }
 
 /** A one-rule brain whose DO side drives the nudge actuator of `environment`. */
-function brainDrivingNudge(environment: MindcraftEnvironment): BrainDef {
+function brainDrivingNudge(environment: WendooEnvironment): BrainDef {
   const brainDef = BrainDef.emptyBrainDef(getEnvironmentServices(environment), "Nudge Brain");
   const tile = environment
     .tileCatalogs()
@@ -97,13 +97,13 @@ function placedTileKind(brainDef: IBrainDef): string {
 
 describe("the action bundle an environment reports", () => {
   test("is absent until a bundle is applied", () => {
-    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule()] });
 
     assert.equal(environment.appliedActionBundle(), undefined);
   });
 
   test("names the revision, the actions, and the tiles of the bundle applied", () => {
-    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule()] });
     environment.replaceActionBundle(nudgeBundle());
 
     const reported = environment.appliedActionBundle();
@@ -118,13 +118,13 @@ describe("the action bundle an environment reports", () => {
   });
 
   test("lets a fresh environment resolve and link a document written against it", () => {
-    const authoring = createMindcraftEnvironment({ modules: [coreModule()] });
+    const authoring = createWendooEnvironment({ modules: [coreModule()] });
     authoring.replaceActionBundle(nudgeBundle());
     const authored = brainDrivingNudge(authoring).toJson();
 
     const reported = authoring.appliedActionBundle();
     assert.ok(reported, "the authoring environment reports its bundle");
-    const staged = createMindcraftEnvironment({ modules: [coreModule()] });
+    const staged = createWendooEnvironment({ modules: [coreModule()] });
     staged.replaceActionBundle(reported);
 
     const restored = staged.deserializeBrainJson(authored);
@@ -139,11 +139,11 @@ describe("the action bundle an environment reports", () => {
   });
 
   test("leaves a fresh environment with no bundle standing the tile in as missing", () => {
-    const authoring = createMindcraftEnvironment({ modules: [coreModule()] });
+    const authoring = createWendooEnvironment({ modules: [coreModule()] });
     authoring.replaceActionBundle(nudgeBundle());
     const authored = brainDrivingNudge(authoring).toJson();
 
-    const bare = createMindcraftEnvironment({ modules: [coreModule()] });
+    const bare = createWendooEnvironment({ modules: [coreModule()] });
 
     assert.equal(placedTileKind(bare.deserializeBrainJson(authored)), "missing");
   });

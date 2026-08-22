@@ -17,10 +17,10 @@ import {
   type IBrainTileDef,
   mkVariableFactoryTileId,
   mkVariableTileId,
-} from "@mindcraft-lang/core/brain";
-import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { type BrainTileFactoryDef, BrainTileOperatorDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
+} from "@wendoo-lang/core/brain";
+import { __test__appendTile, __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
+import { type BrainTileFactoryDef, BrainTileOperatorDef, BrainTileVariableDef } from "@wendoo-lang/core/brain/tiles";
 import {
   CoreTypeIds,
   extractNumberValue,
@@ -29,7 +29,7 @@ import {
   type StructTypeDef,
   type TypeId,
   type Value,
-} from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
 import { registerUserTile } from "../runtime/registration-bridge.js";
 import { buildUserTileMetadata } from "../runtime/user-tile-metadata.js";
 import { collectParams } from "./arg-spec-utils.js";
@@ -44,7 +44,7 @@ const POSITION_NS = "acme/position";
 const GAMEPAD_NS = "acme/gamepad";
 const HOST_NS = "host-store-0001";
 
-const POSITION_SOURCE = `import { NumberType, StructType, type StructOf } from "mindcraft";
+const POSITION_SOURCE = `import { NumberType, StructType, type StructOf } from "wendoo";
 
 export const Position = StructType({
   name: "position",
@@ -58,7 +58,7 @@ export type Position = StructOf<typeof Position>;
 const POSITION_ENTRY = `export { Position } from "./position";
 `;
 
-const GAMEPAD_STICK_SOURCE = `import { Sensor, type Context } from "mindcraft";
+const GAMEPAD_STICK_SOURCE = `import { Sensor, type Context } from "wendoo";
 import { Position } from "@lib/acme/position";
 
 export default Sensor({
@@ -71,7 +71,7 @@ export default Sensor({
 });
 `;
 
-const HOST_SEEN_SOURCE = `import { System } from "mindcraft";
+const HOST_SEEN_SOURCE = `import { System } from "wendoo";
 
 export const Seen = System({
   name: "seen",
@@ -82,7 +82,7 @@ export const Seen = System({
 });
 `;
 
-const HOST_MOVE_SOURCE = `import { Actuator, param, type Context } from "mindcraft";
+const HOST_MOVE_SOURCE = `import { Actuator, param, type Context } from "wendoo";
 import { Position } from "@lib/acme/position";
 import { Seen } from "./seen";
 
@@ -96,7 +96,7 @@ export default Actuator({
 });
 `;
 
-const HOST_READ_SOURCE = `import { Sensor, type Context } from "mindcraft";
+const HOST_READ_SOURCE = `import { Sensor, type Context } from "wendoo";
 import { Seen } from "./seen";
 
 export default Sensor({
@@ -269,7 +269,7 @@ describe("entry-module publication", () => {
       {
         namespace: ns,
         files: files({
-          "defs.ts": `import { NumberType, StructType } from "mindcraft";
+          "defs.ts": `import { NumberType, StructType } from "wendoo";
 
 export enum Mode {
   Stop = 0,
@@ -379,7 +379,7 @@ describe("publication diagnostics", () => {
       {
         namespace: ns,
         files: files({
-          "types.ts": `import { NumberType, StructType } from "mindcraft";
+          "types.ts": `import { NumberType, StructType } from "wendoo";
 
 const Inner = StructType({
   name: "inner",
@@ -411,7 +411,7 @@ export const Outer = StructType({
       {
         namespace: ns,
         files: files({
-          "vec.ts": `import { NumberType, StructType, type StructOf } from "mindcraft";
+          "vec.ts": `import { NumberType, StructType, type StructOf } from "wendoo";
 
 export const Vec = StructType({
   name: "vec",
@@ -419,7 +419,7 @@ export const Vec = StructType({
 });
 export type Vec = StructOf<typeof Vec>;
 `,
-          "probe.ts": `import { Sensor, type Context } from "mindcraft";
+          "probe.ts": `import { Sensor, type Context } from "wendoo";
 import { Vec } from "./vec";
 
 export default Sensor({
@@ -445,7 +445,7 @@ export default Sensor({
 
   test("a published System whose state references an unpublished type is rejected; exporting the type fixes it", () => {
     const ns = "acme/system-closure";
-    const stateSource = (exportHidden: string) => `import { NumberType, StructType, System } from "mindcraft";
+    const stateSource = (exportHidden: string) => `import { NumberType, StructType, System } from "wendoo";
 
 ${exportHidden}const Hidden = StructType({
   name: "hidden",
@@ -488,7 +488,7 @@ export const Nav = System({
   test("referencing another root's unpublished type is rejected; its published types are fine", () => {
     const { session } = newSession();
     const consumerNs = "acme/consumer";
-    const consumerSource = `import { Sensor, type Context } from "mindcraft";
+    const consumerSource = `import { Sensor, type Context } from "wendoo";
 import { Position } from "@lib/acme/position";
 
 export default Sensor({
@@ -505,7 +505,7 @@ export default Sensor({
         namespace: POSITION_NS,
         files: files({
           "position.ts": POSITION_SOURCE,
-          "secret.ts": `import { NumberType, StructType } from "mindcraft";
+          "secret.ts": `import { NumberType, StructType } from "wendoo";
 
 export const Secret = StructType({
   name: "secret",
@@ -538,7 +538,7 @@ export const Secret = StructType({
       {
         namespace: consumerNs,
         files: files({
-          "main.ts": `import { Sensor, type Context } from "mindcraft";
+          "main.ts": `import { Sensor, type Context } from "wendoo";
 import { Position } from "@lib/acme/position/position";
 
 export default Sensor({
@@ -571,7 +571,7 @@ export default Sensor({
       {
         namespace: consumerNs,
         files: files({
-          "main.ts": `import { Sensor, type Context } from "mindcraft";
+          "main.ts": `import { Sensor, type Context } from "wendoo";
 import { Position } from "@lib/position";
 
 export default Sensor({
@@ -606,7 +606,7 @@ export default Sensor({
       {
         namespace: consumerNs,
         files: files({
-          "main.ts": `import { Sensor, type Context } from "mindcraft";
+          "main.ts": `import { Sensor, type Context } from "wendoo";
 import { Position } from "@ext/acme/position";
 
 export default Sensor({
@@ -662,7 +662,7 @@ describe("declaring-project-aware type resolution", () => {
 
   test("an anonymous param type resolves to the declaring project's type", () => {
     const { services, result } = compileConsumer({
-      "reader.ts": `import { Sensor, param, type Context } from "mindcraft";
+      "reader.ts": `import { Sensor, param, type Context } from "wendoo";
 import { Position } from "@lib/acme/position";
 
 export default Sensor({
@@ -683,7 +683,7 @@ export default Sensor({
 
   test("a declared output type resolves to the declaring project's type", () => {
     const { services, result } = compileConsumer({
-      "spotter.ts": `import { Sensor, setOutput, type Context } from "mindcraft";
+      "spotter.ts": `import { Sensor, setOutput, type Context } from "wendoo";
 import { Position } from "@lib/acme/position";
 
 export default Sensor({
@@ -706,7 +706,7 @@ export default Sensor({
 
   test("consumesWhenResult resolves to the declaring project's type", () => {
     const { services, result } = compileConsumer({
-      "chase.ts": `import { Actuator, type Context } from "mindcraft";
+      "chase.ts": `import { Actuator, type Context } from "wendoo";
 import { Position } from "@lib/acme/position";
 
 export default Actuator({
@@ -724,7 +724,7 @@ export default Actuator({
 
   test("a StructType field typed by an extension import resolves to the declaring project's type", () => {
     const { services, result } = compileConsumer({
-      "track.ts": `import { NumberType, Sensor, StructType, type Context, type StructOf } from "mindcraft";
+      "track.ts": `import { NumberType, Sensor, StructType, type Context, type StructOf } from "wendoo";
 import { Position } from "@lib/acme/position";
 
 export const Track = StructType({
@@ -753,7 +753,7 @@ export default Sensor({
 
   test("a System state field typed by an extension import resolves to the declaring project's type", () => {
     const { services, result } = compileConsumer({
-      "nav.ts": `import { Sensor, System, type Context } from "mindcraft";
+      "nav.ts": `import { Sensor, System, type Context } from "wendoo";
 import { Position } from "@lib/acme/position";
 
 const Nav = System({
@@ -777,7 +777,7 @@ export default Sensor({
 
   test("a Conversion from-type resolves to the declaring project's type", () => {
     const { services, result } = compileConsumer({
-      "pos-to-buffer.ts": `import { BufferType, Conversion } from "mindcraft";
+      "pos-to-buffer.ts": `import { BufferType, Conversion } from "wendoo";
 import { Position } from "@lib/acme/position";
 
 export default Conversion({
@@ -809,7 +809,7 @@ export default Conversion({
       {
         namespace: otherNs,
         files: files({
-          "probe.ts": `import { Sensor, type Context } from "mindcraft";
+          "probe.ts": `import { Sensor, type Context } from "wendoo";
 import { Position } from "@lib/acme/position";
 
 export default Sensor({

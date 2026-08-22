@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { DependencyMount } from "@mindcraft-lang/ts-compiler";
+import type { DependencyMount } from "@wendoo-lang/ts-compiler";
 import type { EmbeddedExtension, OriginCandidate } from "./embedded-extensions.js";
 import {
   CatalogMoveWarningCode,
@@ -9,14 +9,14 @@ import {
   unifyOriginCandidate,
 } from "./embedded-extensions.js";
 
-const OWNER = "mindcraft-lang";
+const OWNER = "wendoo-lang";
 
 /** The canonical `<owner>/<repo>` coordinate an embedded extension with the given repo segment carries. */
 function coordinateFor(repo: string): string {
   return `${OWNER}/${repo}`;
 }
 
-/** An embedded extension whose content includes a `mindcraft.json` declaring its version and its own extensions. */
+/** An embedded extension whose content includes a `wendoo.json` declaring its version and its own extensions. */
 function ext(
   repo: string,
   options: {
@@ -37,7 +37,7 @@ function ext(
     options.ambient !== undefined
   ) {
     files.push({
-      path: "mindcraft.json",
+      path: "wendoo.json",
       content: JSON.stringify({
         name: repo,
         version: options.version ?? "1.0.0",
@@ -59,7 +59,7 @@ function mountFor(mounts: readonly DependencyMount[], origin: string): Dependenc
   return mount;
 }
 
-/** The codal standard library shape: an embedded extension with no `mindcraft.json`, hence no dependencies. */
+/** The codal standard library shape: an embedded extension with no `wendoo.json`, hence no dependencies. */
 const STDLIB: EmbeddedExtension = {
   canonicalOrigin: coordinateFor("codal"),
   files: [
@@ -71,13 +71,13 @@ const STDLIB: EmbeddedExtension = {
 describe("resolveProjectExtensions -- flat cases", () => {
   test("resolves an embedded reference by coordinate to a coordinate dependency and a namespaced mount", () => {
     const resolved = resolveProjectExtensions(
-      { "mindcraft-lang/codal": "embedded:mindcraft-lang/codal" },
+      { "wendoo-lang/codal": "embedded:wendoo-lang/codal" },
       { embedded: [STDLIB] }
     );
-    assert.deepEqual(resolved.dependencies, [{ coordinate: "mindcraft-lang/codal" }]);
+    assert.deepEqual(resolved.dependencies, [{ coordinate: "wendoo-lang/codal" }]);
     assert.equal(resolved.dependencyMounts.length, 1);
     const mount = resolved.dependencyMounts[0];
-    assert.equal(mount.namespace, "mindcraft-lang/codal");
+    assert.equal(mount.namespace, "wendoo-lang/codal");
     assert.equal(mount.files.get("/index.ts"), "export {} from './image';");
     assert.equal(mount.files.get("/image.ts"), "export const image = 1;");
     assert.deepEqual(mount.dependencies, []);
@@ -87,8 +87,8 @@ describe("resolveProjectExtensions -- flat cases", () => {
   test("the coordinate derives from identity, not from the manifest key", () => {
     // A manifest key that disagrees with the resolved coordinate does not change
     // the imported coordinate: it is always the extension's own <owner>/<repo>.
-    const resolved = resolveProjectExtensions({ "any/key": "embedded:mindcraft-lang/codal" }, { embedded: [STDLIB] });
-    assert.deepEqual(resolved.dependencies, [{ coordinate: "mindcraft-lang/codal" }]);
+    const resolved = resolveProjectExtensions({ "any/key": "embedded:wendoo-lang/codal" }, { embedded: [STDLIB] });
+    assert.deepEqual(resolved.dependencies, [{ coordinate: "wendoo-lang/codal" }]);
   });
 
   test("skips references of other transports", () => {
@@ -103,7 +103,7 @@ describe("resolveProjectExtensions -- flat cases", () => {
 
   test("skips an embedded reference with no matching bundled extension", () => {
     const resolved = resolveProjectExtensions(
-      { "mindcraft-lang/other": "embedded:mindcraft-lang/not-bundled" },
+      { "wendoo-lang/other": "embedded:wendoo-lang/not-bundled" },
       { embedded: [STDLIB] }
     );
     assert.deepEqual(resolved.dependencies, []);
@@ -111,17 +111,17 @@ describe("resolveProjectExtensions -- flat cases", () => {
 
   test("carries an extension's declared ambient list onto its mount and omits it when undeclared", () => {
     const withAmbient = resolveProjectExtensions(
-      { "mindcraft-lang/a": "embedded:mindcraft-lang/a" },
+      { "wendoo-lang/a": "embedded:wendoo-lang/a" },
       {
         embedded: [
-          ext("a", { version: "1.0.0", ambient: ["mindcraft.a.d.ts"], extra: { "mindcraft.a.d.ts": "export {};" } }),
+          ext("a", { version: "1.0.0", ambient: ["wendoo.a.d.ts"], extra: { "wendoo.a.d.ts": "export {};" } }),
         ],
       }
     );
-    assert.deepEqual(mountFor(withAmbient.dependencyMounts, coordinateFor("a")).ambient, ["mindcraft.a.d.ts"]);
+    assert.deepEqual(mountFor(withAmbient.dependencyMounts, coordinateFor("a")).ambient, ["wendoo.a.d.ts"]);
 
     const withoutAmbient = resolveProjectExtensions(
-      { "mindcraft-lang/codal": "embedded:mindcraft-lang/codal" },
+      { "wendoo-lang/codal": "embedded:wendoo-lang/codal" },
       { embedded: [STDLIB] }
     );
     assert.equal(mountFor(withoutAmbient.dependencyMounts, coordinateFor("codal")).ambient, undefined);
@@ -130,8 +130,8 @@ describe("resolveProjectExtensions -- flat cases", () => {
   test("origin provenance carries the manifest display name, falling back to the coordinate without one", () => {
     const resolved = resolveProjectExtensions(
       {
-        "mindcraft-lang/a": "embedded:mindcraft-lang/a",
-        "mindcraft-lang/codal": "embedded:mindcraft-lang/codal",
+        "wendoo-lang/a": "embedded:wendoo-lang/a",
+        "wendoo-lang/codal": "embedded:wendoo-lang/codal",
       },
       { embedded: [ext("a", { version: "1.0.0" }), STDLIB] }
     );
@@ -148,13 +148,13 @@ describe("resolveProjectExtensions -- flat cases", () => {
         { path: "index.ts", content: "export const authored = 1;" },
         { path: "tsconfig.json", content: carriedTsconfig },
         {
-          path: "mindcraft.json",
+          path: "wendoo.json",
           content: JSON.stringify({ name: "authored", version: "1.0.0", files: ["index.ts", "tsconfig.json"] }),
         },
       ],
     };
     const resolved = resolveProjectExtensions(
-      { "mindcraft-lang/authored": "embedded:mindcraft-lang/authored" },
+      { "wendoo-lang/authored": "embedded:wendoo-lang/authored" },
       { embedded: [withTsconfig] }
     );
     const mount = mountFor(resolved.dependencyMounts, coordinateFor("authored"));
@@ -171,12 +171,12 @@ describe("resolveProjectExtensions -- flat cases", () => {
 
   test("the stdlib default extension (no manifest) resolves identically regardless of embed-record noise", () => {
     const resolved = resolveProjectExtensions(
-      { "mindcraft-lang/codal": "embedded:mindcraft-lang/codal" },
+      { "wendoo-lang/codal": "embedded:wendoo-lang/codal" },
       { embedded: [STDLIB, ext("unused-a", { version: "2.0.0" })] }
     );
-    assert.deepEqual(resolved.dependencies, [{ coordinate: "mindcraft-lang/codal" }]);
+    assert.deepEqual(resolved.dependencies, [{ coordinate: "wendoo-lang/codal" }]);
     assert.equal(resolved.dependencyMounts.length, 1);
-    assert.equal(resolved.dependencyMounts[0].namespace, "mindcraft-lang/codal");
+    assert.equal(resolved.dependencyMounts[0].namespace, "wendoo-lang/codal");
     assert.deepEqual(resolved.dependencyMounts[0].dependencies, []);
     assert.deepEqual(resolved.warnings, []);
   });
@@ -186,21 +186,21 @@ describe("resolveProjectExtensions -- transitive resolution", () => {
   test("an extension's own extensions resolve recursively, dependency mounts carry their own deps", () => {
     // A -> B -> C
     const embed = [
-      ext("a", { version: "1.0.0", extensions: { "mindcraft-lang/b": "embedded:mindcraft-lang/b" } }),
-      ext("b", { version: "1.0.0", extensions: { "mindcraft-lang/c": "embedded:mindcraft-lang/c" } }),
+      ext("a", { version: "1.0.0", extensions: { "wendoo-lang/b": "embedded:wendoo-lang/b" } }),
+      ext("b", { version: "1.0.0", extensions: { "wendoo-lang/c": "embedded:wendoo-lang/c" } }),
       ext("c", { version: "1.0.0" }),
     ];
-    const resolved = resolveProjectExtensions({ "mindcraft-lang/a": "embedded:mindcraft-lang/a" }, { embedded: embed });
+    const resolved = resolveProjectExtensions({ "wendoo-lang/a": "embedded:wendoo-lang/a" }, { embedded: embed });
 
-    assert.deepEqual(resolved.dependencies, [{ coordinate: "mindcraft-lang/a" }]);
+    assert.deepEqual(resolved.dependencies, [{ coordinate: "wendoo-lang/a" }]);
     const origins = resolved.dependencyMounts.map((m) => m.namespace).sort();
     assert.deepEqual(origins, [coordinateFor("a"), coordinateFor("b"), coordinateFor("c")]);
 
     assert.deepEqual(mountFor(resolved.dependencyMounts, coordinateFor("a")).dependencies, [
-      { coordinate: "mindcraft-lang/b" },
+      { coordinate: "wendoo-lang/b" },
     ]);
     assert.deepEqual(mountFor(resolved.dependencyMounts, coordinateFor("b")).dependencies, [
-      { coordinate: "mindcraft-lang/c" },
+      { coordinate: "wendoo-lang/c" },
     ]);
     assert.deepEqual(mountFor(resolved.dependencyMounts, coordinateFor("c")).dependencies, []);
     assert.deepEqual(resolved.warnings, []);
@@ -209,22 +209,22 @@ describe("resolveProjectExtensions -- transitive resolution", () => {
   test("a diamond resolves one instance of the shared origin; both dependents reference the same origin", () => {
     // A -> C, B -> C; host -> A, B
     const embed = [
-      ext("a", { version: "1.0.0", extensions: { "mindcraft-lang/c": "embedded:mindcraft-lang/c" } }),
-      ext("b", { version: "1.0.0", extensions: { "mindcraft-lang/c": "embedded:mindcraft-lang/c" } }),
+      ext("a", { version: "1.0.0", extensions: { "wendoo-lang/c": "embedded:wendoo-lang/c" } }),
+      ext("b", { version: "1.0.0", extensions: { "wendoo-lang/c": "embedded:wendoo-lang/c" } }),
       ext("c", { version: "1.0.0" }),
     ];
     const resolved = resolveProjectExtensions(
-      { "mindcraft-lang/a": "embedded:mindcraft-lang/a", "mindcraft-lang/b": "embedded:mindcraft-lang/b" },
+      { "wendoo-lang/a": "embedded:wendoo-lang/a", "wendoo-lang/b": "embedded:wendoo-lang/b" },
       { embedded: embed }
     );
 
     const cMounts = resolved.dependencyMounts.filter((m) => m.namespace === coordinateFor("c"));
     assert.equal(cMounts.length, 1, "the shared origin appears exactly once in the closure");
     assert.deepEqual(mountFor(resolved.dependencyMounts, coordinateFor("a")).dependencies, [
-      { coordinate: "mindcraft-lang/c" },
+      { coordinate: "wendoo-lang/c" },
     ]);
     assert.deepEqual(mountFor(resolved.dependencyMounts, coordinateFor("b")).dependencies, [
-      { coordinate: "mindcraft-lang/c" },
+      { coordinate: "wendoo-lang/c" },
     ]);
     assert.deepEqual(resolved.warnings, []);
   });
@@ -238,11 +238,11 @@ describe("resolveProjectExtensions -- shared origin", () => {
     // origin through the same reference and the same content: they unify
     // silently.
     const embed = [
-      ext("a", { version: "1.0.0", extensions: { "mindcraft-lang/c": "embedded:mindcraft-lang/c" } }),
+      ext("a", { version: "1.0.0", extensions: { "wendoo-lang/c": "embedded:wendoo-lang/c" } }),
       ext("c", { version: "1.0.0" }),
     ];
     const resolved = resolveProjectExtensions(
-      { "mindcraft-lang/c": "embedded:mindcraft-lang/c", "mindcraft-lang/a": "embedded:mindcraft-lang/a" },
+      { "wendoo-lang/c": "embedded:wendoo-lang/c", "wendoo-lang/a": "embedded:wendoo-lang/a" },
       { embedded: embed }
     );
 
@@ -250,7 +250,7 @@ describe("resolveProjectExtensions -- shared origin", () => {
     assert.equal(cMounts.length, 1, "one instance of the shared origin");
     assert.deepEqual(resolved.warnings, [], "an identity-derived reference cannot conflict with itself");
     assert.deepEqual(mountFor(resolved.dependencyMounts, coordinateFor("a")).dependencies, [
-      { coordinate: "mindcraft-lang/c" },
+      { coordinate: "wendoo-lang/c" },
     ]);
   });
 });
@@ -259,11 +259,11 @@ describe("resolveProjectExtensions -- cycle rejection", () => {
   test("a dependency cycle throws a precise cycle error naming the origins", () => {
     // A -> B -> A
     const embed = [
-      ext("a", { version: "1.0.0", extensions: { "mindcraft-lang/b": "embedded:mindcraft-lang/b" } }),
-      ext("b", { version: "1.0.0", extensions: { "mindcraft-lang/a": "embedded:mindcraft-lang/a" } }),
+      ext("a", { version: "1.0.0", extensions: { "wendoo-lang/b": "embedded:wendoo-lang/b" } }),
+      ext("b", { version: "1.0.0", extensions: { "wendoo-lang/a": "embedded:wendoo-lang/a" } }),
     ];
     assert.throws(
-      () => resolveProjectExtensions({ "mindcraft-lang/a": "embedded:mindcraft-lang/a" }, { embedded: embed }),
+      () => resolveProjectExtensions({ "wendoo-lang/a": "embedded:wendoo-lang/a" }, { embedded: embed }),
       (err: unknown) => {
         assert.ok(err instanceof ExtensionResolutionCycleError);
         assert.deepEqual(err.cycle, [coordinateFor("a"), coordinateFor("b"), coordinateFor("a")]);
@@ -273,9 +273,9 @@ describe("resolveProjectExtensions -- cycle rejection", () => {
   });
 
   test("a self-cycle throws", () => {
-    const embed = [ext("a", { version: "1.0.0", extensions: { "mindcraft-lang/a": "embedded:mindcraft-lang/a" } })];
+    const embed = [ext("a", { version: "1.0.0", extensions: { "wendoo-lang/a": "embedded:wendoo-lang/a" } })];
     assert.throws(
-      () => resolveProjectExtensions({ "mindcraft-lang/a": "embedded:mindcraft-lang/a" }, { embedded: embed }),
+      () => resolveProjectExtensions({ "wendoo-lang/a": "embedded:wendoo-lang/a" }, { embedded: embed }),
       ExtensionResolutionCycleError
     );
   });
@@ -310,8 +310,8 @@ function originCandidate(options: {
 
 describe("unifyOriginCandidate -- version conflict", () => {
   test("the higher semantic version wins and the warning names both versions", () => {
-    const incumbent = originCandidate({ version: "1.0.0", reference: "gh:mindcraft-lang/shared@v1.0.0", depth: 0 });
-    const incoming = originCandidate({ version: "2.3.0", reference: "gh:mindcraft-lang/shared@v2.3.0", depth: 1 });
+    const incumbent = originCandidate({ version: "1.0.0", reference: "gh:wendoo-lang/shared@v1.0.0", depth: 0 });
+    const incoming = originCandidate({ version: "2.3.0", reference: "gh:wendoo-lang/shared@v2.3.0", depth: 1 });
 
     const { winner, warning } = unifyOriginCandidate(incoming, incumbent);
 
@@ -322,15 +322,15 @@ describe("unifyOriginCandidate -- version conflict", () => {
     assert.equal(warning.origin, coordinateFor("shared"));
     assert.equal(warning.selectedVersion, "2.3.0");
     assert.equal(warning.rejectedVersion, "1.0.0");
-    assert.equal(warning.selectedReference, "gh:mindcraft-lang/shared@v2.3.0");
-    assert.equal(warning.rejectedReference, "gh:mindcraft-lang/shared@v1.0.0");
+    assert.equal(warning.selectedReference, "gh:wendoo-lang/shared@v2.3.0");
+    assert.equal(warning.rejectedReference, "gh:wendoo-lang/shared@v1.0.0");
     assert.match(warning.message, /2\.3\.0/);
     assert.match(warning.message, /1\.0\.0/);
   });
 
   test("a lower incoming version loses; the incumbent stays and the warning still names both", () => {
-    const incumbent = originCandidate({ version: "2.3.0", reference: "gh:mindcraft-lang/shared@v2.3.0", depth: 0 });
-    const incoming = originCandidate({ version: "1.0.0", reference: "gh:mindcraft-lang/shared@v1.0.0", depth: 1 });
+    const incumbent = originCandidate({ version: "2.3.0", reference: "gh:wendoo-lang/shared@v2.3.0", depth: 0 });
+    const incoming = originCandidate({ version: "1.0.0", reference: "gh:wendoo-lang/shared@v1.0.0", depth: 1 });
 
     const { winner, warning } = unifyOriginCandidate(incoming, incumbent);
 
@@ -344,8 +344,8 @@ describe("unifyOriginCandidate -- version conflict", () => {
 
 describe("unifyOriginCandidate -- reference tie-break", () => {
   test("at an equal version, the reference nearest the host project wins", () => {
-    const incumbent = originCandidate({ version: "1.0.0", reference: "gh:mindcraft-lang/shared@v1.0.0", depth: 2 });
-    const incoming = originCandidate({ version: "1.0.0", reference: "embedded:mindcraft-lang/shared", depth: 0 });
+    const incumbent = originCandidate({ version: "1.0.0", reference: "gh:wendoo-lang/shared@v1.0.0", depth: 2 });
+    const incoming = originCandidate({ version: "1.0.0", reference: "embedded:wendoo-lang/shared", depth: 0 });
 
     const { winner, warning } = unifyOriginCandidate(incoming, incumbent);
 
@@ -354,15 +354,15 @@ describe("unifyOriginCandidate -- reference tie-break", () => {
     assert.ok(warning, "an equal version reached by two references records a warning");
     assert.equal(warning.kind, "reference-tiebreak");
     assert.equal(warning.origin, coordinateFor("shared"));
-    assert.equal(warning.selectedReference, "embedded:mindcraft-lang/shared");
-    assert.equal(warning.rejectedReference, "gh:mindcraft-lang/shared@v1.0.0");
+    assert.equal(warning.selectedReference, "embedded:wendoo-lang/shared");
+    assert.equal(warning.rejectedReference, "gh:wendoo-lang/shared@v1.0.0");
     assert.equal(warning.selectedVersion, undefined);
     assert.equal(warning.rejectedVersion, undefined);
   });
 
   test("identical version and reference unify onto the incumbent with no warning", () => {
-    const incumbent = originCandidate({ version: "1.0.0", reference: "embedded:mindcraft-lang/shared", depth: 0 });
-    const incoming = originCandidate({ version: "1.0.0", reference: "embedded:mindcraft-lang/shared", depth: 1 });
+    const incumbent = originCandidate({ version: "1.0.0", reference: "embedded:wendoo-lang/shared", depth: 0 });
+    const incoming = originCandidate({ version: "1.0.0", reference: "embedded:wendoo-lang/shared", depth: 1 });
 
     const { winner, warning } = unifyOriginCandidate(incoming, incumbent);
 
@@ -380,7 +380,7 @@ describe("resolveProjectExtensions -- fetched content", () => {
   }): Map<string, string> {
     return new Map([
       [
-        "/mindcraft.json",
+        "/wendoo.json",
         JSON.stringify({
           name: options.name,
           version: options.version,
@@ -513,7 +513,7 @@ describe("resolveProjectExtensions -- fetched-origin warnings", () => {
       [
         reference,
         new Map([
-          ["/mindcraft.json", JSON.stringify(manifest)],
+          ["/wendoo.json", JSON.stringify(manifest)],
           ["/index.ts", "export const x = 1;"],
         ]),
       ],
@@ -578,7 +578,7 @@ describe("resolveProjectExtensions -- fetched-origin warnings", () => {
     assert.deepEqual(matching.warnings, []);
 
     const embedded = resolveProjectExtensions(
-      { "mindcraft-lang/codal": "embedded:mindcraft-lang/codal" },
+      { "wendoo-lang/codal": "embedded:wendoo-lang/codal" },
       { embedded: [STDLIB] }
     );
     assert.deepEqual(embedded.warnings, []);
@@ -647,7 +647,7 @@ describe("resolveProjectExtensions -- target-driven resolution", () => {
       [
         reference,
         new Map([
-          ["/mindcraft.json", JSON.stringify({ name: "Base", version: "1.0.0", files: ["index.ts"] })],
+          ["/wendoo.json", JSON.stringify({ name: "Base", version: "1.0.0", files: ["index.ts"] })],
           ["/index.ts", "export const x = 1;"],
         ]),
       ],
@@ -702,7 +702,7 @@ describe("resolveProjectExtensions -- target-driven resolution", () => {
   });
 
   test("a catalog-moved edge whose moved content is missing raises a stable-coded warning", () => {
-    const movedReference = "gh:mindcraft-lang/pos@1111111111111111111111111111111111111111";
+    const movedReference = "gh:wendoo-lang/pos@1111111111111111111111111111111111111111";
     const embed = [
       ext("a", { version: "1.0.0", extensions: { [coordinateFor("pos")]: `embedded:${coordinateFor("pos")}` } }),
     ];

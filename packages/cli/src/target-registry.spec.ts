@@ -8,8 +8,8 @@ import {
   TargetRegistryErrorCode,
 } from "./target-registry.js";
 
-const MICROBIT_COORDINATE = "mindcraft-lang/trg-microbit-v2";
-const MICROBIT_REF = "gh:mindcraft-lang/trg-microbit-v2@c6cfc18d88a6c475be7af63cd6529480d444d8e4";
+const MICROBIT_COORDINATE = "wendoo-lang/trg-microbit-v2";
+const MICROBIT_REF = "gh:wendoo-lang/trg-microbit-v2@c6cfc18d88a6c475be7af63cd6529480d444d8e4";
 
 const SHA_A = "1111111111111111111111111111111111111111";
 const SHA_B = "2222222222222222222222222222222222222222";
@@ -26,9 +26,9 @@ function entry(coordinate: string, sha: string, kind = "library"): Record<string
   };
 }
 
-/** Serialize a `mindcraft.catalog/1` document around the given entries. */
+/** Serialize a `wendoo.catalog/1` document around the given entries. */
 function registryDocument(entries: readonly Record<string, unknown>[]): string {
-  return JSON.stringify({ format: "mindcraft.catalog/1", entries });
+  return JSON.stringify({ format: "wendoo.catalog/1", entries });
 }
 
 describe("target registry", () => {
@@ -76,7 +76,7 @@ describe("target registry", () => {
 
   it("fails on a document whose moves section is invalid, carrying the move fatal", () => {
     const document = JSON.stringify({
-      format: "mindcraft.catalog/1",
+      format: "wendoo.catalog/1",
       entries: [entry("example-org/trg-first", SHA_A)],
       moves: {
         "example-org/moved": [

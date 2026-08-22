@@ -11,17 +11,17 @@ import type {
   ProjectCollection,
   ProjectFileSystem,
   ProjectManager,
-} from "@mindcraft-lang/app-host";
+} from "@wendoo-lang/app-host";
 import {
   AppHostErrorCode,
   createInMemoryProjectFileSystem,
   createJsDelivrExtensionTransport,
   ExtensionAddInputErrorCode,
   ExtensionFetchErrorCode,
-} from "@mindcraft-lang/app-host";
-import type { PersistedBrainJson } from "@mindcraft-lang/core/app";
-import { BrainDef, coreModule } from "@mindcraft-lang/core/app";
-import { declarationMount } from "@mindcraft-lang/ts-compiler";
+} from "@wendoo-lang/app-host";
+import type { PersistedBrainJson } from "@wendoo-lang/core/app";
+import { BrainDef, coreModule } from "@wendoo-lang/core/app";
+import { declarationMount } from "@wendoo-lang/ts-compiler";
 import { AppEnvironmentHost } from "./app-environment-host.js";
 import type { EmbeddedExtension } from "./embedded-extensions.js";
 import { CatalogMoveWarningCode } from "./embedded-extensions.js";
@@ -33,10 +33,7 @@ import {
   serializeInstalledExtensionSnapshots,
 } from "./fetched-extension-snapshots.js";
 
-const CORE_AMBIENT = readFileSync(
-  fileURLToPath(new URL("../../core/lib/mindcraft.core.d.ts", import.meta.url)),
-  "utf8"
-);
+const CORE_AMBIENT = readFileSync(fileURLToPath(new URL("../../core/lib/wendoo.core.d.ts", import.meta.url)), "utf8");
 
 const PROJECT_ID = "install-pipeline-project";
 
@@ -90,14 +87,14 @@ function manifestText(name: string, extensions?: Record<string, string>): string
 const POSITION_COORDINATE = "example-org/position-ext";
 const POSITION_REFERENCE = `gh:${POSITION_COORDINATE}@v0.1.0`;
 const POSITION_CONTENT: Record<string, string> = {
-  "mindcraft.json": manifestText("Position"),
+  "wendoo.json": manifestText("Position"),
   "index.ts": "export const position = 42;\n",
 };
 
 const BROKEN_COORDINATE = "example-org/broken-ext";
 const BROKEN_REFERENCE = `gh:${BROKEN_COORDINATE}@v0.1.0`;
 const BROKEN_CONTENT: Record<string, string> = {
-  "mindcraft.json": manifestText("Broken"),
+  "wendoo.json": manifestText("Broken"),
   "index.ts": 'export const broken: number = "not a number";\n',
 };
 
@@ -207,7 +204,7 @@ function createHost(
   return new AppEnvironmentHost({
     projectManager: createManager(world, filesystem),
     modules: [coreModule()],
-    mounts: [declarationMount([{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }])],
+    mounts: [declarationMount([{ path: "wendoo.core.d.ts", content: CORE_AMBIENT }])],
     extensionFetchTransport: options?.transport,
     ...(options?.embeddedExtensions ? { embeddedExtensions: options.embeddedExtensions } : {}),
     ...(options?.catalogMoves ? { catalogMoves: options.catalogMoves } : {}),
@@ -245,7 +242,7 @@ describe("extension install pipeline", () => {
       assert.ok(record);
       assert.equal(record.reference, POSITION_REFERENCE);
       assert.equal(record.specifier, "v0.1.0");
-      assert.deepStrictEqual(Object.keys(record.files).sort(), ["index.ts", "mindcraft.json"]);
+      assert.deepStrictEqual(Object.keys(record.files).sort(), ["index.ts", "wendoo.json"]);
 
       // The installed tree materializes exactly like an embedded install.
       assert.ok(servedPaths(host).includes(`.libraries/${POSITION_COORDINATE}/index.ts`));
@@ -414,11 +411,11 @@ describe("extension install pipeline", () => {
     const transport = createTestTransport({
       content: {
         "example-org/a-ext@v1": {
-          "mindcraft.json": manifestText("A", { "example-org/b-ext": bReference }),
+          "wendoo.json": manifestText("A", { "example-org/b-ext": bReference }),
           "index.ts": "export {};\n",
         },
         "example-org/b-ext@v1": {
-          "mindcraft.json": manifestText("B", { "example-org/a-ext": aReference }),
+          "wendoo.json": manifestText("B", { "example-org/a-ext": aReference }),
           "index.ts": "export {};\n",
         },
       },
@@ -450,11 +447,11 @@ describe("extension install pipeline", () => {
     const transport = createTestTransport({
       content: {
         "example-org/robot-ext@v1": {
-          "mindcraft.json": manifestText("Robot", { "example-org/motor-ext": motorReference }),
+          "wendoo.json": manifestText("Robot", { "example-org/motor-ext": motorReference }),
           "index.ts": `export { motor } from "@lib/example-org/motor-ext";\n`,
         },
         "example-org/motor-ext@v1": {
-          "mindcraft.json": manifestText("Motor"),
+          "wendoo.json": manifestText("Motor"),
           "index.ts": "export const motor = 1;\n",
         },
       },
@@ -519,7 +516,7 @@ describe("extension install pipeline", () => {
   it("installs through the real jsDelivr transport against a local server with the jsDelivr layout", async () => {
     const restoreLocalStorage = installEmptyLocalStorage();
     const served: Record<string, string> = {
-      [`/gh/${POSITION_COORDINATE}@v0.1.0/mindcraft.json`]: POSITION_CONTENT["mindcraft.json"],
+      [`/gh/${POSITION_COORDINATE}@v0.1.0/wendoo.json`]: POSITION_CONTENT["wendoo.json"],
       [`/gh/${POSITION_COORDINATE}@v0.1.0/index.ts`]: POSITION_CONTENT["index.ts"],
     };
     const server: Server = createServer((request, response) => {
@@ -588,7 +585,7 @@ class MockWebSocket {
   }
 }
 
-describe("extension install pipeline -- hand-edited mindcraft.json", () => {
+describe("extension install pipeline -- hand-edited wendoo.json", () => {
   it("routes a peer's extensions edit through the install transaction", async () => {
     const restoreLocalStorage = installEmptyLocalStorage();
     const originalWebSocket = globalThis.WebSocket;
@@ -602,7 +599,7 @@ describe("extension install pipeline -- hand-edited mindcraft.json", () => {
     const host = new AppEnvironmentHost({
       projectManager: createManager(world, filesystem),
       modules: [coreModule()],
-      mounts: [declarationMount([{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }])],
+      mounts: [declarationMount([{ path: "wendoo.core.d.ts", content: CORE_AMBIENT }])],
       extensionFetchTransport: transport,
       bridgeUrl: "http://localhost:3000",
     });
@@ -617,12 +614,12 @@ describe("extension install pipeline -- hand-edited mindcraft.json", () => {
         payload: { protocolVersion: 1, sessionId: "s", joinCode: "J" },
       });
 
-      // The peer edits mindcraft.json by hand, adding a gh reference.
+      // The peer edits wendoo.json by hand, adding a gh reference.
       socket.simulateMessage({
         type: "filesystem:change",
         payload: {
           action: "write",
-          path: "mindcraft.json",
+          path: "wendoo.json",
           content: JSON.stringify({
             name: PROJECT_ID,
             version: "0.1.0",
@@ -663,7 +660,7 @@ describe("extension update flows", () => {
       content: {
         [`${POSITION_COORDINATE}@v0.1.0`]: POSITION_CONTENT,
         [`${POSITION_COORDINATE}@0.2.0`]: {
-          "mindcraft.json": JSON.stringify({ name: "Position", version: "0.2.0", files: ["index.ts"] }),
+          "wendoo.json": JSON.stringify({ name: "Position", version: "0.2.0", files: ["index.ts"] }),
           "index.ts": "export const position = 43;\n",
         },
       },
@@ -713,7 +710,7 @@ describe("extension update flows", () => {
       content: {
         [`${POSITION_COORDINATE}@${SHA_A}`]: POSITION_CONTENT,
         [`${POSITION_COORDINATE}@${SHA_B}`]: {
-          "mindcraft.json": JSON.stringify({ name: "Position", version: "0.1.1", files: ["index.ts"] }),
+          "wendoo.json": JSON.stringify({ name: "Position", version: "0.1.1", files: ["index.ts"] }),
           "index.ts": "export const position = 44;\n",
         },
       },
@@ -746,7 +743,7 @@ describe("extension update flows", () => {
       const stored = parseInstalledExtensionSnapshots(world.appData.get("installed-extensions"));
       assert.equal(stored[POSITION_COORDINATE]?.specifier, SHA_B);
       // The apply fetched the new commit; it did not reuse the stored snapshot.
-      assert.ok(transport.requests.includes(`file ${POSITION_COORDINATE}@${SHA_B} mindcraft.json`));
+      assert.ok(transport.requests.includes(`file ${POSITION_COORDINATE}@${SHA_B} wendoo.json`));
     } finally {
       host.dispose();
       restoreLocalStorage();
@@ -761,15 +758,15 @@ describe("extension update flows", () => {
       content: {
         [`${POSITION_COORDINATE}@v0.1.0`]: POSITION_CONTENT,
         [`${POSITION_COORDINATE}@0.2.0`]: {
-          "mindcraft.json": JSON.stringify({ name: "Position", version: "0.2.0", files: ["index.ts"] }),
+          "wendoo.json": JSON.stringify({ name: "Position", version: "0.2.0", files: ["index.ts"] }),
           "index.ts": "export const position = 43;\n",
         },
         [`${motorCoordinate}@v1.0.0`]: {
-          "mindcraft.json": JSON.stringify({ name: "Motor", version: "1.0.0", files: ["index.ts"] }),
+          "wendoo.json": JSON.stringify({ name: "Motor", version: "1.0.0", files: ["index.ts"] }),
           "index.ts": "export const motor = 1;\n",
         },
         [`${motorCoordinate}@1.1.0`]: {
-          "mindcraft.json": JSON.stringify({ name: "Motor", version: "1.1.0", files: ["index.ts"] }),
+          "wendoo.json": JSON.stringify({ name: "Motor", version: "1.1.0", files: ["index.ts"] }),
           "index.ts": "export const motor = 2;\n",
         },
       },
@@ -981,7 +978,7 @@ describe("unstable project dependencies", () => {
       content: {
         [`${POSITION_COORDINATE}@v0.1.0`]: POSITION_CONTENT,
         "example-org/steering-ext@0123456789abcdef0123456789abcdef01234567": {
-          "mindcraft.json": JSON.stringify({ name: "Steering", version: "0.1.0", files: ["index.ts"] }),
+          "wendoo.json": JSON.stringify({ name: "Steering", version: "0.1.0", files: ["index.ts"] }),
           "index.ts": "export const steering = 1;\n",
         },
       },
@@ -1020,7 +1017,7 @@ describe("catalog moves -- top-level transport flip", () => {
   const POSITION_EMBEDDED: EmbeddedExtension = {
     canonicalOrigin: POSITION_COORDINATE,
     files: [
-      { path: "mindcraft.json", content: manifestText("Position") },
+      { path: "wendoo.json", content: manifestText("Position") },
       { path: "index.ts", content: "export const position = 42;\n" },
     ],
   };
@@ -1124,7 +1121,7 @@ describe("catalog moves -- load warnings surface", () => {
     canonicalOrigin: DEPENDENT_COORDINATE,
     files: [
       {
-        path: "mindcraft.json",
+        path: "wendoo.json",
         content: manifestText("Dependent", { [POSITION_COORDINATE]: `embedded:${POSITION_COORDINATE}` }),
       },
       { path: "index.ts", content: "export const dependent = 1;\n" },
@@ -1195,7 +1192,7 @@ describe("catalog moves -- per-move transaction independence", () => {
     return {
       canonicalOrigin: coordinate,
       files: [
-        { path: "mindcraft.json", content: manifestText(coordinate) },
+        { path: "wendoo.json", content: manifestText(coordinate) },
         { path: "index.ts", content: "export const x = 1;\n" },
       ],
     };
@@ -1240,7 +1237,7 @@ describe("catalog moves -- per-move transaction independence", () => {
     };
     const content: Record<string, Record<string, string>> = {
       [`${HEALTHY_COORDINATE}@${HEALTHY_SHA}`]: {
-        "mindcraft.json": manifestText("Healthy"),
+        "wendoo.json": manifestText("Healthy"),
         "index.ts": "export const x = 1;\n",
       },
     };
@@ -1269,7 +1266,7 @@ describe("catalog moves -- per-move transaction independence", () => {
 
     // A later load with the destination served applies the failed move.
     content[`${FAILING_RENAMED_COORDINATE}@${FAILING_SHA}`] = {
-      "mindcraft.json": manifestText("Failing Renamed"),
+      "wendoo.json": manifestText("Failing Renamed"),
       "index.ts": "export const x = 2;\n",
     };
     const second = createHost(world, {
@@ -1334,11 +1331,11 @@ describe("catalog moves -- version-scoped capture learned within one load", () =
     const transport = createTestTransport({
       content: {
         [`${COORDINATE}@${OLD_SHA}`]: {
-          "mindcraft.json": JSON.stringify({ name: "Versioned", version: "0.1.2", files: ["index.ts"] }),
+          "wendoo.json": JSON.stringify({ name: "Versioned", version: "0.1.2", files: ["index.ts"] }),
           "index.ts": "export const v = 1;\n",
         },
         [`${COORDINATE}@${NEW_SHA}`]: {
-          "mindcraft.json": JSON.stringify({ name: "Versioned", version: "0.2.0", files: ["index.ts"] }),
+          "wendoo.json": JSON.stringify({ name: "Versioned", version: "0.2.0", files: ["index.ts"] }),
           "index.ts": "export const v = 2;\n",
         },
       },
@@ -1392,7 +1389,7 @@ describe("catalog moves -- floating destinations", () => {
   const embedded: EmbeddedExtension = {
     canonicalOrigin: COORDINATE,
     files: [
-      { path: "mindcraft.json", content: manifestText("Floating") },
+      { path: "wendoo.json", content: manifestText("Floating") },
       { path: "index.ts", content: "export const f = 1;\n" },
     ],
   };
@@ -1404,7 +1401,7 @@ describe("catalog moves -- floating destinations", () => {
     const transport = createTestTransport({
       content: {
         [`${COORDINATE}@0.2.0`]: {
-          "mindcraft.json": JSON.stringify({ name: "Floating", version: "0.2.0", files: ["index.ts"] }),
+          "wendoo.json": JSON.stringify({ name: "Floating", version: "0.2.0", files: ["index.ts"] }),
           "index.ts": "export const f = 2;\n",
         },
       },
@@ -1434,7 +1431,7 @@ describe("catalog moves -- floating destinations", () => {
     const world: ProjectWorld = { appData: new Map(), extensions: { [COORDINATE]: EMBEDDED_REF } };
     const content = {
       [`${COORDINATE}@0.2.0`]: {
-        "mindcraft.json": JSON.stringify({ name: "Floating", version: "0.2.0", files: ["index.ts"] }),
+        "wendoo.json": JSON.stringify({ name: "Floating", version: "0.2.0", files: ["index.ts"] }),
         "index.ts": "export const f = 2;\n",
       },
     };
@@ -1498,7 +1495,7 @@ describe("catalog moves -- floating destinations", () => {
     // The next load finds a stable version and migrates.
     versions[COORDINATE] = ["1.0.0-rc.1", "0.3.0"];
     content[`${COORDINATE}@0.3.0`] = {
-      "mindcraft.json": JSON.stringify({ name: "Floating", version: "0.3.0", files: ["index.ts"] }),
+      "wendoo.json": JSON.stringify({ name: "Floating", version: "0.3.0", files: ["index.ts"] }),
       "index.ts": "export const f = 3;\n",
     };
     const second = createHost(world, {
@@ -1551,7 +1548,7 @@ describe("catalog moves -- rename chains", () => {
     const embedded = (coordinate: string): EmbeddedExtension => ({
       canonicalOrigin: coordinate,
       files: [
-        { path: "mindcraft.json", content: manifestText(coordinate) },
+        { path: "wendoo.json", content: manifestText(coordinate) },
         { path: "index.ts", content: "export const c = 1;\n" },
       ],
     });
@@ -1563,7 +1560,7 @@ describe("catalog moves -- rename chains", () => {
       transport: createTestTransport({
         content: {
           [`${Z}@${SHA_Z}`]: {
-            "mindcraft.json": manifestText("Chain Z"),
+            "wendoo.json": manifestText("Chain Z"),
             "index.ts": "export const c = 3;\n",
           },
         },
@@ -1641,11 +1638,11 @@ describe("catalog moves -- transitive dependency redirect", () => {
     return createTestTransport({
       content: {
         [`${ROBOT_COORDINATE}@v1`]: {
-          "mindcraft.json": manifestText("Robot", { [MOTOR_COORDINATE]: `embedded:${MOTOR_COORDINATE}` }),
+          "wendoo.json": manifestText("Robot", { [MOTOR_COORDINATE]: `embedded:${MOTOR_COORDINATE}` }),
           "index.ts": `export { motor } from "@lib/${MOTOR_COORDINATE}";\n`,
         },
         [`${MOTOR_COORDINATE}@${MOTOR_SHA}`]: {
-          "mindcraft.json": manifestText("Motor"),
+          "wendoo.json": manifestText("Motor"),
           "index.ts": "export const motor = 1;\n",
         },
       },
@@ -1700,7 +1697,7 @@ describe("catalog moves -- transitive dependency redirect", () => {
       // still declares the embedded reference it shipped with.
       const robotManifest = host.servedProjectFileSystem
         .exportSnapshot()
-        .get(`.libraries/${ROBOT_COORDINATE}/mindcraft.json`);
+        .get(`.libraries/${ROBOT_COORDINATE}/wendoo.json`);
       assert.ok(
         robotManifest?.kind === "file" &&
           typeof robotManifest.content === "string" &&
@@ -1757,7 +1754,7 @@ describe("catalog moves -- coordinate rename", () => {
   const SOURCE_EMBEDDED: EmbeddedExtension = {
     canonicalOrigin: SOURCE_COORDINATE,
     files: [
-      { path: "mindcraft.json", content: manifestText("Cutebot") },
+      { path: "wendoo.json", content: manifestText("Cutebot") },
       { path: "index.ts", content: "export const cutebot = 1;\n" },
     ],
   };
@@ -1812,7 +1809,7 @@ describe("catalog moves -- coordinate rename", () => {
       transport: createTestTransport({
         content: {
           [`${TARGET_COORDINATE}@${RENAME_SHA}`]: {
-            "mindcraft.json": manifestText("Cutebot Chassis"),
+            "wendoo.json": manifestText("Cutebot Chassis"),
             "index.ts": "export const cutebot = 1;\n",
           },
         },
@@ -1879,7 +1876,7 @@ describe("catalog moves -- coordinate rename", () => {
     const transport = createTestTransport({
       content: {
         [`${TARGET_COORDINATE}@${RENAME_SHA}`]: {
-          "mindcraft.json": manifestText("Cutebot Chassis"),
+          "wendoo.json": manifestText("Cutebot Chassis"),
           "index.ts": "export const cutebot = 1;\n",
         },
       },
@@ -1947,7 +1944,7 @@ describe("catalog moves -- coordinate rename", () => {
     const transport = createTestTransport({
       content: {
         [`${TARGET_COORDINATE}@${RENAME_SHA}`]: {
-          "mindcraft.json": manifestText("Cutebot Chassis"),
+          "wendoo.json": manifestText("Cutebot Chassis"),
           "index.ts": "export const cutebot = 1;\n",
         },
       },
@@ -2009,7 +2006,7 @@ describe("catalog moves -- coordinate rename", () => {
       transport: createTestTransport({
         content: {
           [`${SOURCE_COORDINATE}@${FLIP_SHA}`]: {
-            "mindcraft.json": manifestText("Cutebot"),
+            "wendoo.json": manifestText("Cutebot"),
             "index.ts": "export const cutebot = 1;\n",
           },
         },

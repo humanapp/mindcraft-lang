@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
-import { List } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { compileBrain, linkBrainProgram } from "@mindcraft-lang/core/brain/compiler";
-import { BrainDef } from "@mindcraft-lang/core/brain/model";
-import { BrainTileActuatorDef } from "@mindcraft-lang/core/brain/tiles";
+import { List } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { compileBrain, linkBrainProgram } from "@wendoo-lang/core/brain/compiler";
+import { BrainDef } from "@wendoo-lang/core/brain/model";
+import { BrainTileActuatorDef } from "@wendoo-lang/core/brain/tiles";
 import {
   type ActionDescriptor,
   BYTECODE_VERSION,
@@ -14,7 +14,7 @@ import {
   mkNumberValue,
   Op,
   type UserActionArtifact,
-} from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
 
 let services: BrainServices;
 

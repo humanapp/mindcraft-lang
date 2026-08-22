@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { BYTECODE_VERSION, type ExecutionContext, Op, type Program } from "@mindcraft-lang/core/runtime";
+import { BYTECODE_VERSION, type ExecutionContext, Op, type Program } from "@wendoo-lang/core/runtime";
 
 test("runtime barrel re-exports bytecode primitives", () => {
   assert.equal(typeof BYTECODE_VERSION, "number");

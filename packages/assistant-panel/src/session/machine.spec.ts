@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, mock, test } from "node:test";
-import type { AuthoringWorkspace, ToolCallError } from "@mindcraft-lang/assistant-bridge";
-import { createAuthoringWorkspace, executeToolCall, ToolCallErrorCode } from "@mindcraft-lang/assistant-bridge";
-import { createTargetAdapter, FAKE_TARGET_IDENTITY, ruleIdAt } from "@mindcraft-lang/assistant-bridge/testing";
+import type { AuthoringWorkspace, ToolCallError } from "@wendoo-lang/assistant-bridge";
+import { createAuthoringWorkspace, executeToolCall, ToolCallErrorCode } from "@wendoo-lang/assistant-bridge";
+import { createTargetAdapter, FAKE_TARGET_IDENTITY, ruleIdAt } from "@wendoo-lang/assistant-bridge/testing";
 import type {
   ConversationEntry,
   ConversationRecord,
@@ -11,16 +11,16 @@ import type {
   RelayConnect,
   RelayToolManifest,
   RelayToolOutcome,
-} from "@mindcraft-lang/assistant-relay";
+} from "@wendoo-lang/assistant-relay";
 import {
   CONVERSATION_RECORD_VERSION,
   ConversationTurnFailureCode,
   RelayDeclineCode,
   RelayRefusalCode,
   RelayTakeoverCode,
-} from "@mindcraft-lang/assistant-relay";
-import type { RelayLoopback } from "@mindcraft-lang/assistant-relay/testing";
-import { createRelayLoopback } from "@mindcraft-lang/assistant-relay/testing";
+} from "@wendoo-lang/assistant-relay";
+import type { RelayLoopback } from "@wendoo-lang/assistant-relay/testing";
+import { createRelayLoopback } from "@wendoo-lang/assistant-relay/testing";
 import { createPersonActivity } from "../app/person-activity";
 import { recordFor } from "../conversation/store";
 import type { ScriptedCall, ScriptedService } from "../testing/scripted-service";

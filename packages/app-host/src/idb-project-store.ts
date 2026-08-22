@@ -1,8 +1,7 @@
-import { LOWEST_CONTENT_VERSION } from "@mindcraft-lang/service-api";
+import { LOWEST_CONTENT_VERSION } from "@wendoo-lang/service-api";
 import { type DBSchema, type IDBPDatabase, openDB } from "idb";
 import { AppHostErrorCode, appHostError } from "./app-host-error.js";
 import { applyProjectFileChangeToSnapshot } from "./in-memory-project-file-system.js";
-import { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
 import {
   DEFAULT_PROJECT_COLLECTION_ID,
   DEFAULT_PROJECT_COLLECTION_NAME,
@@ -13,6 +12,7 @@ import { INITIAL_CONTENT_VERSION } from "./project-content-version.js";
 import type { ProjectFileChange, ProjectFileSnapshot, ProjectFileSystemEntry } from "./project-file-snapshot.js";
 import type { ProjectManifest } from "./project-manifest.js";
 import type { ProjectCollectionTabSession, ProjectRef, ProjectStore } from "./project-store.js";
+import { WENDOO_JSON_PATH } from "./wendoo-json.js";
 
 interface ProjectDbSchema extends DBSchema {
   projectCollections: {
@@ -450,7 +450,7 @@ class IdbProjectStore implements ProjectStore {
 
   async saveProjectFiles(id: string, snapshot: ProjectFileSnapshot): Promise<void> {
     await this.requireLiveProject(id);
-    snapshot.delete(MINDCRAFT_JSON_PATH);
+    snapshot.delete(WENDOO_JSON_PATH);
     await this.db.put("files", [...snapshot], id);
     await this.updateProject(id, {});
   }

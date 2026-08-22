@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, runtime } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext, Scheduler } from "@mindcraft-lang/core/runtime";
+import { List, runtime } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { ExecutionContext, Scheduler } from "@wendoo-lang/core/runtime";
 import {
   HandleTable,
   NativeType,
@@ -12,8 +12,8 @@ import {
   type StructTypeDef,
   type Value,
   VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";
@@ -56,7 +56,7 @@ describe("self-referential and mutually recursive types", () => {
   test("self-referential interface (TreeNode) registers correctly", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 interface TreeNode {
   value: number;
@@ -96,7 +96,7 @@ export default Sensor({
   test("self-referential interface compiles and executes", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 interface TreeNode {
   value: number;
@@ -140,7 +140,7 @@ export default Sensor({
   test("mutually recursive interfaces register correctly", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 interface NodeA {
   value: number;
@@ -193,7 +193,7 @@ export default Sensor({
   test("mutually recursive interfaces compile and execute", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 interface NodeA {
   value: number;
@@ -241,7 +241,7 @@ export default Sensor({
   test("self-referential type alias registers correctly", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 type LinkedNode = {
   value: number;
@@ -284,7 +284,7 @@ export default Sensor({
   test("cross-kind mutual recursion (interface + type alias)", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 interface Parent {
   name: string;

@@ -1,4 +1,4 @@
-import type { ConversationRecord } from "@mindcraft-lang/assistant-relay";
+import type { ConversationRecord } from "@wendoo-lang/assistant-relay";
 import { createContext, useContext } from "react";
 import type { AssistantStatus } from "./session/machine";
 

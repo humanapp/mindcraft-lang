@@ -8,7 +8,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { createCallsiteStore, mkNumberValue, mkStringValue, NIL_VALUE } from "@mindcraft-lang/core/runtime";
+import { createCallsiteStore, mkNumberValue, mkStringValue, NIL_VALUE } from "@wendoo-lang/core/runtime";
 
 describe("createCallsiteStore -- allocate / reset", () => {
   test("ensure returns true on first call, false thereafter", () => {

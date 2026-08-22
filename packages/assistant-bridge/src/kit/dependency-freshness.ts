@@ -55,7 +55,7 @@ interface BuildStep {
   readonly outputs: readonly string[];
 }
 
-/** How a package declares what it builds, in its manifest's `mindcraftBuild` field. */
+/** How a package declares what it builds, in its manifest's `wendooBuild` field. */
 interface BuildDeclaration extends Partial<BuildStep> {
   /** Output groups built only when a package in the graph names them in {@link needs}. */
   readonly variants?: Readonly<Record<string, BuildStep>>;
@@ -69,7 +69,7 @@ interface PackageManifest {
   readonly dependencies?: Readonly<Record<string, string>>;
   readonly devDependencies?: Readonly<Record<string, string>>;
   readonly scripts?: Readonly<Record<string, string>>;
-  readonly mindcraftBuild?: BuildDeclaration;
+  readonly wendooBuild?: BuildDeclaration;
 }
 
 /** Prefix of a dependency specifier naming a package by its location on disk. */
@@ -334,7 +334,7 @@ function buildScript(manifest: PackageManifest): string | undefined {
 
 /** The variants declared by `manifest`, keyed by name. */
 function declaredVariants(manifest: PackageManifest): Readonly<Record<string, BuildStep>> {
-  return manifest.mindcraftBuild?.variants ?? {};
+  return manifest.wendooBuild?.variants ?? {};
 }
 
 /**
@@ -344,7 +344,7 @@ function declaredVariants(manifest: PackageManifest): Readonly<Record<string, Bu
  * Empty when the package builds nothing.
  */
 function buildSteps(manifest: PackageManifest, needed: ReadonlySet<string>): BuildStep[] {
-  const declaration = manifest.mindcraftBuild;
+  const declaration = manifest.wendooBuild;
   const script = declaration?.script ?? buildScript(manifest);
   if (script === undefined) return [];
   const steps: BuildStep[] = [{ script, outputs: declaration?.outputs ?? [distDirName] }];
@@ -469,13 +469,13 @@ function staleness(
 
 /**
  * The variant names the package at `packageDir` and the packages it reaches
- * name in `mindcraftBuild.needs`. These are the output groups a build started
+ * name in `wendooBuild.needs`. These are the output groups a build started
  * here consumes on top of every dependency's default group.
  */
 function neededVariants(packageDir: string): Set<string> {
   const names = new Set<string>();
   for (const dir of [packageDir, ...localDependencyDirs(packageDir)]) {
-    for (const name of readManifest(dir).mindcraftBuild?.needs ?? []) names.add(name);
+    for (const name of readManifest(dir).wendooBuild?.needs ?? []) names.add(name);
   }
   return names;
 }
@@ -490,7 +490,7 @@ function neededVariants(packageDir: string): Set<string> {
  * file under the package's `scripts` directory. Each
  * dependency is judged over the output groups a build started at `packageDir`
  * consumes -- its default group, plus every variant named in the
- * `mindcraftBuild.needs` of `packageDir` or anything it reaches -- so a group
+ * `wendooBuild.needs` of `packageDir` or anything it reaches -- so a group
  * nothing in this graph consumes is not compared. A package that builds one
  * group was last built at the newest of that output and its incremental-build
  * records, so a build that re-emits nothing still counts. A dependency that

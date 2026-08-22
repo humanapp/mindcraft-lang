@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import { assistantSessionUrl } from "@mindcraft-lang/assistant-panel";
+import { assistantSessionUrl } from "@wendoo-lang/assistant-panel";
 import { name as simName } from "../../package.json";
 import { DEFAULT_APP_SETTINGS, loadAppSettings, normalizeAppSettings, persistAppSettings } from "./app-settings";
 
@@ -47,7 +47,7 @@ describe("app settings", () => {
 
   it("loads the defaults when nothing is stored", () => {
     assert.deepEqual(loadAppSettings(), DEFAULT_APP_SETTINGS);
-    assert.equal(DEFAULT_APP_SETTINGS.assistantServiceUrl, "mindcraft-assistant.sklanch.net");
+    assert.equal(DEFAULT_APP_SETTINGS.assistantServiceUrl, "wendoo-assistant.sklanch.net");
   });
 
   it("gives a stored blob written without the assistant field its default", () => {

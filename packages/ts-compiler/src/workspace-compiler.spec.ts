@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { coreModule, createMindcraftEnvironment, List, type MindcraftModule } from "@mindcraft-lang/core";
-import { type EnumTypeDef, mkTypeId, NativeType } from "@mindcraft-lang/core/runtime";
-import { fileContentText } from "@mindcraft-lang/service-api";
+import { coreModule, createWendooEnvironment, List, type WendooModule } from "@wendoo-lang/core";
+import { type EnumTypeDef, mkTypeId, NativeType } from "@wendoo-lang/core/runtime";
+import { fileContentText } from "@wendoo-lang/service-api";
 import { buildAmbientDeclarations } from "./compiler/ambient.js";
 import type { DependencyMount, ProjectDependency } from "./compiler/extension-mounts.js";
 import { declarationMount, type Mount } from "./compiler/mounts.js";
@@ -22,7 +22,7 @@ const noopCodec = {
   },
 };
 
-function createFacingModule(): MindcraftModule {
+function createFacingModule(): WendooModule {
   return {
     id: "facing-module",
     install(api): void {
@@ -43,26 +43,26 @@ function createFacingModule(): MindcraftModule {
   };
 }
 
-function ambientFilesFor(environment: ReturnType<typeof createMindcraftEnvironment>): readonly AmbientFile[] {
+function ambientFilesFor(environment: ReturnType<typeof createWendooEnvironment>): readonly AmbientFile[] {
   return [
     {
-      path: "mindcraft.core.d.ts",
+      path: "wendoo.core.d.ts",
       content: buildAmbientDeclarations(environment.brainServices.runtime.types),
     },
     {
-      path: "mindcraft.ecosim.d.ts",
+      path: "wendoo.ecosim.d.ts",
       content: "",
     },
   ];
 }
 
-function mountsFor(environment: ReturnType<typeof createMindcraftEnvironment>): readonly Mount[] {
+function mountsFor(environment: ReturnType<typeof createWendooEnvironment>): readonly Mount[] {
   return [declarationMount(ambientFilesFor(environment))];
 }
 
 describe("createWorkspaceCompiler", () => {
   test("binds ambient generation and bundle output to the provided environment", () => {
-    const environment = createMindcraftEnvironment({
+    const environment = createWendooEnvironment({
       modules: [coreModule(), createFacingModule()],
     });
     const compiler = createWorkspaceCompiler({
@@ -83,7 +83,7 @@ describe("createWorkspaceCompiler", () => {
           {
             kind: "file",
             content: `
-import { Sensor, type Context, type Facing } from "mindcraft";
+import { Sensor, type Context, type Facing } from "wendoo";
 
 export default Sensor({
   name: "look",
@@ -107,7 +107,7 @@ export default Sensor({
   });
 
   test("treats ambient declarations and tsconfig as compiler-owned system files", () => {
-    const environment = createMindcraftEnvironment({
+    const environment = createWendooEnvironment({
       modules: [coreModule(), createFacingModule()],
     });
     const compiler = createWorkspaceCompiler({
@@ -119,19 +119,19 @@ export default Sensor({
     compiler.replaceWorkspace(
       new Map([
         [
-          "mindcraft.core.d.ts",
+          "wendoo.core.d.ts",
           {
             kind: "file",
-            content: 'declare module "mindcraft" { export type Broken = ; }',
+            content: 'declare module "wendoo" { export type Broken = ; }',
             etag: "etag-ambient",
             isReadonly: true,
           },
         ],
         [
-          "mindcraft.ecosim.d.ts",
+          "wendoo.ecosim.d.ts",
           {
             kind: "file",
-            content: 'declare module "mindcraft" { export type AlsoBroken = ; }',
+            content: 'declare module "wendoo" { export type AlsoBroken = ; }',
             etag: "etag-sim-ambient",
             isReadonly: true,
           },
@@ -150,7 +150,7 @@ export default Sensor({
           {
             kind: "file",
             content: `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "look",
@@ -170,8 +170,8 @@ export default Sensor({
     const result = compiler.compile();
     const sourceDiagnostics = result.files.get("sensors/look.ts") ?? [];
 
-    assert.equal(result.files.get("mindcraft.core.d.ts"), undefined);
-    assert.equal(result.files.get("mindcraft.ecosim.d.ts"), undefined);
+    assert.equal(result.files.get("wendoo.core.d.ts"), undefined);
+    assert.equal(result.files.get("wendoo.ecosim.d.ts"), undefined);
     assert.equal(result.files.get("tsconfig.json"), undefined);
     assert.ok(
       sourceDiagnostics.some((diagnostic) => diagnostic.message.includes("implicitly has an 'any' type")),
@@ -180,7 +180,7 @@ export default Sensor({
   });
 
   test("returns host ambient files and tsconfig as compiler-controlled files", () => {
-    const environment = createMindcraftEnvironment({
+    const environment = createWendooEnvironment({
       modules: [coreModule(), createFacingModule()],
     });
     const ambientFiles = ambientFilesFor(environment);
@@ -191,21 +191,21 @@ export default Sensor({
     });
     const controlledFiles = compiler.getCompilerControlledFiles();
 
-    assert.equal(controlledFiles.get("mindcraft.core.d.ts"), ambientFiles[0]!.content);
-    assert.equal(controlledFiles.get("mindcraft.ecosim.d.ts"), ambientFiles[1]!.content);
+    assert.equal(controlledFiles.get("wendoo.core.d.ts"), ambientFiles[0]!.content);
+    assert.equal(controlledFiles.get("wendoo.ecosim.d.ts"), ambientFiles[1]!.content);
     assert.ok(fileContentText(controlledFiles.get("tsconfig.json") ?? "")?.includes('"strict": true'));
   });
 
   test("re-resolving to drop a dependency clears the dropped origin's type registrations", () => {
-    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule()] });
     const types = environment.brainServices.runtime.types;
 
-    const posSource = `import { NumberType, StructType, type StructOf } from "mindcraft";
+    const posSource = `import { NumberType, StructType, type StructOf } from "wendoo";
 export const Position = StructType({ name: "position", fields: { x: NumberType, y: NumberType } });
 export type Position = StructOf<typeof Position>;
 `;
     const posEntry = "export { Position } from './position';\n";
-    const vecSource = `import { NumberType, StructType, type StructOf } from "mindcraft";
+    const vecSource = `import { NumberType, StructType, type StructOf } from "wendoo";
 export const Vec = StructType({ name: "vec", fields: { a: NumberType } });
 export type Vec = StructOf<typeof Vec>;
 `;
@@ -227,7 +227,7 @@ export type Vec = StructOf<typeof Vec>;
     };
     const bothDeps: ProjectDependency[] = [{ coordinate: "acme/position" }, { coordinate: "acme/vec" }];
 
-    const hostBoth = `import { Sensor, type Context } from "mindcraft";
+    const hostBoth = `import { Sensor, type Context } from "wendoo";
 import { Position } from "@lib/acme/position";
 import { Vec } from "@lib/acme/vec";
 export default Sensor({
@@ -255,7 +255,7 @@ export default Sensor({
     assert.ok(vecId, "vec registers under its origin");
 
     // Re-resolve to {position}: drop the vec dependency and its import.
-    const hostPosOnly = `import { Sensor, type Context } from "mindcraft";
+    const hostPosOnly = `import { Sensor, type Context } from "wendoo";
 import { Position } from "@lib/acme/position";
 export default Sensor({
   name: "read", id: "readBothTypes01", returnType: Position,
@@ -280,10 +280,10 @@ export default Sensor({
   });
 
   test("a diamond of extension mounts unifies a shared origin's published type to one id", () => {
-    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule()] });
     const types = environment.brainServices.runtime.types;
 
-    const pointSource = `import { NumberType, StructType, type StructOf } from "mindcraft";
+    const pointSource = `import { NumberType, StructType, type StructOf } from "wendoo";
 export const Point = StructType({ name: "point", fields: { x: NumberType, y: NumberType } });
 export type Point = StructOf<typeof Point>;
 `;
@@ -310,7 +310,7 @@ export type Point = StructOf<typeof Point>;
       dependencies: [{ coordinate: "acme/point" }],
     };
 
-    const host = `import { Sensor, type Context } from "mindcraft";
+    const host = `import { Sensor, type Context } from "wendoo";
 import { Point as PointA } from "@lib/acme/a";
 import { Point as PointB } from "@lib/acme/b";
 export default Sensor({
@@ -344,14 +344,14 @@ export default Sensor({
     assert.equal(controlled.get(".libraries/acme/b/index.ts"), bEntry);
   });
 
-  const BEEP_SOURCE = `import { Sensor, type Context } from "mindcraft";
+  const BEEP_SOURCE = `import { Sensor, type Context } from "wendoo";
 export default Sensor({
   name: "ext beep",
   id: "extBeep000000001",
   onExecute(ctx: Context): number { return 1; },
 });
 `;
-  const HOST_SENSOR = `import { Sensor, type Context } from "mindcraft";
+  const HOST_SENSOR = `import { Sensor, type Context } from "wendoo";
 export default Sensor({
   name: "host thing",
   id: "hostThing0000001",
@@ -362,7 +362,7 @@ export default Sensor({
   const HOST_ACTION_KEY = `${TEST_PROJECT_NAMESPACE}:user.sensor.hostThing0000001`;
 
   test("an installed extension's tiles enter the combined bundle; uninstalling removes them", () => {
-    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule()] });
     const beepMount: DependencyMount = {
       namespace: "acme/beeper",
       files: new Map([["/index.ts", BEEP_SOURCE]]),
@@ -398,7 +398,7 @@ export default Sensor({
   });
 
   test("the combined bundle merges host and extension actions into one action table", () => {
-    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule()] });
     const beepMount: DependencyMount = {
       namespace: "acme/beeper",
       files: new Map([["/index.ts", BEEP_SOURCE]]),
@@ -436,7 +436,7 @@ export default Sensor({
     );
   });
 
-  const MISSING_ID_SOURCE = `import { Sensor, type Context } from "mindcraft";
+  const MISSING_ID_SOURCE = `import { Sensor, type Context } from "wendoo";
 export default Sensor({
   name: "ext beep",
   onExecute(ctx: Context): number { return 1; },
@@ -444,7 +444,7 @@ export default Sensor({
 `;
 
   test("an installed extension's missing-id diagnostic surfaces on its .libraries path", () => {
-    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule()] });
     const malformedMount: DependencyMount = {
       namespace: "acme/beeper",
       files: new Map([["/index.ts", MISSING_ID_SOURCE]]),
@@ -473,12 +473,12 @@ export default Sensor({
   });
 
   test("an extension-carried tsconfig.json is inert to compilation and extension content cannot collide at the workspace root", () => {
-    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule()] });
     const ambientFiles = ambientFilesFor(environment);
     // A tsconfig that would break both compilation roots if it were ever read:
-    // it remaps the `mindcraft` module to a path that does not exist.
+    // it remaps the `wendoo` module to a path that does not exist.
     const carriedTsconfig = JSON.stringify({
-      compilerOptions: { strict: false, baseUrl: ".", paths: { mindcraft: ["./vendor/mindcraft"] } },
+      compilerOptions: { strict: false, baseUrl: ".", paths: { wendoo: ["./vendor/wendoo"] } },
       include: ["**/*"],
     });
     const beeperMount: DependencyMount = {
@@ -486,7 +486,7 @@ export default Sensor({
       files: new Map([
         ["/index.ts", BEEP_SOURCE],
         ["/tsconfig.json", carriedTsconfig],
-        ["/mindcraft.core.d.ts", "export {};\n"],
+        ["/wendoo.core.d.ts", "export {};\n"],
       ]),
     };
     const compiler = createWorkspaceCompiler({
@@ -521,12 +521,12 @@ export default Sensor({
     );
     // Extension content keys under `.libraries/<owner>/<repo>/` unconditionally,
     // so a file named like a host ambient cannot land at the workspace root.
-    assert.equal(controlled.get(".libraries/acme/beeper/mindcraft.core.d.ts"), "export {};\n");
-    assert.equal(controlled.get("mindcraft.core.d.ts"), ambientFiles[0]!.content);
+    assert.equal(controlled.get(".libraries/acme/beeper/wendoo.core.d.ts"), "export {};\n");
+    assert.equal(controlled.get("wendoo.core.d.ts"), ambientFiles[0]!.content);
   });
 
   test("a project without extensions produces the single-root bundle unchanged", () => {
-    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule()] });
     const compiler = createWorkspaceCompiler({
       projectNamespace: TEST_PROJECT_NAMESPACE,
       mounts: mountsFor(environment),
@@ -567,7 +567,7 @@ export default Sensor({
     const HELPER_PATH = `${FOLDER}/nested/helper.ts`;
     const ACTION_ID = "acfolder00000001";
     const ACTION_KEY = `${TEST_PROJECT_NAMESPACE}:user.actuator.${ACTION_ID}`;
-    const FOLDERED_ACTUATOR = `import { Actuator, type Context } from "mindcraft";
+    const FOLDERED_ACTUATOR = `import { Actuator, type Context } from "wendoo";
 import { step } from "./nested/helper";
 
 export default Actuator({
@@ -581,7 +581,7 @@ export default Actuator({
     const HELPER = "export function step(): void {}\n";
 
     function compilerWithFolderedTile(): ReturnType<typeof createWorkspaceCompiler> {
-      const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+      const environment = createWendooEnvironment({ modules: [coreModule()] });
       const compiler = createWorkspaceCompiler({
         projectNamespace: TEST_PROJECT_NAMESPACE,
         mounts: mountsFor(environment),

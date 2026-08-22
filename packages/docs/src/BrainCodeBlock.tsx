@@ -1,7 +1,7 @@
-import { List } from "@mindcraft-lang/core";
-import { type BrainServices, type IBrainTileDef, type ITileCatalog, RuleSide } from "@mindcraft-lang/core/brain";
-import { type CatalogTileJson, TileCatalog } from "@mindcraft-lang/core/brain/tiles";
-import { setClipboardFromJson } from "@mindcraft-lang/ui/brain-editor/rule-clipboard";
+import { List } from "@wendoo-lang/core";
+import { type BrainServices, type IBrainTileDef, type ITileCatalog, RuleSide } from "@wendoo-lang/core/brain";
+import { type CatalogTileJson, TileCatalog } from "@wendoo-lang/core/brain/tiles";
+import { setClipboardFromJson } from "@wendoo-lang/ui/brain-editor/rule-clipboard";
 import { ClipboardCopy } from "lucide-react";
 import { useMemo } from "react";
 import { toast } from "sonner";

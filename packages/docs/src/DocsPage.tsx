@@ -1,6 +1,6 @@
-import type { BrainServices, IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
-import type { TileSourceLibrary } from "@mindcraft-lang/ui/brain-editor/tile-library-groups";
-import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
+import type { BrainServices, IBrainTileDef, ITileCatalog } from "@wendoo-lang/core/brain";
+import type { TileSourceLibrary } from "@wendoo-lang/ui/brain-editor/tile-library-groups";
+import type { TileVisual } from "@wendoo-lang/ui/brain-editor/types";
 import { BookOpen, ChevronLeft, Printer } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";

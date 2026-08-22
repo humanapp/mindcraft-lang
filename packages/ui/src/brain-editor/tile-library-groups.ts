@@ -1,18 +1,18 @@
-import { assertUnreachable } from "@mindcraft-lang/core";
-import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
+import { assertUnreachable } from "@wendoo-lang/core";
+import type { IBrainTileDef } from "@wendoo-lang/core/brain";
 import type {
   BrainTileActuatorDef,
   BrainTileModifierDef,
   BrainTileOutputDef,
   BrainTileParameterDef,
   BrainTileSensorDef,
-} from "@mindcraft-lang/core/brain/tiles";
+} from "@wendoo-lang/core/brain/tiles";
 
 /** An installed library whose tiles the editor subgroups: its coordinate identity and manifest display name. */
 export interface TileSourceLibrary {
   /** The library's `<owner>/<repo>` coordinate, matched against a tile's identity namespace. */
   readonly coordinate: string;
-  /** Display name from the library's `mindcraft.json`, shown as the subgroup heading. */
+  /** Display name from the library's `wendoo.json`, shown as the subgroup heading. */
   readonly name: string;
 }
 

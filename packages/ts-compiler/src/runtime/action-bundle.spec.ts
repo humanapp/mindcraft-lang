@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { coreModule, createMindcraftEnvironment, type HydratedTileMetadataSnapshot } from "@mindcraft-lang/core";
-import { type BrainServices, CoreCapabilityBits } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { BrainDef } from "@mindcraft-lang/core/brain/model";
-import { CoreTypeIds, mkActuatorTileId, mkParameterTileId, mkSensorTileId, Op } from "@mindcraft-lang/core/runtime";
+import { coreModule, createWendooEnvironment, type HydratedTileMetadataSnapshot } from "@wendoo-lang/core";
+import { type BrainServices, CoreCapabilityBits } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { BrainDef } from "@wendoo-lang/core/brain/model";
+import { CoreTypeIds, mkActuatorTileId, mkParameterTileId, mkSensorTileId, Op } from "@wendoo-lang/core/runtime";
 import { UserTileProject } from "../compiler/compile.js";
 import type { ExtractedParam } from "../compiler/types.js";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
@@ -42,7 +42,7 @@ describe("buildCompiledActionBundle", () => {
         [
           "scan.ts",
           `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   id: "snscan",
@@ -56,7 +56,7 @@ export default Sensor({
         [
           "move.ts",
           `
-import { Actuator, param, type Context } from "mindcraft";
+import { Actuator, param, type Context } from "wendoo";
 
 export default Actuator({
   id: "acmove",
@@ -72,7 +72,7 @@ export default Actuator({
         [
           "turn.ts",
           `
-import { Actuator, param, type Context } from "mindcraft";
+import { Actuator, param, type Context } from "wendoo";
 
 export default Actuator({
   id: "acturn",
@@ -118,7 +118,7 @@ export default Actuator({
         [
           "rx.ts",
           `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   id: "snrx",
@@ -148,7 +148,7 @@ export default Sensor({
 
     // The brain compiler reads that bit from the user tile and emits
     // WHEN_END_PRESENT for a bare WHEN, identically to a built-in sensor.
-    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule()] });
     environment.hydrateTileMetadata({ revision: bundle.revision, tiles: bundle.tiles });
     environment.replaceActionBundle(bundle);
 
@@ -173,7 +173,7 @@ export default Sensor({
       new Map([
         [
           "steer.ts",
-          `import { Actuator, param, type Context } from "mindcraft";
+          `import { Actuator, param, type Context } from "wendoo";
 import { Position } from "@lib/acme/pos";
 
 export default Actuator({
@@ -208,7 +208,7 @@ export default Actuator({
         [
           "move.ts",
           `
-import { Actuator, param, type Context } from "mindcraft";
+import { Actuator, param, type Context } from "wendoo";
 
 export default Actuator({
   name: "move",
@@ -245,7 +245,7 @@ export default Actuator({
         [
           "probe.ts",
           `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   id: "snprobe",
@@ -270,7 +270,7 @@ export default Sensor({
     const brainDef = BrainDef.emptyBrainDef(services, "Probe Brain");
     brainDef.pages().get(0)!.children().get(0)!.when().appendTile(sensorTile!);
 
-    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule()] });
     const json = brainDef.toJson();
 
     const preHydrate = environment.deserializeBrainJson(json);

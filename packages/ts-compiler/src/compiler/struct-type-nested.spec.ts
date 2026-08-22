@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { List } from "@mindcraft-lang/core";
+import { List } from "@wendoo-lang/core";
 import {
   type BrainServices,
   type IBrainTileDef,
@@ -18,16 +18,16 @@ import {
   mkVariableFactoryTileId,
   mkVariableTileId,
   RuleSide,
-} from "@mindcraft-lang/core/brain";
-import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { Expr } from "@mindcraft-lang/core/brain/compiler";
+} from "@wendoo-lang/core/brain";
+import { __test__appendTile, __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { Expr } from "@wendoo-lang/core/brain/compiler";
 import {
   type InsertionContext,
   parseTilesForSuggestions,
   suggestTiles,
   type TileSuggestionResult,
-} from "@mindcraft-lang/core/brain/language-service";
-import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+} from "@wendoo-lang/core/brain/language-service";
+import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
 import {
   type BrainTileAccessorDef,
   type BrainTileFactoryDef,
@@ -35,7 +35,7 @@ import {
   BrainTileOperatorDef,
   BrainTileVariableDef,
   TileCatalog,
-} from "@mindcraft-lang/core/brain/tiles";
+} from "@wendoo-lang/core/brain/tiles";
 import {
   CoreTypeIds,
   extractNumberValue,
@@ -43,7 +43,7 @@ import {
   NativeType,
   type TypeId,
   type Value,
-} from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
 import { registerUserTile } from "../runtime/registration-bridge.js";
 import { buildUserTileMetadata } from "../runtime/user-tile-metadata.js";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
@@ -58,7 +58,7 @@ const POSITION_IDENTITY = qualifiedClassName(TEST_PROJECT_NAMESPACE, "/position.
 const SPRITE_IDENTITY = qualifiedClassName(TEST_PROJECT_NAMESPACE, "/sprite.ts", "Sprite");
 
 /** The inner struct: a plain record of numbers. */
-const POSITION_SOURCE = `import { NumberType, StructType, type StructOf } from "mindcraft";
+const POSITION_SOURCE = `import { NumberType, StructType, type StructOf } from "wendoo";
 
 export const Position = StructType({
   name: "position",
@@ -70,7 +70,7 @@ export type Position = StructOf<typeof Position>;
 `;
 
 /** The outer struct: one field is the inner struct, one is a number. */
-const SPRITE_SOURCE = `import { NumberType, StructType, type StructOf } from "mindcraft";
+const SPRITE_SOURCE = `import { NumberType, StructType, type StructOf } from "wendoo";
 import { Position } from "./position";
 
 export const Sprite = StructType({
@@ -83,7 +83,7 @@ export type Sprite = StructOf<typeof Sprite>;
 `;
 
 /** Sensor constructing a nested value through the callable factories. */
-const SPAWN_SOURCE = `import { Sensor, type Context } from "mindcraft";
+const SPAWN_SOURCE = `import { Sensor, type Context } from "wendoo";
 import { Position } from "./position";
 import { Sprite } from "./sprite";
 
@@ -242,7 +242,7 @@ function assertNestedShape(
 }
 
 describe("nested StructType fields: declaration-order independence", () => {
-  const defsEntry = `import { Sensor, type Context } from "mindcraft";
+  const defsEntry = `import { Sensor, type Context } from "wendoo";
 import { Position, Sprite } from "./defs";
 
 export default Sensor({
@@ -265,7 +265,7 @@ export type Position = StructOf<typeof Position>;
 });
 export type Sprite = StructOf<typeof Sprite>;
 `;
-  const header = `import { NumberType, StructType, type StructOf } from "mindcraft";\n\n`;
+  const header = `import { NumberType, StructType, type StructOf } from "wendoo";\n\n`;
 
   test("one module declaring inner above outer compiles", () => {
     const services = __test__createBrainServices();
@@ -311,7 +311,7 @@ export type Sprite = StructOf<typeof Sprite>;
 
   test("the entry module itself declares the outer struct over an imported inner", () => {
     const services = __test__createBrainServices();
-    const entryDeclaredOuter = `import { NumberType, Sensor, StructType, type Context, type StructOf } from "mindcraft";
+    const entryDeclaredOuter = `import { NumberType, Sensor, StructType, type Context, type StructOf } from "wendoo";
 import { Position } from "./position";
 
 const Sprite = StructType({
@@ -334,7 +334,7 @@ export default Sensor({
   });
 
   test("a third module composes structs from two sibling modules, either import order", () => {
-    const healthSource = `import { NumberType, StructType, type StructOf } from "mindcraft";
+    const healthSource = `import { NumberType, StructType, type StructOf } from "wendoo";
 
 export const Health = StructType({
   name: "health",
@@ -345,7 +345,7 @@ export type Health = StructOf<typeof Health>;
     const particleSource = (
       firstImport: string,
       secondImport: string
-    ) => `import { StructType, type StructOf } from "mindcraft";
+    ) => `import { StructType, type StructOf } from "wendoo";
 ${firstImport}
 ${secondImport}
 
@@ -355,7 +355,7 @@ export const Particle = StructType({
 });
 export type Particle = StructOf<typeof Particle>;
 `;
-    const particleEntry = `import { Sensor, type Context } from "mindcraft";
+    const particleEntry = `import { Sensor, type Context } from "wendoo";
 import { Health } from "./health";
 import { Particle } from "./particle";
 import { Position } from "./position";
@@ -396,7 +396,7 @@ export default Sensor({
 describe("nested StructType fields: recursive containment", () => {
   test("a struct containing itself through an alias module reports the cycle", () => {
     const services = __test__createBrainServices();
-    const nodeSource = `import { StructType, type StructTypeBinding } from "mindcraft";
+    const nodeSource = `import { StructType, type StructTypeBinding } from "wendoo";
 import { NodeRef } from "./node-ref";
 
 type NodeValue = { next: NodeValue };
@@ -410,7 +410,7 @@ export function nodeDepth(): number {
 `;
     const nodeRefSource = `export { Node as NodeRef } from "./node";
 `;
-    const entrySource = `import { Sensor, type Context } from "mindcraft";
+    const entrySource = `import { Sensor, type Context } from "wendoo";
 import { nodeDepth } from "./node";
 
 export default Sensor({
@@ -434,7 +434,7 @@ export default Sensor({
 
   test("mutually recursive structs across modules report the cycle, not an unknown type", () => {
     const services = __test__createBrainServices();
-    const aSource = `import { StructType, type StructTypeBinding } from "mindcraft";
+    const aSource = `import { StructType, type StructTypeBinding } from "wendoo";
 import { B } from "./b";
 
 type AValue = { b: BValue };
@@ -447,7 +447,7 @@ export function useA(): number {
   return 1;
 }
 `;
-    const bSource = `import { StructType, type StructTypeBinding } from "mindcraft";
+    const bSource = `import { StructType, type StructTypeBinding } from "wendoo";
 import { A } from "./a";
 
 type AValue = { b: BValue };
@@ -457,7 +457,7 @@ export const B: StructTypeBinding<BValue> = StructType({
   fields: { a: A },
 });
 `;
-    const entrySource = `import { Sensor, type Context } from "mindcraft";
+    const entrySource = `import { Sensor, type Context } from "wendoo";
 import { useA } from "./a";
 
 export default Sensor({
@@ -482,7 +482,7 @@ export default Sensor({
 
   test("a struct composing a recursive pair fails without a second misleading diagnostic", () => {
     const services = __test__createBrainServices();
-    const aSource = `import { StructType, type StructTypeBinding } from "mindcraft";
+    const aSource = `import { StructType, type StructTypeBinding } from "wendoo";
 import { B } from "./b";
 
 type AValue = { b: BValue };
@@ -492,7 +492,7 @@ export const A: StructTypeBinding<AValue> = StructType({
   fields: { b: B },
 });
 `;
-    const bSource = `import { StructType, type StructTypeBinding } from "mindcraft";
+    const bSource = `import { StructType, type StructTypeBinding } from "wendoo";
 import { A } from "./a";
 
 type AValue = { b: BValue };
@@ -502,7 +502,7 @@ export const B: StructTypeBinding<BValue> = StructType({
   fields: { a: A },
 });
 `;
-    const wrapperSource = `import { NumberType, StructType } from "mindcraft";
+    const wrapperSource = `import { NumberType, StructType } from "wendoo";
 import { A } from "./a";
 
 export const Wrapper = StructType({
@@ -513,7 +513,7 @@ export function useWrapper(): number {
   return 2;
 }
 `;
-    const entrySource = `import { Sensor, type Context } from "mindcraft";
+    const entrySource = `import { Sensor, type Context } from "wendoo";
 import { useWrapper } from "./wrapper";
 
 export default Sensor({

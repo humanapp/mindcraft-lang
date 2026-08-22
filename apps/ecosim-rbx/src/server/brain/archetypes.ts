@@ -1,4 +1,4 @@
-import { BrainDef, type MindcraftEnvironment } from "@mindcraft-lang/core/app";
+import { BrainDef, type WendooEnvironment } from "@wendoo-lang/core/app";
 import type { Archetype } from "./actor";
 import type { MoverConfig } from "./movement";
 
@@ -165,6 +165,6 @@ export const ARCHETYPES: Record<string, ArchetypeConfig> = {
  * @param archetype - The archetype whose brain name the fallback takes.
  * @returns An empty brain def.
  */
-export function createArchetypeFallbackBrain(env: MindcraftEnvironment, archetype: Archetype): BrainDef {
+export function createArchetypeFallbackBrain(env: WendooEnvironment, archetype: Archetype): BrainDef {
   return env.withServices((services) => BrainDef.emptyBrainDef(services, ARCHETYPES[archetype].brainName));
 }

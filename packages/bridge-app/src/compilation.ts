@@ -1,7 +1,7 @@
-import type { FileContent } from "@mindcraft-lang/app-host";
-import { fileContentEquals } from "@mindcraft-lang/app-host";
-import type { AppClientMessage, CompileDiagnosticEntry, FileSystemNotification } from "@mindcraft-lang/bridge-protocol";
-import type { MindcraftEnvironment } from "@mindcraft-lang/core";
+import type { FileContent } from "@wendoo-lang/app-host";
+import { fileContentEquals } from "@wendoo-lang/app-host";
+import type { AppClientMessage, CompileDiagnosticEntry, FileSystemNotification } from "@wendoo-lang/bridge-protocol";
+import type { WendooEnvironment } from "@wendoo-lang/core";
 import {
   createWorkspaceCompiler,
   type DependencyMount,
@@ -9,7 +9,7 @@ import {
   type ProjectDependency,
   type WorkspaceCompiler as TsWorkspaceCompiler,
   type WorkspaceCompileResult,
-} from "@mindcraft-lang/ts-compiler";
+} from "@wendoo-lang/ts-compiler";
 import type {
   AppBridge,
   AppBridgeFeature,
@@ -297,11 +297,11 @@ export class CompilationManager {
   }
 }
 
-export type { WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
+export type { WorkspaceCompileResult } from "@wendoo-lang/ts-compiler";
 
 /** Options for {@link createProjectCompiler}. */
 export interface CreateProjectCompilerOptions {
-  environment: MindcraftEnvironment;
+  environment: WendooEnvironment;
   filesystem: ProjectFileSystem;
   /** Namespace of the project being compiled (its store id); prefixes every symbol key minted from the project's content. */
   projectNamespace: string;

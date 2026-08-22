@@ -1,33 +1,33 @@
-import { fileContentByteLength, fileContentFromBytes, fileContentToBytes } from "@mindcraft-lang/app-host";
-import { ErrorCode, type IFileSystem, ProtocolError } from "@mindcraft-lang/bridge-client";
+import { fileContentByteLength, fileContentFromBytes, fileContentToBytes } from "@wendoo-lang/app-host";
+import { ErrorCode, type IFileSystem, ProtocolError } from "@wendoo-lang/bridge-client";
 import * as vscode from "vscode";
-import { MINDCRAFT_JSON } from "../mindcraft-json";
+import { WENDOO_JSON } from "../wendoo-json";
 
-export const MINDCRAFT_SCHEME = "mindcraft";
+export const WENDOO_SCHEME = "wendoo";
 
-export class MindcraftFileSystemProvider implements vscode.FileSystemProvider, vscode.FileDecorationProvider {
+export class WendooFileSystemProvider implements vscode.FileSystemProvider, vscode.FileDecorationProvider {
   private readonly _onDidChangeFile = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
   readonly onDidChangeFile = this._onDidChangeFile.event;
 
   private readonly _onDidChangeFileDecorations = new vscode.EventEmitter<vscode.Uri | vscode.Uri[] | undefined>();
   readonly onDidChangeFileDecorations = this._onDidChangeFileDecorations.event;
 
-  private readonly _onDidChangeMindcraftJsonLock = new vscode.EventEmitter<void>();
-  readonly onDidChangeMindcraftJsonLock = this._onDidChangeMindcraftJsonLock.event;
+  private readonly _onDidChangeWendooJsonLock = new vscode.EventEmitter<void>();
+  readonly onDidChangeWendooJsonLock = this._onDidChangeWendooJsonLock.event;
 
-  private _mindcraftJsonUnlocked = false;
+  private _wendooJsonUnlocked = false;
 
-  get isMindcraftJsonUnlocked(): boolean {
-    return this._mindcraftJsonUnlocked;
+  get isWendooJsonUnlocked(): boolean {
+    return this._wendooJsonUnlocked;
   }
 
-  unlockMindcraftJson(): void {
-    if (this._mindcraftJsonUnlocked) return;
-    this._mindcraftJsonUnlocked = true;
-    const uri = vscode.Uri.from({ scheme: MINDCRAFT_SCHEME, path: `/${MINDCRAFT_JSON}` });
+  unlockWendooJson(): void {
+    if (this._wendooJsonUnlocked) return;
+    this._wendooJsonUnlocked = true;
+    const uri = vscode.Uri.from({ scheme: WENDOO_SCHEME, path: `/${WENDOO_JSON}` });
     this._onDidChangeFile.fire([{ type: vscode.FileChangeType.Changed, uri }]);
     this._onDidChangeFileDecorations.fire(uri);
-    this._onDidChangeMindcraftJsonLock.fire();
+    this._onDidChangeWendooJsonLock.fire();
   }
 
   // Read and write can target different FileSystem instances. This enables
@@ -39,9 +39,9 @@ export class MindcraftFileSystemProvider implements vscode.FileSystemProvider, v
   setFileSystems(readFs: IFileSystem | undefined, writeFs: IFileSystem | undefined): void {
     this._readFs = readFs;
     this._writeFs = writeFs;
-    this._mindcraftJsonUnlocked = false;
+    this._wendooJsonUnlocked = false;
     this._onDidChangeFileDecorations.fire(undefined);
-    this._onDidChangeMindcraftJsonLock.fire();
+    this._onDidChangeWendooJsonLock.fire();
   }
 
   fireChanges(events: vscode.FileChangeEvent[]): void {
@@ -70,7 +70,7 @@ export class MindcraftFileSystemProvider implements vscode.FileSystemProvider, v
         return { type: vscode.FileType.Directory, ctime: 0, mtime: 0, size: 0 };
       }
       const content = fs.read(path);
-      const isReadonly = result.isReadonly || (path === MINDCRAFT_JSON && !this._mindcraftJsonUnlocked);
+      const isReadonly = result.isReadonly || (path === WENDOO_JSON && !this._wendooJsonUnlocked);
       return {
         type: vscode.FileType.File,
         ctime: 0,
@@ -130,12 +130,12 @@ export class MindcraftFileSystemProvider implements vscode.FileSystemProvider, v
         if (e.code === ErrorCode.ETAG_MISMATCH) {
           vscode.window
             .showErrorMessage(
-              "This file was modified by another client. Run Mindcraft: Sync to re-sync your files.",
+              "This file was modified by another client. Run Wendoo: Sync to re-sync your files.",
               "Sync Now"
             )
             .then((choice) => {
               if (choice === "Sync Now") {
-                vscode.commands.executeCommand("mindcraft.sync");
+                vscode.commands.executeCommand("wendoo.sync");
               }
             });
           throw new vscode.FileSystemError("File was modified by another client");
@@ -203,13 +203,13 @@ export class MindcraftFileSystemProvider implements vscode.FileSystemProvider, v
   }
 
   provideFileDecoration(uri: vscode.Uri): vscode.FileDecoration | undefined {
-    if (uri.scheme !== MINDCRAFT_SCHEME || !this._readFs) {
+    if (uri.scheme !== WENDOO_SCHEME || !this._readFs) {
       return undefined;
     }
     const path = toFsPath(uri);
     try {
       const result = this._readFs.stat(path);
-      if (result.kind === "file" && (result.isReadonly || (path === MINDCRAFT_JSON && !this._mindcraftJsonUnlocked))) {
+      if (result.kind === "file" && (result.isReadonly || (path === WENDOO_JSON && !this._wendooJsonUnlocked))) {
         return new vscode.FileDecoration(undefined, undefined, new vscode.ThemeColor("disabledForeground"));
       }
     } catch {
@@ -221,7 +221,7 @@ export class MindcraftFileSystemProvider implements vscode.FileSystemProvider, v
   dispose(): void {
     this._onDidChangeFile.dispose();
     this._onDidChangeFileDecorations.dispose();
-    this._onDidChangeMindcraftJsonLock.dispose();
+    this._onDidChangeWendooJsonLock.dispose();
   }
 }
 

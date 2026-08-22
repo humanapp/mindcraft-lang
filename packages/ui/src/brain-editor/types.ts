@@ -1,4 +1,4 @@
-import type { ITileMetadata } from "@mindcraft-lang/core/brain";
+import type { ITileMetadata } from "@wendoo-lang/core/brain";
 
 /** WHEN/DO color pair for a brain tile, as hex strings. */
 export type TileColorDef = { when: string; do: string };

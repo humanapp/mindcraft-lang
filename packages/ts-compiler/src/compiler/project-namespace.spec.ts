@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { coreModule, createMindcraftEnvironment } from "@mindcraft-lang/core";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { BrainDef } from "@mindcraft-lang/core/brain/model";
+import { coreModule, createWendooEnvironment } from "@wendoo-lang/core";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { BrainDef } from "@wendoo-lang/core/brain/model";
 import { buildCompiledActionBundle } from "../runtime/action-bundle.js";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { UserTileProject } from "./project.js";
 
-const SOURCE = `import { Sensor, StructType, NumberType, type Context } from "mindcraft";
+const SOURCE = `import { Sensor, StructType, NumberType, type Context } from "wendoo";
 
 export const Position = StructType({
   name: "Position",
@@ -91,7 +91,7 @@ describe("project-namespaced symbol keys", () => {
     const bundle = buildCompiledActionBundle(project.compileAll(), { services });
     assert.ok(bundle);
 
-    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule()] });
     environment.hydrateTileMetadata({ revision: bundle.revision, tiles: bundle.tiles });
     environment.replaceActionBundle(bundle);
 

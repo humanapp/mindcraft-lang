@@ -1,7 +1,7 @@
 {
-  "name": "mindcraft-lang-vscode-extension",
-  "displayName": "Mindcraft",
-  "description": "Program sensors and actuators for Mindcraft apps in TypeScript using VS Code",
+  "name": "wendoo-lang-vscode-extension",
+  "displayName": "Wendoo",
+  "description": "Program sensors and actuators for Wendoo apps in TypeScript using VS Code",
   "keywords": [
     "visual-programming",
     "visual-coding",
@@ -12,18 +12,18 @@
   ],
   "version": "0.2.2",
   "private": true,
-  "publisher": "mindcraft-lang",
+  "publisher": "wendoo-lang",
   "license": "MIT",
   "author": "humanapp",
   "repository": {
     "type": "git",
-    "url": "https://github.com/humanapp/mindcraft-lang.git",
+    "url": "https://github.com/humanapp/wendoo-lang.git",
     "directory": "apps/vscode-extension"
   },
   "bugs": {
-    "url": "https://github.com/humanapp/mindcraft-lang/issues"
+    "url": "https://github.com/humanapp/wendoo-lang/issues"
   },
-  "homepage": "https://github.com/humanapp/mindcraft-lang/tree/main/apps/vscode-extension#readme",
+  "homepage": "https://github.com/humanapp/wendoo-lang/tree/main/apps/vscode-extension#readme",
   "engines": {
     "vscode": "^1.100.0"
   },
@@ -32,7 +32,7 @@
     "Education"
   ],
   "activationEvents": [
-    "onFileSystem:mindcraft",
+    "onFileSystem:wendoo",
     "onStartupFinished"
   ],
   "pricing": "Free",
@@ -45,138 +45,138 @@
   "contributes": {
     "commands": [
       {
-        "command": "mindcraft.show",
-        "title": "Mindcraft: Show"
+        "command": "wendoo.show",
+        "title": "Wendoo: Show"
       },
       {
-        "command": "mindcraft.connect",
-        "title": "Mindcraft: Connect"
+        "command": "wendoo.connect",
+        "title": "Wendoo: Connect"
       },
       {
-        "command": "mindcraft.disconnect",
-        "title": "Mindcraft: Disconnect"
+        "command": "wendoo.disconnect",
+        "title": "Wendoo: Disconnect"
       },
       {
-        "command": "mindcraft.createSensor",
-        "title": "Mindcraft: Create New Sensor"
+        "command": "wendoo.createSensor",
+        "title": "Wendoo: Create New Sensor"
       },
       {
-        "command": "mindcraft.createActuator",
-        "title": "Mindcraft: Create New Actuator"
+        "command": "wendoo.createActuator",
+        "title": "Wendoo: Create New Actuator"
       },
       {
-        "command": "mindcraft.hide",
-        "title": "Mindcraft: Hide"
+        "command": "wendoo.hide",
+        "title": "Wendoo: Hide"
       },
       {
-        "command": "mindcraft.sync",
-        "title": "Mindcraft: Sync Files"
+        "command": "wendoo.sync",
+        "title": "Wendoo: Sync Files"
       },
       {
-        "command": "mindcraft.openSettings",
-        "title": "Mindcraft: Open Settings"
+        "command": "wendoo.openSettings",
+        "title": "Wendoo: Open Settings"
       },
       {
-        "command": "mindcraft.unlockMindcraftJson",
-        "title": "Mindcraft: Unlock mindcraft.json for Editing"
+        "command": "wendoo.unlockWendooJson",
+        "title": "Wendoo: Unlock wendoo.json for Editing"
       },
       {
-        "command": "mindcraft.openProjectFolder",
-        "title": "Mindcraft: Open Project Folder"
+        "command": "wendoo.openProjectFolder",
+        "title": "Wendoo: Open Project Folder"
       },
       {
-        "command": "mindcraft.newProject",
-        "title": "Mindcraft: New Project"
+        "command": "wendoo.newProject",
+        "title": "Wendoo: New Project"
       },
       {
-        "command": "mindcraft.importProject",
-        "title": "Mindcraft: Import Project"
+        "command": "wendoo.importProject",
+        "title": "Wendoo: Import Project"
       },
       {
-        "command": "mindcraft.openEditor",
-        "title": "Mindcraft: Open Editor"
+        "command": "wendoo.openEditor",
+        "title": "Wendoo: Open Editor"
       },
       {
-        "command": "mindcraft.updateTarget",
-        "title": "Mindcraft: Update Target"
+        "command": "wendoo.updateTarget",
+        "title": "Wendoo: Update Target"
       }
     ],
     "menus": {
       "commandPalette": [
         {
-          "command": "mindcraft.show",
-          "when": "mindcraft.webHost"
+          "command": "wendoo.show",
+          "when": "wendoo.webHost"
         },
         {
-          "command": "mindcraft.connect",
-          "when": "mindcraft.webHost"
+          "command": "wendoo.connect",
+          "when": "wendoo.webHost"
         },
         {
-          "command": "mindcraft.disconnect",
-          "when": "mindcraft.webHost"
+          "command": "wendoo.disconnect",
+          "when": "wendoo.webHost"
         },
         {
-          "command": "mindcraft.hide",
-          "when": "mindcraft.webHost"
+          "command": "wendoo.hide",
+          "when": "wendoo.webHost"
         },
         {
-          "command": "mindcraft.sync",
-          "when": "mindcraft.webHost"
+          "command": "wendoo.sync",
+          "when": "wendoo.webHost"
         },
         {
-          "command": "mindcraft.unlockMindcraftJson",
-          "when": "mindcraft.webHost"
+          "command": "wendoo.unlockWendooJson",
+          "when": "wendoo.webHost"
         },
         {
-          "command": "mindcraft.openProjectFolder",
-          "when": "!mindcraft.webHost"
+          "command": "wendoo.openProjectFolder",
+          "when": "!wendoo.webHost"
         },
         {
-          "command": "mindcraft.newProject",
-          "when": "!mindcraft.webHost"
+          "command": "wendoo.newProject",
+          "when": "!wendoo.webHost"
         },
         {
-          "command": "mindcraft.importProject",
-          "when": "!mindcraft.webHost"
+          "command": "wendoo.importProject",
+          "when": "!wendoo.webHost"
         },
         {
-          "command": "mindcraft.openEditor",
-          "when": "!mindcraft.webHost"
+          "command": "wendoo.openEditor",
+          "when": "!wendoo.webHost"
         },
         {
-          "command": "mindcraft.updateTarget",
-          "when": "!mindcraft.webHost"
+          "command": "wendoo.updateTarget",
+          "when": "!wendoo.webHost"
         }
       ]
     },
     "views": {
       "explorer": [
         {
-          "id": "mindcraft.sessions",
-          "name": "Mindcraft",
+          "id": "wendoo.sessions",
+          "name": "Wendoo",
           "icon": "$(symbol-misc)",
-          "when": "mindcraft.enabled && mindcraft.webHost"
+          "when": "wendoo.enabled && wendoo.webHost"
         },
         {
-          "id": "mindcraft.projectActions",
-          "name": "Mindcraft",
+          "id": "wendoo.projectActions",
+          "name": "Wendoo",
           "icon": "$(symbol-misc)",
-          "when": "mindcraft.enabled && !mindcraft.webHost"
+          "when": "wendoo.enabled && !wendoo.webHost"
         }
       ]
     },
     "configuration": {
-      "title": "Mindcraft",
+      "title": "Wendoo",
       "properties": {
-        "mindcraft.bridgeUrl": {
+        "wendoo.bridgeUrl": {
           "type": "string",
-          "default": "vscode-bridge.mindcraft-lang.org",
-          "description": "Web only: URL of the Mindcraft bridge service the web editor pairs with. Has no effect in desktop VS Code."
+          "default": "vscode-bridge.wendoo-lang.org",
+          "description": "Web only: URL of the Wendoo bridge service the web editor pairs with. Has no effect in desktop VS Code."
         },
-        "mindcraft.devTarget": {
+        "wendoo.devTarget": {
           "type": "object",
           "default": null,
-          "description": "Desktop only: author override of the target app hosted for a project folder (normally resolved from the project's own mindcraft.json targets) -- { appPath: <built app directory> } to host a local build, or { appRef: <owner>/<repo>@<ref> } to host a published build; optional extensions?: { <owner>/<repo>: <reference> } and targets?: { <owner>/<repo>: { packageVersion: <range> } } seeded into a new project. Has no effect in the web editor.",
+          "description": "Desktop only: author override of the target app hosted for a project folder (normally resolved from the project's own wendoo.json targets) -- { appPath: <built app directory> } to host a local build, or { appRef: <owner>/<repo>@<ref> } to host a published build; optional extensions?: { <owner>/<repo>: <reference> } and targets?: { <owner>/<repo>: { packageVersion: <range> } } seeded into a new project. Has no effect in the web editor.",
           "properties": {
             "appPath": {
               "type": "string",
@@ -219,11 +219,11 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.15",
-    "@mindcraft-lang/app-host": "file:../../packages/app-host",
-    "@mindcraft-lang/bridge-app": "file:../../packages/bridge-app",
-    "@mindcraft-lang/bridge-client": "file:../../packages/bridge-client",
-    "@mindcraft-lang/bridge-protocol": "file:../../packages/bridge-protocol",
-    "@mindcraft-lang/service-api": "file:../../packages/service-api",
+    "@wendoo-lang/app-host": "file:../../packages/app-host",
+    "@wendoo-lang/bridge-app": "file:../../packages/bridge-app",
+    "@wendoo-lang/bridge-client": "file:../../packages/bridge-client",
+    "@wendoo-lang/bridge-protocol": "file:../../packages/bridge-protocol",
+    "@wendoo-lang/service-api": "file:../../packages/service-api",
     "@types/node": "^25.3.0",
     "@types/vscode": "^1.100.0",
     "@vscode/test-web": "^0.0.80",

@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { ExtensionCatalogDocumentEntry } from "@mindcraft-lang/app-host";
+import type { ExtensionCatalogDocumentEntry } from "@wendoo-lang/app-host";
 import {
   parseExtensionReference,
   parseProjectContentManifest,
   seedProjectTargets,
   validateExtensionCatalogDocument,
-} from "@mindcraft-lang/app-host";
+} from "@wendoo-lang/app-host";
 import bundledTargetsRegistry from "../../../../packages/cli/targets.json";
 import {
   findTargetRegistryEntry,
@@ -17,7 +17,7 @@ import {
   targetRegistryPickItems,
 } from "./target-registry";
 
-const MICROBIT_V2_COORDINATE = "mindcraft-lang/trg-microbit-v2";
+const MICROBIT_V2_COORDINATE = "wendoo-lang/trg-microbit-v2";
 
 describe("bundled targets registry", () => {
   it("validates with zero errors, zero warnings, and at least one entry", () => {
@@ -88,14 +88,14 @@ describe("resolveProjectTargetDescriptor", () => {
   it("resolves the registry-listed declared coordinate by membership, not by coordinate prefix", () => {
     const resolution = resolveProjectTargetDescriptor(
       undefined,
-      ["mindcraft-lang/lib-cutebot", "acme/trg-unregistered", WIDGET_ENTRY.coordinate],
+      ["wendoo-lang/lib-cutebot", "acme/trg-unregistered", WIDGET_ENTRY.coordinate],
       [WIDGET_ENTRY]
     );
     assert.deepStrictEqual(resolution, { ok: true, descriptor: { appRef: WIDGET_ENTRY.ref } });
   });
 
   it("fails with NO_REGISTRY_MATCH when no declared coordinate is registry-listed, naming the declared coordinates", () => {
-    const declared = ["mindcraft-lang/lib-cutebot", "acme/trg-unregistered"];
+    const declared = ["wendoo-lang/lib-cutebot", "acme/trg-unregistered"];
     const resolution = resolveProjectTargetDescriptor(undefined, declared, [WIDGET_ENTRY]);
     assert.deepStrictEqual(resolution, {
       ok: false,

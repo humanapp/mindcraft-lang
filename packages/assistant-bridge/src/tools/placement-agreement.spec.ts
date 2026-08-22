@@ -7,8 +7,8 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { TilePlacement } from "@mindcraft-lang/core/brain";
-import { ParseDiagCode } from "@mindcraft-lang/core/brain/compiler";
+import { TilePlacement } from "@wendoo-lang/core/brain";
+import { ParseDiagCode } from "@wendoo-lang/core/brain/compiler";
 import { FakeActionKeys, FakeTileIds } from "../testing/fake-module.js";
 import { createTargetAdapter, ruleIdAt } from "../testing/index.js";
 import { proposeEdit } from "./propose-edit.js";

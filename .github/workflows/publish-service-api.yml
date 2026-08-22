@@ -1,4 +1,4 @@
-name: Publish @mindcraft-lang/service-api
+name: Publish @wendoo-lang/service-api
 
 on:
   push:

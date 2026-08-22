@@ -1,5 +1,5 @@
-import type { IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
-import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+import type { IBrainTileDef, RuleSide } from "@wendoo-lang/core/brain";
+import type { BrainRuleDef } from "@wendoo-lang/core/brain/model";
 import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from "react";
 import type { CaretPosition } from "./caret-run";
 import type { EditorMode } from "./editor-mode";

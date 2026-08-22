@@ -10,13 +10,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { pathToFileURL } from "node:url";
-import type { CatalogEntryInput, LocaleCatalog, PluralRuleSpec } from "@mindcraft-lang/core/localization";
+import type { CatalogEntryInput, LocaleCatalog, PluralRuleSpec } from "@wendoo-lang/core/localization";
 import {
   buildLocaleCatalogModule,
   createLocalizer,
   defaultPluralRule,
   TemplateDiagCode,
-} from "@mindcraft-lang/core/localization";
+} from "@wendoo-lang/core/localization";
 
 type CatalogJson = {
   entries?: Record<string, string>;
@@ -41,7 +41,7 @@ function toEntries(json: CatalogJson): CatalogEntryInput[] {
 
 /** Write a generated module to disk and load it back as a {@link LocaleCatalog}. */
 async function loadGeneratedModule(locale: string, source: string): Promise<LocaleCatalog> {
-  const dir = mkdtempSync(join(tmpdir(), "mindcraft-localization-"));
+  const dir = mkdtempSync(join(tmpdir(), "wendoo-localization-"));
   const file = join(dir, `${locale}.ts`);
   writeFileSync(file, source, "utf-8");
   const loaded = (await import(pathToFileURL(file).href)) as {

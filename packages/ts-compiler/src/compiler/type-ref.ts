@@ -1,10 +1,10 @@
-import { CoreTypeNames } from "@mindcraft-lang/core/runtime";
+import { CoreTypeNames } from "@wendoo-lang/core/runtime";
 import ts from "typescript";
 import { qualifiedDeclarationName } from "./extension-mounts.js";
 
 /**
  * Canonical registry name for each ambient TypeRef token exported by the
- * `mindcraft` module, keyed by the token's exported binding name.
+ * `wendoo` module, keyed by the token's exported binding name.
  */
 const CORE_TYPE_REF_CANONICAL: ReadonlyMap<string, string> = new Map([
   ["NumberType", CoreTypeNames.Number],
@@ -23,7 +23,7 @@ export function ambientTypeTokenName(idNode: ts.Identifier, checker: ts.TypeChec
   const target = symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
   const declarations = target.getDeclarations();
   const declaration = declarations && declarations.length > 0 ? declarations[0] : undefined;
-  if (!declaration || !isMindcraftModuleDeclaration(declaration)) return undefined;
+  if (!declaration || !isWendooModuleDeclaration(declaration)) return undefined;
   return CORE_TYPE_REF_CANONICAL.get(target.name);
 }
 
@@ -68,7 +68,7 @@ export function structTypeConfigObject(expr: ts.Expression | undefined): ts.Obje
 /**
  * Resolve a type-naming config expression to its canonical registry name.
  * Accepts a string literal (the name verbatim), an identifier bound to an
- * ambient TypeRef token imported from the `mindcraft` module, or an identifier
+ * ambient TypeRef token imported from the `wendoo` module, or an identifier
  * bound to a user `StructType({...})` or `enum` declaration (resolving to its
  * qualified `<namespace>:<file>::<binding>` name). Every form yields the
  * canonical name, so name-keyed derivations (tile ids, registry lookups) are
@@ -117,9 +117,9 @@ export function resolveTypeNameExpression(
     }
   }
 
-  if (!isMindcraftModuleDeclaration(declaration)) {
+  if (!isWendooModuleDeclaration(declaration)) {
     return {
-      error: `\`${expr.text}\` is not a type token exported by \`mindcraft\`, a \`StructType\` binding, or an enum`,
+      error: `\`${expr.text}\` is not a type token exported by \`wendoo\`, a \`StructType\` binding, or an enum`,
     };
   }
 
@@ -130,11 +130,11 @@ export function resolveTypeNameExpression(
   return { name: canonical };
 }
 
-/** True when `node` is declared inside an ambient `declare module "mindcraft"` block. */
-export function isMindcraftModuleDeclaration(node: ts.Node): boolean {
+/** True when `node` is declared inside an ambient `declare module "wendoo"` block. */
+export function isWendooModuleDeclaration(node: ts.Node): boolean {
   let current: ts.Node | undefined = node;
   while (current) {
-    if (ts.isModuleDeclaration(current) && ts.isStringLiteral(current.name) && current.name.text === "mindcraft") {
+    if (ts.isModuleDeclaration(current) && ts.isStringLiteral(current.name) && current.name.text === "wendoo") {
       return true;
     }
     current = current.parent;

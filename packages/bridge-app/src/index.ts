@@ -1,16 +1,16 @@
-export type { InMemoryProjectFileSystemOptions } from "@mindcraft-lang/app-host";
-export { createInMemoryProjectFileSystem, MINDCRAFT_JSON_PATH } from "@mindcraft-lang/app-host";
+export type { InMemoryProjectFileSystemOptions } from "@wendoo-lang/app-host";
+export { createInMemoryProjectFileSystem, WENDOO_JSON_PATH } from "@wendoo-lang/app-host";
 export type {
   FolderAppMessage,
   FolderHostMessage,
   FolderInstalledExtensionMetadata,
-} from "@mindcraft-lang/bridge-protocol";
+} from "@wendoo-lang/bridge-protocol";
 export {
   FOLDER_HOST_MODE_FOLDER,
   FOLDER_HOST_MODE_GLOBAL,
   FOLDER_HOST_MODE_URL_PARAM,
   FolderSessionErrorCode,
-} from "@mindcraft-lang/bridge-protocol";
+} from "@wendoo-lang/bridge-protocol";
 export type {
   AppBridge,
   AppBridgeFeature,

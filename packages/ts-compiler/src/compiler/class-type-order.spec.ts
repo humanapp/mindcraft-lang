@@ -9,10 +9,10 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { type BrainServices, type IBrainTileDef, mkVariableTileId } from "@mindcraft-lang/core/brain";
-import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { BrainTileOperatorDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
+import { type BrainServices, type IBrainTileDef, mkVariableTileId } from "@wendoo-lang/core/brain";
+import { __test__appendTile, __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
+import { BrainTileOperatorDef, BrainTileVariableDef } from "@wendoo-lang/core/brain/tiles";
 import {
   CoreTypeIds,
   extractNumberValue,
@@ -22,7 +22,7 @@ import {
   type StructTypeDef,
   type TypeId,
   type Value,
-} from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
 import { registerUserTile } from "../runtime/registration-bridge.js";
 import { buildUserTileMetadata } from "../runtime/user-tile-metadata.js";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
@@ -129,7 +129,7 @@ const OUTER_BLOCK = `export class Outer {
 }
 `;
 
-const OUTER_ENTRY = `import { Sensor, type Context } from "mindcraft";
+const OUTER_ENTRY = `import { Sensor, type Context } from "wendoo";
 import { Outer } from "./defs";
 
 export default Sensor({
@@ -186,7 +186,7 @@ describe("class struct types: declaration-order independence", () => {
 
   test("the entry module's class composes an imported class", () => {
     const services = __test__createBrainServices();
-    const entrySource = `import { Sensor, type Context } from "mindcraft";
+    const entrySource = `import { Sensor, type Context } from "wendoo";
 import { Inner } from "./inner";
 
 class Outer {
@@ -244,7 +244,7 @@ export default Sensor({
 
   test("a class field typed by a same-module interface registers against the interface's qualified type", () => {
     const services = __test__createBrainServices();
-    const entrySource = `import { Sensor, type Context } from "mindcraft";
+    const entrySource = `import { Sensor, type Context } from "wendoo";
 
 interface Settings {
   speed: number;
@@ -283,7 +283,7 @@ export default Sensor({
 
   test("a self-referential optional field registers as a nullable reference to the class's own type", () => {
     const services = __test__createBrainServices();
-    const entrySource = `import { Sensor, type Context } from "mindcraft";
+    const entrySource = `import { Sensor, type Context } from "wendoo";
 
 class Node {
   x: number;
@@ -323,7 +323,7 @@ export default Sensor({
 
   test("an unresolvable instance field type is reported at the field", () => {
     const services = __test__createBrainServices();
-    const entrySource = `import { Sensor, type Context } from "mindcraft";
+    const entrySource = `import { Sensor, type Context } from "wendoo";
 
 type Opaque = number & { __brand: "opaque" };
 

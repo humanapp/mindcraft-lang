@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { BrainDef, coreModule, createMindcraftEnvironment, type MindcraftEnvironment } from "@mindcraft-lang/core/app";
+import { BrainDef, coreModule, createWendooEnvironment, type WendooEnvironment } from "@wendoo-lang/core/app";
 import type { Playground } from "../game/scenes/Playground";
 import type { EcosimEnvironmentStore } from "../services/ecosim-environment-store";
 import type { Actor, Archetype } from "./actor";
@@ -95,7 +95,7 @@ function stubScene() {
 }
 
 /** A store stand-in exposing the live environment and an empty brain per archetype. */
-function stubStore(env: MindcraftEnvironment): EcosimEnvironmentStore {
+function stubStore(env: WendooEnvironment): EcosimEnvironmentStore {
   return {
     env,
     getDesiredCounts: () => ({ carnivore: 0, herbivore: 0, plant: 0 }),
@@ -106,7 +106,7 @@ function stubStore(env: MindcraftEnvironment): EcosimEnvironmentStore {
 
 /** A started engine holding one live carnivore and one in-flight blip. */
 async function startedEngine() {
-  const env = createMindcraftEnvironment({ modules: [coreModule(), createEcosimModule()] });
+  const env = createWendooEnvironment({ modules: [coreModule(), createEcosimModule()] });
   const scene = stubScene();
   const engine = new Engine(scene as unknown as Playground, [], stubStore(env));
   engine.start();

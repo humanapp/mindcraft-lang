@@ -1,17 +1,17 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
-import type { EmbeddedExtension } from "@mindcraft-lang/bridge-app";
+import type { EmbeddedExtension } from "@wendoo-lang/bridge-app";
 import {
   CORE_LIB_COORDINATE,
   collectMetadataFromCompile,
   findEmbeddedExtensionsMissingStableIds,
   formatEmbeddedExtensionIdViolations,
   resolveProjectExtensions,
-} from "@mindcraft-lang/bridge-app";
-import { buildEmbeddedExtensionFromDir } from "@mindcraft-lang/bridge-app/node";
-import { coreModule, createMindcraftEnvironment } from "@mindcraft-lang/core/app";
-import { createWorkspaceCompiler, type Mount, type WorkspaceSnapshot } from "@mindcraft-lang/ts-compiler";
+} from "@wendoo-lang/bridge-app";
+import { buildEmbeddedExtensionFromDir } from "@wendoo-lang/bridge-app/node";
+import { coreModule, createWendooEnvironment } from "@wendoo-lang/core/app";
+import { createWorkspaceCompiler, type Mount, type WorkspaceSnapshot } from "@wendoo-lang/ts-compiler";
 import { createEcosimModule } from "../brain";
 import { buildEcosimExtensionEntries } from "./ecosim-extension-browser";
 import {
@@ -27,7 +27,7 @@ function extensionDir(relativePath: string): string {
 
 /**
  * The sim app's embed record -- the two layers plus the two add-ons -- assembled
- * from each extension's own `mindcraft.json` `files` list through the shared
+ * from each extension's own `wendoo.json` `files` list through the shared
  * loader, the single content-assembly path the app's Vite provider also uses.
  */
 function ecosimEmbedRecord(): EmbeddedExtension[] {
@@ -46,7 +46,7 @@ const DETECT_ID = "qqCSFiDwg0oiEVAw";
 
 describe("sim add-on extensions -- every declaration ships a stable id", () => {
   test("no embedded extension declares a tile without an explicit stable id", () => {
-    const environment = createMindcraftEnvironment({ modules: [coreModule(), createEcosimModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule(), createEcosimModule()] });
     const violations = findEmbeddedExtensionsMissingStableIds(ecosimEmbedRecord(), environment.brainServices);
     assert.deepEqual(violations, [], formatEmbeddedExtensionIdViolations(violations));
   });
@@ -83,7 +83,7 @@ describe("sim add-on extensions -- browser entries list direct dependencies only
 });
 
 describe("sim add-on extensions -- install materializes usable tiles", () => {
-  const HOST_PROGRAM = `import { Sensor, type Context } from "mindcraft";
+  const HOST_PROGRAM = `import { Sensor, type Context } from "wendoo";
 export default Sensor({
   name: "host probe",
   onExecute(ctx: Context): boolean {
@@ -100,7 +100,7 @@ export default Sensor({
       extensions[coordinate] = `embedded:${coordinate}`;
     }
     const resolved = resolveProjectExtensions(extensions, { embedded: embedRecord });
-    const environment = createMindcraftEnvironment({ modules: [coreModule(), createEcosimModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule(), createEcosimModule()] });
     const mounts: readonly Mount[] = [];
     const compiler = createWorkspaceCompiler({
       projectNamespace: "sim-addon-probe",

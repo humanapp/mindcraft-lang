@@ -18,12 +18,12 @@
 
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, type ReadonlyList } from "@mindcraft-lang/core";
-import type { BrainServices, IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
-import { RuleSide } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { buildInsertionContext, suggestTiles } from "@mindcraft-lang/core/brain/language-service";
-import { BrainCommandHistory, type BrainPageDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+import { List, type ReadonlyList } from "@wendoo-lang/core";
+import type { BrainServices, IBrainTileDef, ITileCatalog } from "@wendoo-lang/core/brain";
+import { RuleSide } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { buildInsertionContext, suggestTiles } from "@wendoo-lang/core/brain/language-service";
+import { BrainCommandHistory, type BrainPageDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { type ArmedTargetController, ArmedTargetProvider } from "./ArmedTargetContext";

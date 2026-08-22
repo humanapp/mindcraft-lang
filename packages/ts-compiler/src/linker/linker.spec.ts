@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { Dict, List, runtime } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
+import { Dict, List, runtime } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { ExecutionContext } from "@wendoo-lang/core/runtime";
 import {
   type BooleanValue,
   BYTECODE_VERSION,
@@ -21,8 +21,8 @@ import {
   type Value,
   ValueDict,
   VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 import { compileUserTile } from "../compiler/compile.js";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { linkUserPrograms } from "./linker.js";
@@ -136,7 +136,7 @@ describe("linker", () => {
     assert.equal(brainProg.constantPools.values.size(), 1);
 
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "const-sensor",
@@ -166,7 +166,7 @@ export default Sensor({
     const brainProg = mkBrainProgramWithStubFunction();
 
     const source = `
-import { Sensor, param, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "wendoo";
 
 function double(x: number): number {
   return x + x;
@@ -201,7 +201,7 @@ export default Sensor({
 
   test("linked program's user function is callable by funcId from brain code", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "return-42",
@@ -235,7 +235,7 @@ export default Sensor({
 
   test("linked user program with helper function executes correctly", () => {
     const source = `
-import { Sensor, param, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "wendoo";
 
 function triple(n: number): number {
   return n + n + n;
@@ -277,7 +277,7 @@ export default Sensor({
 
   test("multiple user programs link correctly with independent offsets", () => {
     const source1 = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "sensor-a",
@@ -287,7 +287,7 @@ export default Sensor({
 });
 `;
     const source2 = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "sensor-b",
@@ -344,7 +344,7 @@ export default Sensor({
 
   test("activationFuncId is remapped after linking", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "with-page-enter",
@@ -377,7 +377,7 @@ export default Sensor({
     const brainProg = mkBrainProgramWithStubFunction();
 
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "preserve-test",
@@ -410,7 +410,7 @@ export default Sensor({
 
   test("FunctionValue constants have funcId remapped after linking", () => {
     const source = `
-import { Sensor, param, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "wendoo";
 
 function double(x: number): number {
   return x + x;

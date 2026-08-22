@@ -10,7 +10,7 @@ import {
   optional as specOptional,
   repeated as specRepeated,
   seq as specSeq,
-} from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
 import { privateArgTileId } from "./symbol-keys.js";
 import type { ExtractedArgSpec } from "./types.js";
 

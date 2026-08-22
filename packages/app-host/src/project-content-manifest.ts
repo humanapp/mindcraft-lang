@@ -1,4 +1,4 @@
-import { LOWEST_CONTENT_VERSION, type MindcraftProjectExtensions } from "@mindcraft-lang/service-api";
+import { LOWEST_CONTENT_VERSION, type WendooProjectExtensions } from "@wendoo-lang/service-api";
 
 /**
  * Routing specifier of a `gh:` extension reference: how the reference names
@@ -168,7 +168,7 @@ export interface ProjectContentManifestRehearsalAdapter {
 
 /**
  * A project's content manifest: the portable identity data carried in
- * `mindcraft.json` alongside host-specific fields.
+ * `wendoo.json` alongside host-specific fields.
  */
 export interface ProjectContentManifest {
   /** Project display name; also the source for the project's slug. */
@@ -190,7 +190,7 @@ export interface ProjectContentManifest {
    * must be unique case-insensitively. Always present; an empty object means
    * the project has no extensions.
    */
-  readonly extensions: MindcraftProjectExtensions;
+  readonly extensions: WendooProjectExtensions;
   /**
    * Project-relative paths of every source and asset file this project
    * comprises: the authoritative content list used to assemble the project when
@@ -205,7 +205,7 @@ export interface ProjectContentManifest {
    * Content-relative paths of the `.d.ts` declaration files this content
    * contributes as ambient declarations: type declarations the consumer's
    * TypeScript environment includes globally (language globals and/or
-   * `declare module "mindcraft"` surfaces), pulled into scope by inclusion.
+   * `declare module "wendoo"` surfaces), pulled into scope by inclusion.
    * Present only when the file carries a non-empty list.
    */
   readonly ambient?: readonly string[];
@@ -502,7 +502,7 @@ export function validateProjectRehearsalAdapter(
  * `description` and `thumbnailUrl` fields are carried through; fields outside
  * the manifest schema are carried through verbatim as `extras`.
  *
- * @param content - JSON text of a `mindcraft.json` file.
+ * @param content - JSON text of a `wendoo.json` file.
  */
 export function parseProjectContentManifest(content: string): ProjectContentManifestParseResult {
   let parsed: unknown;
@@ -532,7 +532,7 @@ export function parseProjectContentManifest(content: string): ProjectContentMani
  * `extensions` field yields an empty extensions map. A missing or non-semver
  * `version` is read as the lowest content version (`"0.0.0"`).
  *
- * @param value - Parsed JSON value of a `mindcraft.json` file.
+ * @param value - Parsed JSON value of a `wendoo.json` file.
  */
 export function validateProjectContentManifest(value: unknown): ProjectContentManifestParseResult {
   if (!isRecord(value)) {
@@ -660,7 +660,7 @@ export function validateProjectContentManifest(value: unknown): ProjectContentMa
     }
   }
 
-  let extensions: MindcraftProjectExtensions = {};
+  let extensions: WendooProjectExtensions = {};
   if (value.extensions !== undefined) {
     if (!isRecord(value.extensions)) {
       errors.push({
@@ -673,7 +673,7 @@ export function validateProjectContentManifest(value: unknown): ProjectContentMa
       if (extensionErrors.length > 0) {
         errors.push(...extensionErrors);
       } else {
-        extensions = value.extensions as MindcraftProjectExtensions;
+        extensions = value.extensions as WendooProjectExtensions;
       }
     }
   }
@@ -711,7 +711,7 @@ export function validateProjectContentManifest(value: unknown): ProjectContentMa
 
 /**
  * Project a {@link ProjectContentManifest} onto the plain JSON object a
- * `mindcraft.json` file carries. Schema fields appear in a fixed order;
+ * `wendoo.json` file carries. Schema fields appear in a fixed order;
  * `extras` entries follow them verbatim.
  */
 export function projectContentManifestToJson(manifest: ProjectContentManifest): Record<string, unknown> {
@@ -743,11 +743,11 @@ export function serializeProjectContentManifest(manifest: ProjectContentManifest
 }
 
 /**
- * Read the `version` a `mindcraft.json` document explicitly declares, returning
+ * Read the `version` a `wendoo.json` document explicitly declares, returning
  * it only when it is a valid semver string. Returns `undefined` when the
  * content is unparseable, omits `version`, or carries a non-semver `version`.
  *
- * @param content - JSON text of a `mindcraft.json` file.
+ * @param content - JSON text of a `wendoo.json` file.
  */
 export function readExplicitContentManifestVersion(content: string): string | undefined {
   let parsed: unknown;

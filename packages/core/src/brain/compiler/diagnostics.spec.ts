@@ -5,22 +5,22 @@ import {
   coreModule,
   createHostActuator,
   createHostSensor,
-  createMindcraftEnvironment,
-  type MindcraftEnvironment,
-  type MindcraftModule,
-} from "@mindcraft-lang/core";
-import type { IBrainActionTileDef } from "@mindcraft-lang/core/brain";
-import { RuleSide } from "@mindcraft-lang/core/brain";
-import type { BrainBuildDiagnostic, DiagCode, ParseDiag, TypeInfoDiag } from "@mindcraft-lang/core/brain/compiler";
+  createWendooEnvironment,
+  type WendooEnvironment,
+  type WendooModule,
+} from "@wendoo-lang/core";
+import type { IBrainActionTileDef } from "@wendoo-lang/core/brain";
+import { RuleSide } from "@wendoo-lang/core/brain";
+import type { BrainBuildDiagnostic, DiagCode, ParseDiag, TypeInfoDiag } from "@wendoo-lang/core/brain/compiler";
 import {
   CompilationDiagCode,
   diagnosticSeverity,
   LinkDiagCode,
   ParseDiagCode,
   TypeDiagCode,
-} from "@mindcraft-lang/core/brain/compiler";
-import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { BrainTileActuatorDef } from "@mindcraft-lang/core/brain/tiles";
+} from "@wendoo-lang/core/brain/compiler";
+import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
+import { BrainTileActuatorDef } from "@wendoo-lang/core/brain/tiles";
 import {
   bag,
   CoreParameterId,
@@ -31,7 +31,7 @@ import {
   TARGET_FUNC_ID_BASE,
   TRUE_VALUE,
   VOID_VALUE,
-} from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
 
 const kSensorKey = "diagspec.hungry";
 const kSensorLabel = "Hungry";
@@ -42,7 +42,7 @@ const kUnboundActuatorKey = "diagspec.unbound";
 
 /** The action tiles the fixture module puts into the environment's catalog. */
 interface Fixture {
-  readonly module: MindcraftModule;
+  readonly module: WendooModule;
   /** Inline boolean sensor, placeable on either side. */
   readonly sensorTile: IBrainActionTileDef;
   /** No-argument actuator; placement is the DO side only. */
@@ -98,11 +98,11 @@ function createFixture(): Fixture {
 
 /** An environment carrying the fixture module, and an empty single-rule brain in it. */
 function newBrain(fixture: Fixture): {
-  environment: MindcraftEnvironment;
+  environment: WendooEnvironment;
   brainDef: BrainDef;
   rule: BrainRuleDef;
 } {
-  const environment = createMindcraftEnvironment({ modules: [coreModule(), fixture.module] });
+  const environment = createWendooEnvironment({ modules: [coreModule(), fixture.module] });
   const brainDef = BrainDef.emptyBrainDef(environment.brainServices, "Diagnostics Brain");
   const page = brainDef.pages().get(0) as BrainPageDef;
   return { environment, brainDef, rule: page.children().get(0) as BrainRuleDef };

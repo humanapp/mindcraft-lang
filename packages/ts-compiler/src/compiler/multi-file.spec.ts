@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, runtime } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
+import { List, runtime } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { ExecutionContext } from "@wendoo-lang/core/runtime";
 import {
   CoreOpId,
   CoreTypeIds,
@@ -17,8 +17,8 @@ import {
   type StructTypeDef,
   type Value,
   VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { CompileDiagCode } from "./diag-codes.js";
@@ -96,7 +96,7 @@ describe("multi-file: helper module variables", () => {
 export const THRESHOLD = 42;
 `,
       "sensors/check.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { THRESHOLD } from "../helpers/config";
 
 export default Sensor({
@@ -146,7 +146,7 @@ export function increment(): number {
 }
 `,
       "sensors/counter-sensor.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { increment } from "../helpers/counter";
 
 export default Sensor({
@@ -208,7 +208,7 @@ export function addThree(): number {
 }
 `,
       "sensors/diamond.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { addFive } from "../helpers/a";
 import { addThree } from "../helpers/b";
 
@@ -258,7 +258,7 @@ import { order } from "./base";
 export let midValue = order * 10;
 `,
       "sensors/init-order.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { midValue } from "../helpers/mid";
 
 export default Sensor({
@@ -303,7 +303,7 @@ export function double(x: number): number {
 }
 `,
       "sensors/use-math.ts": `
-import { Sensor, param, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "wendoo";
 import { double } from "../helpers/math";
 
 export default Sensor({
@@ -337,7 +337,7 @@ export function bump(): number {
 }
 `,
       "sensors/a.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { bump } from "../helpers/state";
 
 export default Sensor({
@@ -348,7 +348,7 @@ export default Sensor({
 });
 `,
       "sensors/b.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { bump } from "../helpers/state";
 
 export default Sensor({
@@ -423,7 +423,7 @@ export function add(a: number, b: number): number {
 }
 `,
       "sensors/sum.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { add } from "../lib/greet";
 
 export default Sensor({
@@ -464,7 +464,7 @@ export function triple(x: number): number {
 }
 `,
       "sensors/alias.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { triple as mul3 } from "../lib/math";
 
 export default Sensor({
@@ -503,7 +503,7 @@ export default Sensor({
 export function noop(): void {}
 `,
       "sensors/entry.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { noop } from "../lib/utils";
 
 export default Sensor({
@@ -530,7 +530,7 @@ export function bad(): number {
 }
 `,
       "sensors/use-broken.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { bad } from "../lib/broken";
 
 export default Sensor({
@@ -567,7 +567,7 @@ export function squarePlusOne(x: number): number {
 }
 `,
       "sensors/chain.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { squarePlusOne } from "../lib/mid";
 
 export default Sensor({
@@ -615,7 +615,7 @@ export enum Direction {
 }
 `,
       "sensors/use-direction.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Direction } from "../helpers/direction";
 
 export default Sensor({
@@ -654,7 +654,7 @@ export enum Direction {
 }
 `,
       "sensors/use-direction-alias.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Direction as Dir } from "../helpers/direction";
 
 export default Sensor({
@@ -706,7 +706,7 @@ export enum Mode {
 }
 `,
           "sensors/use-mode.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Mode } from "../helpers/mode";
 
 export default Sensor({
@@ -738,7 +738,7 @@ export default Sensor({
     project.updateFile(
       "sensors/use-mode.ts",
       `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "use-mode",
@@ -780,7 +780,7 @@ export enum Mode {
 }
 `,
           "sensors/use-mode.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Mode } from "../helpers/mode";
 
 export default Sensor({
@@ -815,7 +815,7 @@ export enum Mode {
     project.updateFile(
       "sensors/use-mode.ts",
       `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Mode } from "../helpers/mode";
 
 export default Sensor({
@@ -850,7 +850,7 @@ describe("multi-file: module-qualified TypeIds (M2)", () => {
   test("same-named classes in different files get distinct TypeIds", () => {
     const result = compileProject({
       "sensors/a.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Foo {
   x: number;
@@ -866,7 +866,7 @@ export default Sensor({
 });
 `,
       "sensors/b.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Foo {
   name: string;
@@ -919,7 +919,7 @@ export default Sensor({
   test("core types resolve with bare name after compilation", () => {
     compileProject({
       "sensors/test.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "host-check",
@@ -941,7 +941,7 @@ export default Sensor({
   test("single-file class gets module-qualified TypeId", () => {
     const result = compileProject({
       "sensors/single.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Point {
   x: number;
@@ -982,7 +982,7 @@ describe("multi-file: descriptor qualified types (M3)", () => {
   test("sensor output type resolves to qualified class name", () => {
     const result = compileProject({
       "sensors/detect.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Result {
   value: number;
@@ -1015,7 +1015,7 @@ export default Sensor({
   test("param type resolves to qualified class name", () => {
     const result = compileProject({
       "actuators/move.ts": `
-import { Actuator, param, type Context } from "mindcraft";
+import { Actuator, param, type Context } from "wendoo";
 
 class Vec2 {
   x: number;
@@ -1051,7 +1051,7 @@ export default Actuator({
   test("host type param stays bare", () => {
     const result = compileProject({
       "sensors/simple.ts": `
-import { Sensor, optional, param, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "simple",
@@ -1096,7 +1096,7 @@ function internalA(): number { return 99; }
 export function publicB(): number { return 7; }
 `,
       "sensors/entry.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { publicA } from "../helpers/a";
 import { publicB } from "../helpers/b";
 
@@ -1127,7 +1127,7 @@ let cache = 0;
 export const VALUE_B = 20;
 `,
       "sensors/entry.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { VALUE_A } from "../helpers/a";
 import { VALUE_B } from "../helpers/b";
 
@@ -1162,7 +1162,7 @@ export function compute(): number { return 1; }
 export function compute(): number { return 2; }
 `,
       "sensors/entry.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { compute } from "../helpers/a";
 import {} from "../helpers/b";
 
@@ -1193,7 +1193,7 @@ export const VALUE = 10;
 export const VALUE = 20;
 `,
       "sensors/entry.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { VALUE } from "../helpers/a";
 import {} from "../helpers/b";
 
@@ -1222,7 +1222,7 @@ export function compute(): number { return 99; }
 export function helperOnly(): number { return 1; }
 `,
       "sensors/entry.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { helperOnly } from "../helpers/a";
 
 function compute(): number { return 42; }
@@ -1262,7 +1262,7 @@ export class Point {
 }
 `,
       "sensors/use-point.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Point } from "../helpers/point";
 
 export default Sensor({
@@ -1308,7 +1308,7 @@ export class Counter {
 }
 `,
       "sensors/use-counter.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Counter } from "../helpers/counter";
 
 export default Sensor({
@@ -1358,7 +1358,7 @@ export function lengthSquared(v: Vec2): number {
 }
 `,
       "sensors/use-vec.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Vec2, lengthSquared } from "../helpers/vec";
 
 export default Sensor({
@@ -1398,7 +1398,7 @@ export class Config {
 }
 `,
       "sensors/use-config.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Config } from "../helpers/config";
 
 export default Sensor({
@@ -1442,7 +1442,7 @@ export class Point {
 }
 `,
       "sensors/destruct.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Point } from "../helpers/point";
 
 export default Sensor({
@@ -1487,7 +1487,7 @@ export class Point {
 }
 `,
       "sensors/array-class.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Point } from "../helpers/point";
 
 export default Sensor({
@@ -1530,7 +1530,7 @@ export function create(): number {
 }
 `,
       "sensors/entry.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { create } from "../helpers/internal";
 
 export default Sensor({
@@ -1562,7 +1562,7 @@ export class Widget {
 }
 `,
       "sensors/entry.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Widget } from "../helpers/a";
 import {} from "../helpers/b";
 
@@ -1601,7 +1601,7 @@ export class Point {
 }
 `,
       "use-point.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Point } from "./point";
 
 export default Sensor({
@@ -1646,7 +1646,7 @@ export class Counter {
 }
 `,
       "sensors/read-static.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Counter } from "../helpers/counter";
 
 export default Sensor({
@@ -1691,7 +1691,7 @@ export class Counter {
 }
 `,
       "sensors/call-static.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Counter } from "../helpers/counter";
 
 export default Sensor({
@@ -1736,7 +1736,7 @@ export class Counter {
 }
 `,
       "sensors/assign-static.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Counter } from "../helpers/counter";
 
 export default Sensor({
@@ -1779,7 +1779,7 @@ export class Counter {
 }
 `,
       "sensors/compound-static.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Counter } from "../helpers/counter";
 
 export default Sensor({
@@ -1823,7 +1823,7 @@ export class Counter {
 }
 `,
       "sensors/type-error.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Counter } from "../helpers/counter";
 
 export default Sensor({
@@ -1852,7 +1852,7 @@ export class Tracker {
 }
 `,
       "sensors/use-tracker.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Tracker } from "../helpers/tracker";
 
 export default Sensor({
@@ -1899,7 +1899,7 @@ export class State {
 }
 `,
       "sensors/tile-a.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { State } from "../helpers/state";
 
 export default Sensor({
@@ -1912,7 +1912,7 @@ export default Sensor({
 });
 `,
       "sensors/tile-b.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { State } from "../helpers/state";
 
 export default Sensor({

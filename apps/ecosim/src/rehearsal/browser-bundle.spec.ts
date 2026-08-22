@@ -46,8 +46,8 @@ async function bundleForBrowser(): Promise<{ reached: string[]; code: string }> 
     resolve: {
       alias: {
         "@": resolve(APP_DIR, "src"),
-        "@mindcraft-lang/docs": resolve(APP_DIR, "../../packages/docs/src"),
-        "@mindcraft-lang/ui": resolve(APP_DIR, "../../packages/ui/src"),
+        "@wendoo-lang/docs": resolve(APP_DIR, "../../packages/docs/src"),
+        "@wendoo-lang/ui": resolve(APP_DIR, "../../packages/ui/src"),
       },
     },
     define: rehearsalDefines(),

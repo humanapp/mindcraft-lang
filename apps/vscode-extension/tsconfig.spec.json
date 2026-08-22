@@ -3,9 +3,9 @@
 	"compilerOptions": {
 		"types": ["node"],
 		"paths": {
-			"@mindcraft-lang/app-host": ["../../packages/app-host/src/index.ts"],
-			"@mindcraft-lang/bridge-protocol": ["../../packages/bridge-protocol/src/index.ts"],
-			"@mindcraft-lang/service-api": ["../../packages/service-api/src/index.ts"]
+			"@wendoo-lang/app-host": ["../../packages/app-host/src/index.ts"],
+			"@wendoo-lang/bridge-protocol": ["../../packages/bridge-protocol/src/index.ts"],
+			"@wendoo-lang/service-api": ["../../packages/service-api/src/index.ts"]
 		}
 	},
 	"include": ["src/**/*.spec.ts"],

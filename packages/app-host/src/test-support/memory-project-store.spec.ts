@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { DEFAULT_PROJECT_COLLECTION_ID, type ProjectManifest } from "@mindcraft-lang/app-host";
+import { DEFAULT_PROJECT_COLLECTION_ID, type ProjectManifest } from "@wendoo-lang/app-host";
 import { MemoryProjectStore } from "./memory-project-store.js";
 
 function storeWithVersionlessProject(): MemoryProjectStore {

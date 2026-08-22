@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
+import type { IBrainTileDef } from "@wendoo-lang/core/brain";
 import {
   BrainTileActuatorDef,
   BrainTileModifierDef,
   BrainTileOutputDef,
   BrainTileParameterDef,
   BrainTileSensorDef,
-} from "@mindcraft-lang/core/brain/tiles";
-import { CoreTypeIds, mkCallDef } from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/brain/tiles";
+import { CoreTypeIds, mkCallDef } from "@wendoo-lang/core/runtime";
 import {
   groupTilesByLibrary,
   isProjectAuthoredActionTile,

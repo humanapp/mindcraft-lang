@@ -1,4 +1,4 @@
-import { kBrainRulesAttribute } from "@mindcraft-lang/ui/brain-editor/rules-region";
+import { kBrainRulesAttribute } from "@wendoo-lang/ui/brain-editor/rules-region";
 
 /**
  * Milliseconds after the person last touched a brain's rules that the brain

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { List } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { List } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
 import {
   CoreFuncId,
   createF32ProfileNumerics,
@@ -15,8 +15,8 @@ import {
   type NumberValue,
   type StringValue,
   type Value,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 
 const f32Services = __test__createBrainServices({ numerics: createF32ProfileNumerics() });
 const f64Services = __test__createBrainServices();

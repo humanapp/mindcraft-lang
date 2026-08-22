@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { RuleSide } from "@mindcraft-lang/core/brain";
+import { RuleSide } from "@wendoo-lang/core/brain";
 import {
   buildInsertionContext,
   collectRuleHierarchyCapabilities,
   collectRuleHierarchyOutputKeys,
   suggestTiles as coreSuggestTiles,
-} from "@mindcraft-lang/core/brain/language-service";
+} from "@wendoo-lang/core/brain/language-service";
 import { createTargetAdapter, ruleIdAt } from "../testing/index.js";
 import { proposeEdit } from "./propose-edit.js";
 import type { SuggestionView } from "./suggest-tiles.js";

@@ -5,7 +5,6 @@ import {
   DEFAULT_PROJECT_COLLECTION_ID,
   DEFAULT_PROJECT_COLLECTION_NAME,
   LOWEST_CONTENT_VERSION,
-  MINDCRAFT_JSON_PATH,
   normalizeProjectCollectionName,
   type ProjectCollection,
   type ProjectCollectionTabSession,
@@ -14,7 +13,8 @@ import {
   type ProjectManifest,
   type ProjectRef,
   type ProjectStore,
-} from "@mindcraft-lang/app-host";
+  WENDOO_JSON_PATH,
+} from "@wendoo-lang/app-host";
 import { INITIAL_CONTENT_VERSION } from "../project-content-version.js";
 
 interface MemoryProjectStoreData {
@@ -273,7 +273,7 @@ export class MemoryProjectStore implements ProjectStore {
 
   async saveProjectFiles(id: string, snapshot: ProjectFileSnapshot): Promise<void> {
     await this.requireLiveProject(id);
-    snapshot.delete(MINDCRAFT_JSON_PATH);
+    snapshot.delete(WENDOO_JSON_PATH);
     this.data.projectFiles.set(id, snapshot);
   }
 

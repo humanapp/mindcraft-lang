@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { coreModule, createMindcraftEnvironment } from "@mindcraft-lang/core";
+import { coreModule, createWendooEnvironment } from "@wendoo-lang/core";
 import {
   findEmbeddedExtensionsMissingStableIds,
   formatEmbeddedExtensionIdViolations,
@@ -11,7 +11,7 @@ const OWNER = "test-owner";
 
 function sensorSource(opts: { id?: string; name: string }): string {
   const idLine = opts.id ? `  id: ${JSON.stringify(opts.id)},\n` : "";
-  return `import { Sensor, type Context } from "mindcraft";
+  return `import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
 ${idLine}  name: ${JSON.stringify(opts.name)},
@@ -28,7 +28,7 @@ function extension(repo: string, files: { path: string; content: string }[]): Em
 
 describe("embedded-extension stable-id build gate", () => {
   test("reports an embedded extension whose declaration ships without an explicit id", () => {
-    const services = createMindcraftEnvironment({ modules: [coreModule()] }).brainServices;
+    const services = createWendooEnvironment({ modules: [coreModule()] }).brainServices;
     const embedRecord = [extension("missing-id-ext", [{ path: "scan.ts", content: sensorSource({ name: "scan" }) }])];
 
     const violations = findEmbeddedExtensionsMissingStableIds(embedRecord, services);
@@ -44,7 +44,7 @@ describe("embedded-extension stable-id build gate", () => {
   });
 
   test("reports nothing when every embedded declaration carries an explicit id", () => {
-    const services = createMindcraftEnvironment({ modules: [coreModule()] }).brainServices;
+    const services = createWendooEnvironment({ modules: [coreModule()] }).brainServices;
     const embedRecord = [
       extension("scan-ext", [{ path: "scan.ts", content: sensorSource({ id: "extScan000000001", name: "scan" }) }]),
     ];

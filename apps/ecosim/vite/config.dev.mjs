@@ -17,18 +17,18 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(process.cwd(), "./src"),
-      "@mindcraft-lang/assistant-panel": path.resolve(process.cwd(), "../../packages/assistant-panel/src"),
-      "@mindcraft-lang/docs": path.resolve(process.cwd(), "../../packages/docs/src"),
-      "@mindcraft-lang/ui": path.resolve(process.cwd(), "../../packages/ui/src"),
-      "@mindcraft-lang/app-host": path.resolve(process.cwd(), "../../packages/app-host/src"),
-      "@mindcraft-lang/ts-compiler": path.resolve(process.cwd(), "../../packages/ts-compiler/src"),
-      "@mindcraft-lang/bridge-protocol": path.resolve(process.cwd(), "../../packages/bridge-protocol/src"),
-      "@mindcraft-lang/bridge-client": path.resolve(process.cwd(), "../../packages/bridge-client/src"),
-      "@mindcraft-lang/bridge-app": path.resolve(process.cwd(), "../../packages/bridge-app/src"),
+      "@wendoo-lang/assistant-panel": path.resolve(process.cwd(), "../../packages/assistant-panel/src"),
+      "@wendoo-lang/docs": path.resolve(process.cwd(), "../../packages/docs/src"),
+      "@wendoo-lang/ui": path.resolve(process.cwd(), "../../packages/ui/src"),
+      "@wendoo-lang/app-host": path.resolve(process.cwd(), "../../packages/app-host/src"),
+      "@wendoo-lang/ts-compiler": path.resolve(process.cwd(), "../../packages/ts-compiler/src"),
+      "@wendoo-lang/bridge-protocol": path.resolve(process.cwd(), "../../packages/bridge-protocol/src"),
+      "@wendoo-lang/bridge-client": path.resolve(process.cwd(), "../../packages/bridge-client/src"),
+      "@wendoo-lang/bridge-app": path.resolve(process.cwd(), "../../packages/bridge-app/src"),
     },
   },
   optimizeDeps: {
-    exclude: ["@mindcraft-lang/core"],
+    exclude: ["@wendoo-lang/core"],
   },
   server: {
     fs: {

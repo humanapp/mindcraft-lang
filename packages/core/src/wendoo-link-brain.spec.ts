@@ -1,26 +1,21 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { ReadonlyList } from "@mindcraft-lang/core";
-import {
-  coreModule,
-  createMindcraftEnvironment,
-  type MindcraftEnvironment,
-  type MindcraftModule,
-} from "@mindcraft-lang/core";
-import type { IBrainDef } from "@mindcraft-lang/core/brain";
-import { type BrainServices, LinkDiagCode, RuleSide, TilePlacement } from "@mindcraft-lang/core/brain";
-import type { BrainBuildDiagnostic, BrainBuildResult } from "@mindcraft-lang/core/brain/compiler";
-import { CompilationDiagCode, ParseDiagCode } from "@mindcraft-lang/core/brain/compiler";
-import type { BrainJson, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { BrainDef, brainJsonWithRulesEmptied } from "@mindcraft-lang/core/brain/model";
-import { BrainTileSensorDef } from "@mindcraft-lang/core/brain/tiles";
-import { CoreTypeIds, linkedBrainProgramToJson, mkCallDef, Rng, TRUE_VALUE } from "@mindcraft-lang/core/runtime";
+import type { ReadonlyList } from "@wendoo-lang/core";
+import { coreModule, createWendooEnvironment, type WendooEnvironment, type WendooModule } from "@wendoo-lang/core";
+import type { IBrainDef } from "@wendoo-lang/core/brain";
+import { type BrainServices, LinkDiagCode, RuleSide, TilePlacement } from "@wendoo-lang/core/brain";
+import type { BrainBuildDiagnostic, BrainBuildResult } from "@wendoo-lang/core/brain/compiler";
+import { CompilationDiagCode, ParseDiagCode } from "@wendoo-lang/core/brain/compiler";
+import type { BrainJson, BrainRuleDef } from "@wendoo-lang/core/brain/model";
+import { BrainDef, brainJsonWithRulesEmptied } from "@wendoo-lang/core/brain/model";
+import { BrainTileSensorDef } from "@wendoo-lang/core/brain/tiles";
+import { CoreTypeIds, linkedBrainProgramToJson, mkCallDef, Rng, TRUE_VALUE } from "@wendoo-lang/core/runtime";
 
-function getEnvironmentServices(environment: MindcraftEnvironment): BrainServices {
+function getEnvironmentServices(environment: WendooEnvironment): BrainServices {
   return (environment as unknown as { brainServices: BrainServices }).brainServices;
 }
 
-function getTrackedBrainCount(environment: MindcraftEnvironment): number {
+function getTrackedBrainCount(environment: WendooEnvironment): number {
   return (environment as unknown as { trackedBrains: { size(): number } }).trackedBrains.size();
 }
 
@@ -38,7 +33,7 @@ function createHostSensorModule(
   moduleId: string,
   key: string,
   options?: HostSensorOptions
-): { module: MindcraftModule; tile: BrainTileSensorDef } {
+): { module: WendooModule; tile: BrainTileSensorDef } {
   const sensorCallDef = mkCallDef({ type: "bag", items: [] });
   const descriptor = {
     key,
@@ -81,9 +76,9 @@ function createSensorBrainDef(services: BrainServices, name: string, sensorTile:
   return brainDef;
 }
 
-describe("MindcraftEnvironment.linkBrain", () => {
+describe("WendooEnvironment.linkBrain", () => {
   test("returns the linked program createBrain produces for an empty brain", () => {
-    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule()] });
     const def = BrainDef.emptyBrainDef(getEnvironmentServices(environment), "Empty");
 
     const result = environment.linkBrain(def);
@@ -96,7 +91,7 @@ describe("MindcraftEnvironment.linkBrain", () => {
 
   test("returns the linked program createBrain produces for a sensor brain", () => {
     const sensor = createHostSensorModule("host-sensor", "host.sensor");
-    const environment = createMindcraftEnvironment({ modules: [coreModule(), sensor.module] });
+    const environment = createWendooEnvironment({ modules: [coreModule(), sensor.module] });
     const def = createSensorBrainDef(getEnvironmentServices(environment), "Sensor", sensor.tile);
 
     const result = environment.linkBrain(def);
@@ -108,7 +103,7 @@ describe("MindcraftEnvironment.linkBrain", () => {
   });
 
   test("does not construct or track a runtime brain", () => {
-    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule()] });
     const def = BrainDef.emptyBrainDef(getEnvironmentServices(environment), "Untracked");
 
     const before = getTrackedBrainCount(environment);
@@ -120,8 +115,8 @@ describe("MindcraftEnvironment.linkBrain", () => {
 
   test("returns a diagnostic instead of throwing when an action cannot be resolved", () => {
     const sensor = createHostSensorModule("host-sensor", "host.sensor");
-    const withSensor = createMindcraftEnvironment({ modules: [coreModule(), sensor.module] });
-    const withoutSensor = createMindcraftEnvironment({ modules: [coreModule()] });
+    const withSensor = createWendooEnvironment({ modules: [coreModule(), sensor.module] });
+    const withoutSensor = createWendooEnvironment({ modules: [coreModule()] });
     const def = createSensorBrainDef(getEnvironmentServices(withSensor), "Sensor", sensor.tile);
 
     const result = withoutSensor.linkBrain(def);
@@ -134,8 +129,8 @@ describe("MindcraftEnvironment.linkBrain", () => {
 
   test("createBrain of a def missing an action returns a tracked, invalidated brain", () => {
     const sensor = createHostSensorModule("host-sensor", "host.sensor");
-    const withSensor = createMindcraftEnvironment({ modules: [coreModule(), sensor.module] });
-    const withoutSensor = createMindcraftEnvironment({ modules: [coreModule()] });
+    const withSensor = createWendooEnvironment({ modules: [coreModule(), sensor.module] });
+    const withoutSensor = createWendooEnvironment({ modules: [coreModule()] });
     const def = createSensorBrainDef(getEnvironmentServices(withSensor), "Sensor", sensor.tile);
 
     const brain = withoutSensor.createBrain(def);
@@ -179,8 +174,8 @@ function errorDiags(result: { diagnostics: ReadonlyList<BrainBuildDiagnostic> })
  */
 function reopenWithoutSensor(side: RuleSide): { result: BrainBuildResult; tileId: string } {
   const sensor = createHostSensorModule("host-sensor", "host.sensor");
-  const withSensor = createMindcraftEnvironment({ modules: [coreModule(), sensor.module] });
-  const withoutSensor = createMindcraftEnvironment({ modules: [coreModule()] });
+  const withSensor = createWendooEnvironment({ modules: [coreModule(), sensor.module] });
+  const withoutSensor = createWendooEnvironment({ modules: [coreModule()] });
   const def = BrainDef.emptyBrainDef(getEnvironmentServices(withSensor), "Sensor");
   const rule = def.pages().get(0)!.children().get(0)!;
   const tileSet = side === RuleSide.When ? rule.when() : rule.do();
@@ -219,7 +214,7 @@ describe("linkBrain reports expressions code generation drops", () => {
 
   test("an expression after the side's first expression is reported as dropped", () => {
     const sensor = createHostSensorModule("host-sensor", "host.sensor");
-    const environment = createMindcraftEnvironment({ modules: [coreModule(), sensor.module] });
+    const environment = createWendooEnvironment({ modules: [coreModule(), sensor.module] });
     const def = BrainDef.emptyBrainDef(getEnvironmentServices(environment), "TwoExprs");
     const rule = def.pages().get(0)!.children().get(0)!;
     rule.do().appendTile(sensor.tile);
@@ -235,7 +230,7 @@ describe("linkBrain reports expressions code generation drops", () => {
 
   test("a brain whose tiles all resolve reports no dropped expression", () => {
     const sensor = createHostSensorModule("host-sensor", "host.sensor");
-    const environment = createMindcraftEnvironment({ modules: [coreModule(), sensor.module] });
+    const environment = createWendooEnvironment({ modules: [coreModule(), sensor.module] });
     const def = createSensorBrainDef(getEnvironmentServices(environment), "Sensor", sensor.tile);
 
     const result = environment.linkBrain(def);
@@ -248,7 +243,7 @@ describe("linkBrain reports expressions code generation drops", () => {
 describe("linked program serialization determinism", () => {
   function buildSensorProgramJson(seed: number) {
     const sensor = createHostSensorModule("host-sensor", "host.sensor");
-    const environment = createMindcraftEnvironment({
+    const environment = createWendooEnvironment({
       modules: [coreModule(), sensor.module],
       rng: new Rng(seed),
     });
@@ -269,7 +264,7 @@ describe("linked program serialization determinism", () => {
   });
 
   test("an unseeded environment still mints a page id", () => {
-    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule()] });
     const def = BrainDef.emptyBrainDef(getEnvironmentServices(environment), "Empty");
     const result = environment.linkBrain(def);
     assert.ok(result.program);
@@ -282,14 +277,14 @@ describe("linked program serialization determinism", () => {
  * and builds; rule `0/1` carries a WHEN-only sensor on its DO side, which is an
  * error-severity placement mismatch.
  */
-function createPartlyBrokenBrain(): { environment: MindcraftEnvironment; def: BrainDef } {
+function createPartlyBrokenBrain(): { environment: WendooEnvironment; def: BrainDef } {
   const good = createHostSensorModule("good-sensor", "host.good");
   const whenOnly = createHostSensorModule("when-only-sensor", "host.whenOnly", {
     placement: TilePlacement.WhenSide | TilePlacement.Inline,
     actionId: 3502,
     functionId: 4502,
   });
-  const environment = createMindcraftEnvironment({ modules: [coreModule(), good.module, whenOnly.module] });
+  const environment = createWendooEnvironment({ modules: [coreModule(), good.module, whenOnly.module] });
   const def = BrainDef.emptyBrainDef(getEnvironmentServices(environment), "PartlyBroken");
   const page = def.pages().get(0)!;
   page.children().get(0)!.when().appendTile(good.tile);
@@ -324,7 +319,7 @@ describe("build diagnostics name the rule they came from", () => {
 
 /** `def` rebuilt in `environment` with `excludedRuleIds` emptied in it. */
 function withRulesEmptied(
-  environment: MindcraftEnvironment,
+  environment: WendooEnvironment,
   def: BrainDef,
   excludedRuleIds: readonly string[]
 ): IBrainDef {

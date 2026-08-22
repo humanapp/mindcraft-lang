@@ -1,15 +1,11 @@
-import { fileContentText } from "@mindcraft-lang/app-host";
-import {
-  findMissingListedFiles,
-  isFileInBuild,
-  readManifestFilesList,
-} from "@mindcraft-lang/bridge-app/manifest-files";
-import type { IFileSystem } from "@mindcraft-lang/bridge-client";
+import { fileContentText } from "@wendoo-lang/app-host";
+import { findMissingListedFiles, isFileInBuild, readManifestFilesList } from "@wendoo-lang/bridge-app/manifest-files";
+import type { IFileSystem } from "@wendoo-lang/bridge-client";
 import * as vscode from "vscode";
-import { MINDCRAFT_JSON } from "../mindcraft-json";
+import { WENDOO_JSON } from "../wendoo-json";
 
 /** Diagnostic code for a manifest `files` entry that is absent from the project. */
-export const LISTED_FILE_MISSING_CODE = "MINDCRAFT_LISTED_FILE_MISSING";
+export const LISTED_FILE_MISSING_CODE = "WENDOO_LISTED_FILE_MISSING";
 
 const EXTENSIONS_TREE_PREFIX = ".libraries/";
 
@@ -19,7 +15,7 @@ const EXTENSIONS_TREE_PREFIX = ".libraries/";
  * read-only `.libraries/` dependency tree.
  */
 export function isBuildMembershipPath(path: string): boolean {
-  return path !== "" && path !== MINDCRAFT_JSON && !path.startsWith(EXTENSIONS_TREE_PREFIX);
+  return path !== "" && path !== WENDOO_JSON && !path.startsWith(EXTENSIONS_TREE_PREFIX);
 }
 
 /**
@@ -29,7 +25,7 @@ export function isBuildMembershipPath(path: string): boolean {
  * may have changed; `onDidChange` fires after every refresh.
  */
 export class BuildMembershipTracker implements vscode.Disposable {
-  private readonly _diagnostics = vscode.languages.createDiagnosticCollection("mindcraft-build");
+  private readonly _diagnostics = vscode.languages.createDiagnosticCollection("wendoo-build");
   private _readFs: IFileSystem | undefined;
   private _files: readonly string[] | undefined;
 
@@ -69,7 +65,7 @@ export class BuildMembershipTracker implements vscode.Disposable {
     let manifestText: string | undefined;
     if (readFs) {
       try {
-        manifestText = fileContentText(readFs.read(MINDCRAFT_JSON));
+        manifestText = fileContentText(readFs.read(WENDOO_JSON));
       } catch {
         manifestText = undefined;
       }
@@ -94,7 +90,7 @@ export class BuildMembershipTracker implements vscode.Disposable {
     });
     if (missing.length === 0) return;
 
-    const uri = vscode.Uri.from({ scheme: this._scheme, path: `/${MINDCRAFT_JSON}` });
+    const uri = vscode.Uri.from({ scheme: this._scheme, path: `/${WENDOO_JSON}` });
     const diagnostics = missing.map((entry) => {
       const diagnostic = new vscode.Diagnostic(
         entryRange(manifestText, entry),
@@ -102,7 +98,7 @@ export class BuildMembershipTracker implements vscode.Disposable {
         vscode.DiagnosticSeverity.Error
       );
       diagnostic.code = LISTED_FILE_MISSING_CODE;
-      diagnostic.source = "mindcraft";
+      diagnostic.source = "wendoo";
       return diagnostic;
     });
     this._diagnostics.set(uri, diagnostics);

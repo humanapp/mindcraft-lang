@@ -1,10 +1,10 @@
-import { BrainTileLiteralDef, type MindcraftModuleApi, mkNativeStructValue } from "@mindcraft-lang/core/app";
+import { BrainTileLiteralDef, mkNativeStructValue, type WendooModuleApi } from "@wendoo-lang/core/app";
 import { getSelf, getTargetActor } from "../execution-context-types";
 import { ICON_BASE } from "../icon-base";
 import { TargetActorCapabilityBitSet } from "../tileids";
 import { EcosimTypeIds } from "../type-system";
 
-export function registerLiteralTiles(api: MindcraftModuleApi) {
+export function registerLiteralTiles(api: WendooModuleApi) {
   const meVisual = {
     label: "me",
     iconUrl: `${ICON_BASE}/actor-mask.svg`,

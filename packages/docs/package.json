@@ -1,21 +1,21 @@
 {
-  "name": "@mindcraft-lang/docs",
-  "description": "Shared documentation sidebar and rendering components for Mindcraft apps",
+  "name": "@wendoo-lang/docs",
+  "description": "Shared documentation sidebar and rendering components for Wendoo apps",
   "version": "0.2.0",
   "type": "module",
   "author": "humanapp",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/humanapp/mindcraft-lang.git",
+    "url": "https://github.com/humanapp/wendoo-lang.git",
     "directory": "packages/docs"
   },
   "bugs": {
-    "url": "https://github.com/humanapp/mindcraft-lang/issues"
+    "url": "https://github.com/humanapp/wendoo-lang/issues"
   },
-  "homepage": "https://github.com/humanapp/mindcraft-lang/tree/main/packages/docs#readme",
+  "homepage": "https://github.com/humanapp/wendoo-lang/tree/main/packages/docs#readme",
   "keywords": [
-    "mindcraft",
+    "wendoo",
     "visual-programming",
     "tile-based",
     "documentation",
@@ -48,8 +48,8 @@
     "release:major": "node ../../scripts/release.js major"
   },
   "dependencies": {
-    "@mindcraft-lang/core": "file:../core",
-    "@mindcraft-lang/ui": "file:../ui",
+    "@wendoo-lang/core": "file:../core",
+    "@wendoo-lang/ui": "file:../ui",
     "lucide-react": "^0.561.0",
     "react-markdown": "^9.1.0",
     "remark-gfm": "^4.0.1",

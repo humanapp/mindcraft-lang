@@ -12,10 +12,10 @@ export function registryTargetEntry(packageVersion: string): ExtensionTarget {
 }
 
 /**
- * Seed the `targets` section of a project's `mindcraft.json` text from the single
+ * Seed the `targets` section of a project's `wendoo.json` text from the single
  * registry target its `extensions` already declare, matching the section a New
  * Project of that target is created with, so the project resolves a hostable
- * target without a `mindcraft.devTarget` override.
+ * target without a `wendoo.devTarget` override.
  *
  * Returns the manifest text with the compatibility-target entry added when the
  * project declares exactly one `"target"` coordinate from `targetEntries` in its
@@ -24,7 +24,7 @@ export function registryTargetEntry(packageVersion: string): ExtensionTarget {
  * declares more than one, or already carries a `targets` entry for the target.
  * All other manifest fields are preserved verbatim.
  *
- * @param manifestText - Serialized `mindcraft.json` content to seed.
+ * @param manifestText - Serialized `wendoo.json` content to seed.
  * @param targetEntries - Registry entries whose `"target"` coordinates are
  *   eligible to be seeded.
  */

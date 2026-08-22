@@ -100,7 +100,7 @@ function emitRecord(name: string, valueType: string, lines: List<string>): strin
  *
  * The emitted module exports `locale`, `pluralRule`, `entries`, and
  * `contexts` and imports nothing, so a host loads it with
- * `import * as fr from "@mindcraft-lang/core/localization/fr"` and passes the
+ * `import * as fr from "@wendoo-lang/core/localization/fr"` and passes the
  * namespace straight to `createLocalizer`.
  *
  * Every translation template is parsed, and each structural fault is reported

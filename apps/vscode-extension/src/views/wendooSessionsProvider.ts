@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import type { ProjectManager } from "../services/project-manager";
 
-export class MindcraftSessionsProvider implements vscode.TreeDataProvider<SessionItem> {
+export class WendooSessionsProvider implements vscode.TreeDataProvider<SessionItem> {
   private _onDidChangeTreeData = new vscode.EventEmitter<SessionItem | undefined>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
@@ -29,26 +29,21 @@ export class MindcraftSessionsProvider implements vscode.TreeDataProvider<Sessio
     const project = this.projectManager.project;
     if (!project) {
       return [
-        new SessionItem("Connect to Mindcraft...", vscode.TreeItemCollapsibleState.None, "mindcraft.connect", "plug"),
-        new SessionItem(
-          "Open settings",
-          vscode.TreeItemCollapsibleState.None,
-          "mindcraft.openSettings",
-          "settings-gear"
-        ),
+        new SessionItem("Connect to Wendoo...", vscode.TreeItemCollapsibleState.None, "wendoo.connect", "plug"),
+        new SessionItem("Open settings", vscode.TreeItemCollapsibleState.None, "wendoo.openSettings", "settings-gear"),
       ];
     }
 
     return [
-      new SessionItem("Create new sensor", vscode.TreeItemCollapsibleState.None, "mindcraft.createSensor", "eye"),
-      new SessionItem("Create new actuator", vscode.TreeItemCollapsibleState.None, "mindcraft.createActuator", "zap"),
+      new SessionItem("Create new sensor", vscode.TreeItemCollapsibleState.None, "wendoo.createSensor", "eye"),
+      new SessionItem("Create new actuator", vscode.TreeItemCollapsibleState.None, "wendoo.createActuator", "zap"),
       new SessionItem(
         "Disconnect",
         vscode.TreeItemCollapsibleState.None,
-        "mindcraft.confirmDisconnect",
+        "wendoo.confirmDisconnect",
         "debug-disconnect"
       ),
-      new SessionItem("Open settings", vscode.TreeItemCollapsibleState.None, "mindcraft.openSettings", "settings-gear"),
+      new SessionItem("Open settings", vscode.TreeItemCollapsibleState.None, "wendoo.openSettings", "settings-gear"),
     ];
   }
 }

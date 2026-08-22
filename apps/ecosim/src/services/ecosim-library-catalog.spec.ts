@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
-import { CATALOG_ENTRY_KIND_EXTENSION, validateExtensionCatalogDocument } from "@mindcraft-lang/app-host";
-import type { EmbeddedExtension, FetchedExtensionContentMap } from "@mindcraft-lang/bridge-app";
+import { CATALOG_ENTRY_KIND_EXTENSION, validateExtensionCatalogDocument } from "@wendoo-lang/app-host";
+import type { EmbeddedExtension, FetchedExtensionContentMap } from "@wendoo-lang/bridge-app";
 import {
   buildEcosimCatalogOffers,
   buildEcosimExtensionEntries,
@@ -11,12 +11,12 @@ import {
 import { ECOSIM_LIB_COORDINATE, ECOSIM_LIB_REFERENCE } from "./ecosim-extension-coordinates";
 import ecosimLibraryCatalogDocument from "./ecosim-library-catalog.json";
 
-const TELEPORT = "mindcraft-lang/lib-ecosim-teleport";
-const DETECT = "mindcraft-lang/lib-ecosim-detect";
+const TELEPORT = "wendoo-lang/lib-ecosim-teleport";
+const DETECT = "wendoo-lang/lib-ecosim-detect";
 
 /** Read a host-bundled embedded library's manifest version from its source directory. */
 function bundledManifestVersion(dir: string): string {
-  const url = new URL(`../../extensions/${dir}/mindcraft.json`, import.meta.url);
+  const url = new URL(`../../extensions/${dir}/wendoo.json`, import.meta.url);
   return JSON.parse(readFileSync(url, "utf8")).version;
 }
 
@@ -51,7 +51,7 @@ describe("sim library catalog document", () => {
     assert.throws(
       () =>
         loadSimLibraryCatalog({
-          format: "mindcraft.catalog/1",
+          format: "wendoo.catalog/1",
           entries: [],
           moves: { "example-org/moved": { ref: "not-a-reference" } },
         }),
@@ -65,7 +65,7 @@ describe("buildEcosimCatalogOffers -- compatibility-filtered against the sim sta
     canonicalOrigin: ECOSIM_LIB_COORDINATE,
     files: [
       { path: "index.ts", content: "export {};" },
-      { path: "mindcraft.json", content: JSON.stringify({ name: "Sim", version: "0.2.1" }) },
+      { path: "wendoo.json", content: JSON.stringify({ name: "Sim", version: "0.2.1" }) },
     ],
   };
   /** A bundled add-on targeting the sim layer, as the real teleport and detect manifests declare. */
@@ -75,7 +75,7 @@ describe("buildEcosimCatalogOffers -- compatibility-filtered against the sim sta
       files: [
         { path: "index.ts", content: "export {};" },
         {
-          path: "mindcraft.json",
+          path: "wendoo.json",
           content: JSON.stringify({
             name: coordinate,
             version: "0.1.1",
@@ -116,12 +116,12 @@ describe("buildEcosimExtensionEntries -- manifest-map membership drives gh: card
     canonicalOrigin: ECOSIM_LIB_COORDINATE,
     files: [
       { path: "index.ts", content: "export {};" },
-      { path: "mindcraft.json", content: JSON.stringify({ name: "Sim", version: "0.2.1" }) },
+      { path: "wendoo.json", content: JSON.stringify({ name: "Sim", version: "0.2.1" }) },
     ],
   };
 
   function manifestFiles(name: string): ReadonlyMap<string, string> {
-    return new Map([["/mindcraft.json", JSON.stringify({ name, version: "1.0.0" })]]);
+    return new Map([["/wendoo.json", JSON.stringify({ name, version: "1.0.0" })]]);
   }
 
   test("lists a top-level gh: install from the map and omits a transitive gh: dep held only in the snapshot store", () => {

@@ -7,20 +7,14 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { coreModule, createMindcraftEnvironment } from "@mindcraft-lang/core";
-import type { BrainServices, IBrainRuleDef, IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
-import { CoreCapabilityBits, mkOperatorTileId } from "@mindcraft-lang/core/brain";
-import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { projectRuleSentence, sentenceText, tileSentenceWord } from "@mindcraft-lang/core/brain/language-service";
-import { BrainDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { BrainTileLiteralDef } from "@mindcraft-lang/core/brain/tiles";
-import {
-  CoreOpId,
-  CoreTypeIds,
-  mkActuatorTileId,
-  mkParameterTileId,
-  mkSensorTileId,
-} from "@mindcraft-lang/core/runtime";
+import { coreModule, createWendooEnvironment } from "@wendoo-lang/core";
+import type { BrainServices, IBrainRuleDef, IBrainTileDef, ITileCatalog } from "@wendoo-lang/core/brain";
+import { CoreCapabilityBits, mkOperatorTileId } from "@wendoo-lang/core/brain";
+import { __test__appendTile, __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { projectRuleSentence, sentenceText, tileSentenceWord } from "@wendoo-lang/core/brain/language-service";
+import { BrainDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
+import { BrainTileLiteralDef } from "@wendoo-lang/core/brain/tiles";
+import { CoreOpId, CoreTypeIds, mkActuatorTileId, mkParameterTileId, mkSensorTileId } from "@wendoo-lang/core/runtime";
 import { UserTileProject } from "../compiler/compile.js";
 import { DescriptorDiagCode } from "../compiler/diag-codes.js";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
@@ -30,7 +24,7 @@ import { buildCompiledActionBundle } from "./action-bundle.js";
 
 /** A sensor whose only language member is the state frame. */
 const STATE_SENSOR = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   id: "snhungry",
@@ -44,7 +38,7 @@ export default Sensor({
 
 /** The same sensor with no language group at all: the pinned fallback reading. */
 const UNMARKED_STATE_SENSOR = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   id: "snhungry",
@@ -57,7 +51,7 @@ export default Sensor({
 
 /** A sensor authoring both a word and its objectless completion. */
 const FORM_BARE_SENSOR = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   id: "snsight",
@@ -71,7 +65,7 @@ export default Sensor({
 
 /** An actuator authoring the word it reads with in the DO clause. */
 const FORM_ACTUATOR = `
-import { Actuator, type Context } from "mindcraft";
+import { Actuator, type Context } from "wendoo";
 
 export default Actuator({
   id: "acleap",
@@ -83,7 +77,7 @@ export default Actuator({
 
 /** A sensor with neither a label nor a language group: it reads from its name. */
 const UNMARKED_SENSOR = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   id: "snwiggle",
@@ -223,7 +217,7 @@ describe("SensorConfig / ActuatorConfig `language`", () => {
 
   test("the group survives on a tile whose program failed to compile, from the surface definition", () => {
     const broken = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   id: "snbroken",
@@ -280,7 +274,7 @@ describe("projected sentences of user tiles", () => {
 
 describe("`language` against `label`", () => {
   const LABELED_WITH_FORM = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   id: "snlabform",
@@ -294,7 +288,7 @@ export default Sensor({
 `;
 
   const LABELED_WITHOUT_FORM = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   id: "snlabonly",
@@ -323,7 +317,7 @@ export default Sensor({
 
 describe("`language` on an inline sensor", () => {
   const INLINE_STATE_SENSOR = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   id: "snlevel",
@@ -356,7 +350,7 @@ export default Sensor({
 
 describe("`language` on a presence-gated sensor", () => {
   const GATED_STATE_SENSOR = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   id: "snthirst",
@@ -381,7 +375,7 @@ export default Sensor({
 
 describe("`language` on a sensor with args and outputs", () => {
   const ARGS_AND_OUTPUTS_SENSOR = `
-import { param, Sensor, setOutput, type Context } from "mindcraft";
+import { param, Sensor, setOutput, type Context } from "wendoo";
 
 export default Sensor({
   id: "snscan",
@@ -416,7 +410,7 @@ export default Sensor({
 
 describe("`language` on an actuator's inert frame", () => {
   const FRAMED_ACTUATOR = `
-import { Actuator, type Context } from "mindcraft";
+import { Actuator, type Context } from "wendoo";
 
 export default Actuator({
   id: "acrest",
@@ -448,7 +442,7 @@ function registeredTile(catalogs: Iterable<ITileCatalog>, tileId: string): IBrai
 
 describe("recompiling a tile's language group", () => {
   test("adding and removing the group both reach the live registered tile", () => {
-    const env = createMindcraftEnvironment({ modules: [coreModule()] });
+    const env = createWendooEnvironment({ modules: [coreModule()] });
     const project = new UserTileProject({ projectNamespace: TEST_PROJECT_NAMESPACE, services: env.brainServices });
 
     const applyCompile = (): void => {
@@ -510,7 +504,7 @@ describe("compile-history independence", () => {
 describe("malformed `language` groups", () => {
   test("a non-object-literal language emits LanguageMustBeObjectLiteral", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 const shared = { frame: "state" as const };
 export default Sensor({
   name: "dyn-language",
@@ -530,7 +524,7 @@ export default Sensor({
 
   test("a non-literal form emits LanguageFormMustBeStringLiteral", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 const word: string = "see";
 export default Sensor({
   name: "dyn-form",
@@ -549,7 +543,7 @@ export default Sensor({
 
   test("a non-literal frame emits LanguageFrameMustBeFrameName", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 const chosen: "verb" | "state" = "state";
 export default Sensor({
   name: "dyn-frame",
@@ -568,7 +562,7 @@ export default Sensor({
 
   test("a non-literal bare emits LanguageBareMustBeStringLiteral", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 const word: string = "anything";
 export default Sensor({
   name: "dyn-bare",
@@ -587,7 +581,7 @@ export default Sensor({
 
   test("a spread inside the group emits ConfigMemberNotInline", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 const base = { form: "see" };
 export default Sensor({
   name: "spread-language",
@@ -606,7 +600,7 @@ export default Sensor({
 
   test("an unknown frame name is a TypeScript error on the config surface", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 export default Sensor({
   name: "bad-frame",
   language: { frame: "shouty" },
@@ -630,7 +624,7 @@ export default Sensor({
 
   test("an empty group is accepted and reads as an unmarked tile", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 export default Sensor({
   id: "snempty",
   name: "hungry",

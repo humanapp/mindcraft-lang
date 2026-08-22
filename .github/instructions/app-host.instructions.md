@@ -7,7 +7,7 @@ applyTo: "packages/app-host/**"
 # app-host -- Rules & Patterns
 
 Project collection management, project file storage, and persistence for
-Mindcraft host apps. Apps (e.g. `apps/ecosim`) depend on this package for named
+Wendoo host apps. Apps (e.g. `apps/ecosim`) depend on this package for named
 project collections, named projects, in-memory project file systems, and
 IDB-backed persistence. No dependency on
 `bridge-app`, `bridge-client`, or `bridge-protocol`.
@@ -41,10 +41,10 @@ src/
   project-file-system.ts          # ProjectFileSystem interface
   project-file-snapshot.ts        # ProjectFileSnapshot, ProjectFileChange types
   in-memory-project-file-system.ts # InMemoryProjectFileSystem implementation
-  mindcraft-json.ts               # mindcraft.json parse/serialize
-  mindcraft-json.spec.ts
-  mindcraft-json-sync.ts          # sync manifest <-> mindcraft.json in project files
-  mindcraft-json-sync.spec.ts
+  wendoo-json.ts               # wendoo.json parse/serialize
+  wendoo-json.spec.ts
+  wendoo-json-sync.ts          # sync manifest <-> wendoo.json in project files
+  wendoo-json-sync.spec.ts
   examples.ts                     # ExampleDefinition types, EXAMPLES_FOLDER constant
 ```
 
@@ -64,8 +64,8 @@ src/
 - `ProjectManifest` -- id, name, description, timestamps.
 - `createWebLocksProjectLock` -- prevents the same project from being opened in
   multiple browser tabs.
-- `syncManifestToMindcraftJson` / `diffMindcraftJsonToManifest` -- keep the
-  `mindcraft.json` file in sync with the project manifest.
+- `syncManifestToWendooJson` / `diffWendooJsonToManifest` -- keep the
+  `wendoo.json` file in sync with the project manifest.
 
 ## Architecture
 
@@ -104,9 +104,9 @@ inside the debounce window. What the flush can promise is bounded by the store:
 torn down is best-effort, while a flush in a still-running hidden page
 completes normally.
 
-### mindcraft.json filtering
+### wendoo.json filtering
 
-`mindcraft.json` is a generated file synthesized from the project manifest.
+`wendoo.json` is a generated file synthesized from the project manifest.
 `idb-project-store` strips it from project file snapshots before persisting to
 avoid storing derived data.
 
@@ -118,15 +118,15 @@ source (`*.spec.ts`) and excluded from the build tsconfig.
 Current test files:
 - `idb-project-store.spec.ts` -- IndexedDB ProjectStore behavior
 - `project-manager.spec.ts` -- ProjectManager lifecycle, auto-save, events
-- `mindcraft-json.spec.ts` -- parse/serialize round-trips
-- `mindcraft-json-sync.spec.ts` -- manifest <-> mindcraft.json sync
+- `wendoo-json.spec.ts` -- parse/serialize round-trips
+- `wendoo-json-sync.spec.ts` -- manifest <-> wendoo.json sync
 
 ## Rules
 
 - Zero dependencies on bridge-protocol, bridge-client, or bridge-app. This
   package is a foundation layer that host apps and bridge-app build on.
 - All exports go through `src/index.ts`. Consumers import from
-  `@mindcraft-lang/app-host`.
+  `@wendoo-lang/app-host`.
 - `ProjectFileSystem` is storage-agnostic. The in-memory implementation has no
   persistence logic; persistence is handled by `ProjectManager` + `ProjectStore`.
 - Use `import type` for type-only imports.

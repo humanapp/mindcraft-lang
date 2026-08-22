@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, before, describe, it } from "node:test";
-import { createJsDelivrExtensionTransport, highestListedRelease } from "@mindcraft-lang/app-host";
+import { createJsDelivrExtensionTransport, highestListedRelease } from "@wendoo-lang/app-host";
 
 /** A captured fetch invocation: the URL requested and the init the transport passed. */
 interface CapturedCall {
@@ -38,9 +38,9 @@ const ICON_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0
 
 /** Files served under the jsDelivr URL layout, keyed by `/gh/<owner>/<repo>@<pin>/<path>`. */
 const SERVED_FILES: Record<string, Uint8Array> = {
-  "/gh/example-org/position-ext@v0.1.0/mindcraft.json": encoder.encode('{"name":"P","version":"0.1.0"}'),
+  "/gh/example-org/position-ext@v0.1.0/wendoo.json": encoder.encode('{"name":"P","version":"0.1.0"}'),
   "/gh/example-org/position-ext@v0.1.0/assets/icon.png": ICON_BYTES,
-  [`/gh/example-org/position-ext@${BRANCH_SHA}/mindcraft.json`]: encoder.encode('{"name":"P","version":"0.2.0"}'),
+  [`/gh/example-org/position-ext@${BRANCH_SHA}/wendoo.json`]: encoder.encode('{"name":"P","version":"0.2.0"}'),
 };
 
 describe("createJsDelivrExtensionTransport against local servers with the jsDelivr and GitHub API layouts", () => {
@@ -131,7 +131,7 @@ describe("createJsDelivrExtensionTransport against local servers with the jsDeli
   it("answers not-found for a missing file or version", async () => {
     const missingFile = await transport().fetchFile("example-org", "position-ext", "v0.1.0", "absent.ts");
     assert.deepStrictEqual(missingFile, { ok: false, kind: "not-found" });
-    const missingVersion = await transport().fetchFile("example-org", "position-ext", "v9.9.9", "mindcraft.json");
+    const missingVersion = await transport().fetchFile("example-org", "position-ext", "v9.9.9", "wendoo.json");
     assert.deepStrictEqual(missingVersion, { ok: false, kind: "not-found" });
   });
 
@@ -140,7 +140,7 @@ describe("createJsDelivrExtensionTransport against local servers with the jsDeli
     assert.ok(resolved.ok);
     assert.equal(resolved.sha, BRANCH_SHA);
 
-    const manifest = await transport().fetchFile("example-org", "position-ext", resolved.sha, "mindcraft.json");
+    const manifest = await transport().fetchFile("example-org", "position-ext", resolved.sha, "wendoo.json");
     assert.ok(manifest.ok);
     assert.match(new TextDecoder().decode(manifest.content), /0\.2\.0/);
   });
@@ -172,7 +172,7 @@ describe("createJsDelivrExtensionTransport against local servers with the jsDeli
       cdnBaseUrl: brokenBaseUrl,
       githubApiBaseUrl: brokenBaseUrl,
     });
-    const file = await failing.fetchFile("example-org", "position-ext", "v0.1.0", "mindcraft.json");
+    const file = await failing.fetchFile("example-org", "position-ext", "v0.1.0", "wendoo.json");
     assert.deepStrictEqual(file, { ok: false, kind: "http-status", status: 500 });
     const branch = await failing.resolveBranch("example-org", "position-ext", "main");
     assert.deepStrictEqual(branch, { ok: false, kind: "http-status", status: 500 });
@@ -186,7 +186,7 @@ describe("createJsDelivrExtensionTransport against local servers with the jsDeli
       cdnBaseUrl: "http://127.0.0.1:1",
       githubApiBaseUrl: "http://127.0.0.1:1",
     });
-    const file = await unreachable.fetchFile("example-org", "position-ext", "v0.1.0", "mindcraft.json");
+    const file = await unreachable.fetchFile("example-org", "position-ext", "v0.1.0", "wendoo.json");
     assert.ok(!file.ok && file.kind === "unreachable");
     const branch = await unreachable.resolveBranch("example-org", "position-ext", "main");
     assert.ok(!branch.ok && branch.kind === "unreachable");
@@ -216,7 +216,7 @@ describe("createJsDelivrExtensionTransport HTTP cache handling", () => {
       "example-org",
       "position-ext",
       "v0.1.0",
-      "mindcraft.json"
+      "wendoo.json"
     );
     assert.equal(calls.length, 1);
     assert.equal(calls[0]?.init?.cache, undefined);

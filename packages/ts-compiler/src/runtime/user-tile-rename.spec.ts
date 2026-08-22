@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { coreModule, createMindcraftEnvironment } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { BrainDef } from "@mindcraft-lang/core/brain/model";
-import { CoreTypeIds } from "@mindcraft-lang/core/runtime";
+import { coreModule, createWendooEnvironment } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { BrainDef } from "@wendoo-lang/core/brain/model";
+import { CoreTypeIds } from "@wendoo-lang/core/runtime";
 import { UserTileProject } from "../compiler/compile.js";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildCompiledActionBundle } from "./action-bundle.js";
@@ -25,7 +25,7 @@ function resolveCoreTypeId(typeName: string): string | undefined {
 const TILE_PATH = "scan.ts";
 
 function sensorSource(name: string): string {
-  return `import { Sensor, type Context } from "mindcraft";
+  return `import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "${name}",
@@ -65,7 +65,7 @@ describe("renaming a user action does not orphan brains that reference it", () =
     assert.ok(sensor1);
     const storedTileId = sensor1.tileId;
 
-    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule()] });
     environment.hydrateTileMetadata({ revision: bundle1.revision, tiles: bundle1.tiles });
     environment.replaceActionBundle(bundle1);
 

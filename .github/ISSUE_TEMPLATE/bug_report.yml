@@ -1,5 +1,5 @@
 name: Bug Report
-description: Report a reproducible problem in mindcraft-lang
+description: Report a reproducible problem in wendoo-lang
 title: "[Bug] "
 labels:
   - bug

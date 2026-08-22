@@ -88,7 +88,7 @@ Two `NotifyingFileSystem` wrappers around a shared `FileSystem`:
 
 - Pure types + client package. No server-side or framework-specific code.
 - Message types belong in `bridge-protocol`, not here.
-- All exports go through `src/index.ts`. Consumers import from `@mindcraft-lang/bridge-client`.
+- All exports go through `src/index.ts`. Consumers import from `@wendoo-lang/bridge-client`.
 - Use `import type` for type-only imports within the package.
 - All unsubscribe functions return `() => void`.
 - `send()` throws if session not started. `on()` does not -- handlers queue for next start.

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { mkPageTileId } from "@mindcraft-lang/core/brain";
-import { kMaxBrainPageCount } from "@mindcraft-lang/core/brain/model";
+import { mkPageTileId } from "@wendoo-lang/core/brain";
+import { kMaxBrainPageCount } from "@wendoo-lang/core/brain/model";
 import { createTargetAdapter } from "../testing/index.js";
 import type { BatchAccepted, ProposalAccepted, ProposalUnresolved } from "./propose-edit.js";
 import { proposeEdit, proposeEditBatch } from "./propose-edit.js";

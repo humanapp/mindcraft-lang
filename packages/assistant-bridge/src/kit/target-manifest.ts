@@ -5,7 +5,7 @@ import { join } from "node:path";
 const packageDirName = "target-package";
 
 /** File the target package's manifest is kept in. */
-const manifestFileName = "mindcraft.json";
+const manifestFileName = "wendoo.json";
 
 /**
  * Path of the manifest the target app at `appDir` publishes.

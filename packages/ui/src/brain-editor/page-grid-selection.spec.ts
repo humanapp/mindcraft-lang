@@ -12,7 +12,7 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { RuleSide } from "@mindcraft-lang/core/brain";
+import { RuleSide } from "@wendoo-lang/core/brain";
 import { kAppendRuleCell, kPageGridCellAttribute, type PageGridCell } from "./page-grid-model";
 import { pageGridTabStop, ruleSelectionCell, takePageGridKeyboard } from "./page-grid-selection";
 

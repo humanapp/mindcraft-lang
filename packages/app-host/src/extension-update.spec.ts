@@ -4,8 +4,8 @@ import type {
   ExtensionFetchBranchResult,
   ExtensionFetchTransport,
   ExtensionVersionListResult,
-} from "@mindcraft-lang/app-host";
-import { checkExtensionReferenceUpdate, ExtensionFetchErrorCode } from "@mindcraft-lang/app-host";
+} from "@wendoo-lang/app-host";
+import { checkExtensionReferenceUpdate, ExtensionFetchErrorCode } from "@wendoo-lang/app-host";
 
 const SHA_A = "0123456789abcdef0123456789abcdef01234567";
 const SHA_B = "89abcdef0123456789abcdef0123456789abcdef";

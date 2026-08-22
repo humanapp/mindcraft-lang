@@ -9,8 +9,8 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { CompileDiagCode } from "./diag-codes.js";
 import { type ProjectCompileResult, UserTileProject } from "./project.js";
@@ -21,7 +21,7 @@ const EXT_NS = "acme/robot-ext";
 
 function sensorSource(opts: { id?: string; name: string }): string {
   const idLine = opts.id ? `  id: ${JSON.stringify(opts.id)},\n` : "";
-  return `import { Sensor, type Context } from "mindcraft";
+  return `import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
 ${idLine}  name: ${JSON.stringify(opts.name)},
@@ -34,7 +34,7 @@ ${idLine}  name: ${JSON.stringify(opts.name)},
 
 function actuatorSource(opts: { id?: string; name: string }): string {
   const idLine = opts.id ? `  id: ${JSON.stringify(opts.id)},\n` : "";
-  return `import { Actuator, type Context } from "mindcraft";
+  return `import { Actuator, type Context } from "wendoo";
 
 export default Actuator({
 ${idLine}  name: ${JSON.stringify(opts.name)},
@@ -45,7 +45,7 @@ ${idLine}  name: ${JSON.stringify(opts.name)},
 
 function conversionSource(opts: { id?: string }): string {
   const idLine = opts.id ? `  id: ${JSON.stringify(opts.id)},\n` : "";
-  return `import { BufferType, Conversion, NumberType } from "mindcraft";
+  return `import { BufferType, Conversion, NumberType } from "wendoo";
 
 export default Conversion({
 ${idLine}  from: NumberType,

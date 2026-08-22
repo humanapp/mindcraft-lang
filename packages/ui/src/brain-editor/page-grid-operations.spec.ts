@@ -12,18 +12,18 @@
 
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, type ReadonlyList } from "@mindcraft-lang/core";
-import type { BrainServices, IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
-import { RuleSide } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { List, type ReadonlyList } from "@wendoo-lang/core";
+import type { BrainServices, IBrainTileDef, ITileCatalog } from "@wendoo-lang/core/brain";
+import { RuleSide } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
 import {
   AddRuleCommand,
   BrainCommandHistory,
   BrainDef,
   type BrainPageDef,
   type BrainRuleDef,
-} from "@mindcraft-lang/core/brain/model";
-import { CoreHostActions, mkActuatorTileId, mkSensorTileId } from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/brain/model";
+import { CoreHostActions, mkActuatorTileId, mkSensorTileId } from "@wendoo-lang/core/runtime";
 import {
   decidePageGridGrab,
   decidePageGridOperation,

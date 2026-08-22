@@ -1,18 +1,18 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { PublishVersionBump } from "@mindcraft-lang/app-host";
+import type { PublishVersionBump } from "@wendoo-lang/app-host";
 import {
   bumpVersion,
-  MINDCRAFT_JSON_PATH,
   parseProjectContentManifest,
   serializeProjectContentManifest,
-} from "@mindcraft-lang/app-host";
+  WENDOO_JSON_PATH,
+} from "@wendoo-lang/app-host";
 
-const VERSION_USAGE = `usage: mindcraft version <patch|minor|major> [--dir <path>]
+const VERSION_USAGE = `usage: wendoo version <patch|minor|major> [--dir <path>]
 
-Increments the version of the Mindcraft project in --dir (default: the current
+Increments the version of the Wendoo project in --dir (default: the current
 directory) by the named component and writes it back to the project's
-mindcraft.json. Run this before packaging a target so the built bundle is baked
+wendoo.json. Run this before packaging a target so the built bundle is baked
 at the new version; the target is then published verbatim, without a bump.
 
   --dir <path>     project directory (default: current directory)
@@ -73,26 +73,26 @@ function isFileNotFound(error: unknown): boolean {
 }
 
 /**
- * Run `mindcraft version` with the arguments following the subcommand name:
- * read the project's `mindcraft.json`, increment its version by the named
+ * Run `wendoo version` with the arguments following the subcommand name:
+ * read the project's `wendoo.json`, increment its version by the named
  * component through the shared bump engine, and write it back. Returns the
  * process exit code.
  */
 export async function runVersionCommand(args: readonly string[]): Promise<number> {
   const parsed = parseVersionArguments(args);
   if (typeof parsed === "string") {
-    process.stderr.write(`mindcraft version: ${parsed}\n${VERSION_USAGE}`);
+    process.stderr.write(`wendoo version: ${parsed}\n${VERSION_USAGE}`);
     return 1;
   }
 
-  const manifestPath = path.join(parsed.dir, MINDCRAFT_JSON_PATH);
+  const manifestPath = path.join(parsed.dir, WENDOO_JSON_PATH);
   let manifestText: string;
   try {
     manifestText = await readFile(manifestPath, "utf8");
   } catch (error) {
     if (isFileNotFound(error)) {
       process.stderr.write(
-        `mindcraft version: ${VersionCommandErrorCode.MANIFEST_MISSING}: ${manifestPath} does not exist.\n`
+        `wendoo version: ${VersionCommandErrorCode.MANIFEST_MISSING}: ${manifestPath} does not exist.\n`
       );
       return 1;
     }
@@ -103,7 +103,7 @@ export async function runVersionCommand(args: readonly string[]): Promise<number
   if (!parseResult.ok) {
     const details = parseResult.errors.map((error) => `${error.code} at ${error.path}: ${error.message}`).join(" ");
     process.stderr.write(
-      `mindcraft version: ${VersionCommandErrorCode.MANIFEST_INVALID}: ${manifestPath} is not a valid ` +
+      `wendoo version: ${VersionCommandErrorCode.MANIFEST_INVALID}: ${manifestPath} is not a valid ` +
         `content manifest. ${details}\n`
     );
     return 1;

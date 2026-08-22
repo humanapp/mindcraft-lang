@@ -1,4 +1,4 @@
-name: Publish @mindcraft-lang/assistant-relay
+name: Publish @wendoo-lang/assistant-relay
 
 on:
   push:

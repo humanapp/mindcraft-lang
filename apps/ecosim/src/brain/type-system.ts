@@ -6,7 +6,6 @@ import {
   extractNumberValue,
   getClosedStructFieldByName,
   List,
-  type MindcraftModuleApi,
   mkCallDef,
   mkClosedStructValueByName,
   mkNativeStructValue,
@@ -21,7 +20,8 @@ import {
   type Value,
   Vector2,
   VOID_VALUE,
-} from "@mindcraft-lang/core/app";
+  type WendooModuleApi,
+} from "@wendoo-lang/core/app";
 import { EcosimFuncId, EcosimTypeAtomId } from "./abi-ids";
 import type { Actor } from "./actor";
 import { getSelf } from "./execution-context-types";
@@ -212,7 +212,7 @@ export function mkActorRefDirect(actor: Actor): StructValue {
   return mkNativeStructValue(EcosimTypeIds.ActorRef, actor);
 }
 
-export function registerTypes(api: MindcraftModuleApi) {
+export function registerTypes(api: WendooModuleApi) {
   api.defineType({
     coreType: NativeType.Struct,
     typeId: EcosimTypeIds.Vector2,

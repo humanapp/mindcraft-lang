@@ -22,7 +22,7 @@
         "--coi"
       ],
       "outFiles": ["${workspaceFolder}/apps/vscode-extension/dist/**/*.js"],
-      "preLaunchTask": "mindcraft-ext: dev",
+      "preLaunchTask": "wendoo-ext: dev",
       "console": "integratedTerminal"
     },
     {

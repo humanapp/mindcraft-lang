@@ -119,7 +119,7 @@ export function createAppServices(rng?: IRngServices, numerics?: ProfileNumerics
  * (`services.runtime.types`, `services.shared.conversions`, etc.).
  *
  * @param app - Host-supplied capabilities (RNG and future host injections).
- *   The same reference is exposed by `MindcraftEnvironment.appServices`.
+ *   The same reference is exposed by `WendooEnvironment.appServices`.
  * @returns A new {@link BrainServices} instance.
  */
 export function createBrainServices(app: AppServices): BrainServices {

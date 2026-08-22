@@ -1,10 +1,10 @@
-# mindcraft-cli
+# wendoo-cli
 
-Command-line tools for publishing and versioning Mindcraft projects.
+Command-line tools for publishing and versioning Wendoo projects.
 
-A Mindcraft project is a directory with a `mindcraft.json` manifest (plus the
+A Wendoo project is a directory with a `wendoo.json` manifest (plus the
 files it lists). This CLI publishes such a project to GitHub as a versioned,
-installable release, bumps its version, and turns a `.mindcraft` export from
+installable release, bumps its version, and turns a `.wendoo` export from
 the web editor into a project directory you can publish.
 
 ## Install and run
@@ -14,37 +14,37 @@ Requires Node.js 18 or newer.
 Run without installing:
 
 ```
-npx mindcraft-cli <command> [arguments]
+npx wendoo-cli <command> [arguments]
 ```
 
 Or install once and call it directly:
 
 ```
-npm install -g mindcraft-cli
-mindcraft <command> [arguments]
+npm install -g wendoo-cli
+wendoo <command> [arguments]
 ```
 
-Both give you the same `mindcraft` command. Examples below use `mindcraft`;
-substitute `npx mindcraft-cli` if you did not install it.
+Both give you the same `wendoo` command. Examples below use `wendoo`;
+substitute `npx wendoo-cli` if you did not install it.
 
 ## Commands at a glance
 
 | Command | What it does |
 |---|---|
-| [`mindcraft publish`](#mindcraft-publish) | Publish a version of a project to its GitHub repository. |
-| [`mindcraft version`](#mindcraft-version) | Increment a project's version in its `mindcraft.json`. |
-| [`mindcraft unpack`](#mindcraft-unpack) | Turn a `.mindcraft` export into a publishable project directory. |
+| [`wendoo publish`](#wendoo-publish) | Publish a version of a project to its GitHub repository. |
+| [`wendoo version`](#wendoo-version) | Increment a project's version in its `wendoo.json`. |
+| [`wendoo unpack`](#wendoo-unpack) | Turn a `.wendoo` export into a publishable project directory. |
 
-Running `mindcraft` with no command, or an unknown command, prints usage and
+Running `wendoo` with no command, or an unknown command, prints usage and
 exits non-zero.
 
-`mindcraft --version` (or `-v`) prints this CLI's own version and exits. It is
-separate from the [`version`](#mindcraft-version) command below, which changes
+`wendoo --version` (or `-v`) prints this CLI's own version and exits. It is
+separate from the [`version`](#wendoo-version) command below, which changes
 a project's version.
 
 ## Concepts (read once)
 
-- `mindcraft.json` is the project manifest. It carries the project's `version`,
+- `wendoo.json` is the project manifest. It carries the project's `version`,
   its `files` list, its `identity`, and everything else the project comprises.
 - A project's identity is its `<owner>/<repo>` GitHub coordinate, recorded in
   the manifest's `identity` field. You do not hand-write it: `publish` stamps it
@@ -54,13 +54,13 @@ a project's version.
 
 ---
 
-## `mindcraft publish`
+## `wendoo publish`
 
 Publish a version of the project to its GitHub repository: commit the project's
 tree, tag it `v<version>`, and push.
 
 ```
-mindcraft publish [patch|minor|major] [--dir <path>] [--remote <url>] [--allow-unstable-refs]
+wendoo publish [patch|minor|major] [--dir <path>] [--remote <url>] [--allow-unstable-refs]
 ```
 
 ### Arguments
@@ -92,10 +92,10 @@ Pass `--remote <url>` to override this.
   manifest's `identity` with the coordinate of the publish remote. It prints a
   warning if that changes a previously recorded identity (for example when you
   publish a clone to your own repository -- a fork).
-- Commits the project's tree (its `mindcraft.json` plus the files the manifest
+- Commits the project's tree (its `wendoo.json` plus the files the manifest
   lists), tags it `v<version>`, and pushes the branch and tag.
 - Writes the published version and identity back into the project directory's
-  `mindcraft.json` when the tree is published to a derived or explicit remote.
+  `wendoo.json` when the tree is published to a derived or explicit remote.
 
 Requires the git working tree to be clean, and Git credentials that can push to
 the target repository. Published repositories are public.
@@ -105,42 +105,42 @@ the target repository. Published repositories are public.
 First publish, run from inside the project after creating its empty GitHub repo:
 
 ```
-mindcraft publish
+wendoo publish
 ```
 
 Cut a routine release (bump the patch version and publish):
 
 ```
-mindcraft publish patch
+wendoo publish patch
 ```
 
 Publish a library kept in a monorepo subdirectory (the remote is derived from
 its recorded identity):
 
 ```
-mindcraft publish minor --dir libs/my-widget
+wendoo publish minor --dir libs/my-widget
 ```
 
 Publish to an explicit repository:
 
 ```
-mindcraft publish patch --remote https://github.com/acme/my-widget.git
+wendoo publish patch --remote https://github.com/acme/my-widget.git
 ```
 
 Publish even though a dependency points at a moving branch:
 
 ```
-mindcraft publish patch --allow-unstable-refs
+wendoo publish patch --allow-unstable-refs
 ```
 
 ---
 
-## `mindcraft version`
+## `wendoo version`
 
-Increment the project's version in its `mindcraft.json`, without publishing.
+Increment the project's version in its `wendoo.json`, without publishing.
 
 ```
-mindcraft version <patch|minor|major> [--dir <path>]
+wendoo version <patch|minor|major> [--dir <path>]
 ```
 
 ### Arguments
@@ -152,7 +152,7 @@ mindcraft version <patch|minor|major> [--dir <path>]
 
 ### What it does
 
-Reads the project's `mindcraft.json`, increments the version by the named
+Reads the project's `wendoo.json`, increments the version by the named
 component, writes it back, and prints the new version (for example
 `version 1.4.0`).
 
@@ -163,39 +163,39 @@ verbatim (no bump at publish time).
 ### Examples
 
 ```
-mindcraft version patch
-mindcraft version minor --dir path/to/project
+wendoo version patch
+wendoo version minor --dir path/to/project
 ```
 
-Fails with `VERSION_MANIFEST_MISSING` if the directory has no `mindcraft.json`,
+Fails with `VERSION_MANIFEST_MISSING` if the directory has no `wendoo.json`,
 or `VERSION_MANIFEST_INVALID` if the manifest cannot be parsed.
 
 ---
 
-## `mindcraft unpack`
+## `wendoo unpack`
 
-Turn a `.mindcraft` export (downloaded from the web editor) into a project
+Turn a `.wendoo` export (downloaded from the web editor) into a project
 directory on disk that you can then publish.
 
 ```
-mindcraft unpack <file.mindcraft> [dir] [--coordinate <owner/repo>] [--force]
+wendoo unpack <file.wendoo> [dir] [--coordinate <owner/repo>] [--force]
 ```
 
 ### Arguments
 
 | Argument | Meaning |
 |---|---|
-| `<file.mindcraft>` | Required. The exported document to unpack. |
+| `<file.wendoo>` | Required. The exported document to unpack. |
 | `dir` | Target directory. Default: the document's base name, in the current directory. |
 | `--coordinate <owner/repo>` | Record this as the project's published identity in the manifest's `identity` field. |
 | `--force` | Allow unpacking into a directory that is not empty. |
 
 ### What it does
 
-Writes the export's embedded manifest as `mindcraft.json` and every file in the
+Writes the export's embedded manifest as `wendoo.json` and every file in the
 export to disk. If the manifest declares no `files` list, one is generated
 naming every unpacked file -- including any scratch files that were in the
-exported workspace, so review and prune `mindcraft.json` before publishing.
+exported workspace, so review and prune `wendoo.json` before publishing.
 Prints how many files were written.
 
 After unpacking, that directory is the canonical project: publish from it, and
@@ -206,19 +206,19 @@ treat re-exporting from the app as an occasional release step, not a live sync.
 Unpack into a directory named after the file (`./my-project`):
 
 ```
-mindcraft unpack my-project.mindcraft
+wendoo unpack my-project.wendoo
 ```
 
 Unpack into a chosen directory and record the project's identity:
 
 ```
-mindcraft unpack my-project.mindcraft my-widget --coordinate acme/my-widget
+wendoo unpack my-project.wendoo my-widget --coordinate acme/my-widget
 ```
 
 Unpack into the current, non-empty directory:
 
 ```
-mindcraft unpack export.mindcraft . --force
+wendoo unpack export.wendoo . --force
 ```
 
 ---
@@ -234,8 +234,8 @@ mindcraft unpack export.mindcraft . --force
 
 ## Using this CLI as a tool (for LLMs and agents)
 
-- Invoke exactly one command per call: `mindcraft <command> [arguments]`.
-  Available commands are `publish`, `version`, and `unpack`. `mindcraft
+- Invoke exactly one command per call: `wendoo <command> [arguments]`.
+  Available commands are `publish`, `version`, and `unpack`. `wendoo
   --version` reports the tool's own version.
 - All input is positional arguments and flags; the CLI does not read piped
   stdin. It is safe to run non-interactively.

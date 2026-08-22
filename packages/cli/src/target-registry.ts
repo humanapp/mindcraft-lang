@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
-import type { ExtensionCatalogDocumentError, ExtensionCatalogDocumentWarning } from "@mindcraft-lang/app-host";
-import { parseExtensionCatalogDocument } from "@mindcraft-lang/app-host";
+import type { ExtensionCatalogDocumentError, ExtensionCatalogDocumentWarning } from "@wendoo-lang/app-host";
+import { parseExtensionCatalogDocument } from "@wendoo-lang/app-host";
 
 /** Stable identifiers for target registry failures. */
 export const TargetRegistryErrorCode = {
@@ -103,7 +103,7 @@ export class TargetRegistry {
  * or warning is a failure: an unknown-kind entry the catalog parser skips with
  * a warning would silently vanish, so a warning rejects the whole document.
  *
- * @param content - JSON text of a `mindcraft.catalog/1` document.
+ * @param content - JSON text of a `wendoo.catalog/1` document.
  * @throws {TargetRegistryError} With code `REGISTRY_PARSE_FAILED` when the
  * content does not validate cleanly.
  */

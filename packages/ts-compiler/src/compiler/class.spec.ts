@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, runtime } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
+import { List, runtime } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { ExecutionContext } from "@wendoo-lang/core/runtime";
 import {
   type BooleanValue,
   ContextTypeIds,
@@ -31,8 +31,8 @@ import {
   type Value,
   ValueDict,
   VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
@@ -109,7 +109,7 @@ describe("class declarations", () => {
   test("class with constructor and method compiles without errors (stub bodies)", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Point {
   x: number;
@@ -142,7 +142,7 @@ export default Sensor({
   test("class registers struct type with correct fields", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Vec2 {
   x: number;
@@ -186,7 +186,7 @@ export default Sensor({
   test("class registers method declarations on struct type", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Counter {
   value: number;
@@ -232,7 +232,7 @@ export default Sensor({
   test("function table contains constructor and method entries", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Pair {
   a: number;
@@ -273,7 +273,7 @@ export default Sensor({
   test("class with extends produces diagnostic", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Base {
   x: number;
@@ -307,7 +307,7 @@ export default Sensor({
   test("class with static field passes validation", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Foo {
   static count: number = 0;
@@ -333,7 +333,7 @@ export default Sensor({
   test("static fields excluded from struct type registration", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Mixed {
   static total: number = 0;
@@ -377,7 +377,7 @@ export default Sensor({
   test("static methods excluded from struct method declarations", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Counter {
   value: number;
@@ -418,7 +418,7 @@ export default Sensor({
   test("static field with initializer stored as callsite var during module init", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Counter {
   static count: number = 42;
@@ -457,7 +457,7 @@ export default Sensor({
   test("static field without initializer gets default value during module init", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Tracker {
   static total: number;
@@ -500,7 +500,7 @@ export default Sensor({
   test("static field init emits STORE_CALLSITE_VAR in module-init function", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Foo {
   static x: number = 10;
@@ -531,7 +531,7 @@ export default Sensor({
   test("uninitialized static field with unresolvable type emits diagnostic", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 type Opaque = number & { __brand: "opaque" };
 
@@ -557,7 +557,7 @@ export default Sensor({
   test("static method registered in function table with dollar separator", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Utils {
   static double(x: number): number { return x * 2; }
@@ -595,7 +595,7 @@ export default Sensor({
   test("static method compiled with correct argc (no this parameter)", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class MathHelper {
   static add(a: number, b: number): number { return a + b; }
@@ -633,7 +633,7 @@ export default Sensor({
   test("this usage inside static method produces diagnostic", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Broken {
   value: number;
@@ -663,7 +663,7 @@ export default Sensor({
   test("static field access via ClassName.field compiles without diagnostics", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Counter {
   static count: number = 0;
@@ -690,7 +690,7 @@ export default Sensor({
   test("static field access inside constructor body compiles without diagnostics", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Counter {
   static count: number = 0;
@@ -720,7 +720,7 @@ export default Sensor({
   test("bare class name produces ClassObjectUsageNotSupported diagnostic", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Foo {
   static x: number = 1;
@@ -747,7 +747,7 @@ export default Sensor({
   test("static method reference via ClassName.method compiles without diagnostics", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Utils {
   static double(n: number): number { return n * 2; }
@@ -775,7 +775,7 @@ export default Sensor({
   test("static method call via ClassName.method() emits direct Call", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class MathUtils {
   static double(n: number): number { return n * 2; }
@@ -815,7 +815,7 @@ export default Sensor({
   test("static method call with multiple arguments compiles correctly", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Calc {
   static add(a: number, b: number): number { return a + b; }
@@ -842,7 +842,7 @@ export default Sensor({
   test("calling non-existent static method produces diagnostic", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Foo {
   static real(): number { return 1; }
@@ -868,7 +868,7 @@ export default Sensor({
   test("static method accessing static field compiles and runs correctly", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Counter {
   static count: number = 10;
@@ -896,7 +896,7 @@ export default Sensor({
   test("class with private field produces diagnostic", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Foo {
   private secret: number;
@@ -921,7 +921,7 @@ export default Sensor({
   test("class with computed property name produces diagnostic", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 const key = "hello";
 
@@ -955,7 +955,7 @@ export default Sensor({
   test("class with no constructor compiles (zero-arg stub)", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Tag {
   label: string = "default";
@@ -987,7 +987,7 @@ export default Sensor({
   test("class with getter registers accessor funcIds", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Foo {
   _x: number;
@@ -1035,7 +1035,7 @@ export default Sensor({
   test("instance getter desugars to function call at call site", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Box {
   _width: number;
@@ -1074,7 +1074,7 @@ export default Sensor({
   test("this.x getter inside instance method desugars correctly", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Rect {
   _w: number;
@@ -1116,7 +1116,7 @@ export default Sensor({
   test("static getter desugars to function call at call site", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Config {
   static _limit: number = 99;
@@ -1159,7 +1159,7 @@ export default Sensor({
   test("getter returning computed value (not just backing field)", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Circle {
   _radius: number;
@@ -1198,7 +1198,7 @@ export default Sensor({
   test("instance setter desugars obj.x = value to function call", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Box {
   _width: number;
@@ -1239,7 +1239,7 @@ export default Sensor({
   test("this.x = value through setter inside instance method", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Counter {
   _count: number;
@@ -1284,7 +1284,7 @@ export default Sensor({
   test("static setter desugars ClassName.x = value to function call", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Config {
   static _limit: number = 0;
@@ -1329,7 +1329,7 @@ export default Sensor({
   test("expression-position setter assignment evaluates to RHS value", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Box {
   _width: number;
@@ -1370,7 +1370,7 @@ export default Sensor({
   test("setter that validates/clamps input", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Clamped {
   _val: number;
@@ -1417,7 +1417,7 @@ export default Sensor({
   test("obj.x += value with getter and setter", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Score {
   _points: number;
@@ -1458,7 +1458,7 @@ export default Sensor({
   test("this.x -= value inside a method with getter and setter", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Wallet {
   _balance: number;
@@ -1501,7 +1501,7 @@ export default Sensor({
   test("obj.x++ and ++obj.x with getter and setter", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Counter {
   _count: number;
@@ -1543,7 +1543,7 @@ export default Sensor({
   test("ClassName.x += value with static getter and setter", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Stats {
   static _total: number = 0;
@@ -1590,7 +1590,7 @@ export default Sensor({
   test("static ++ClassName.x and ClassName.x++ with getter and setter", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Stats {
   static _total: number = 0;
@@ -1637,7 +1637,7 @@ export default Sensor({
   test("getter-only property rejects compound assignment", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class ReadOnly {
   _val: number;
@@ -1665,7 +1665,7 @@ export default Sensor({
   test("new ClassName(args) creates struct with correct field values", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Point {
   x: number;
@@ -1711,7 +1711,7 @@ export default Sensor({
   test("property initializer sets default value", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Config {
   threshold: number = 42;
@@ -1754,7 +1754,7 @@ export default Sensor({
   test("property initializer runs before constructor body", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Counter {
   value: number = 10;
@@ -1798,7 +1798,7 @@ export default Sensor({
   test("new expression with unknown class produces diagnostic", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "bad-new",
@@ -1819,7 +1819,7 @@ export default Sensor({
   test("this outside class context produces diagnostic", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function helper(): number {
   return this.x;
@@ -1843,7 +1843,7 @@ export default Sensor({
   test("constructor returns struct value directly", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Pair {
   a: number;
@@ -1889,7 +1889,7 @@ export default Sensor({
   test("class with no explicit constructor uses property initializers", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Defaults {
   count: number = 99;
@@ -1930,7 +1930,7 @@ export default Sensor({
   test("method body reads this.x correctly", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Box {
   value: number;
@@ -1977,7 +1977,7 @@ export default Sensor({
   test("method body writes this.x with store-back pattern", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Settable {
   value: number;
@@ -2026,7 +2026,7 @@ export default Sensor({
   test("obj.method(args) calls a user-compiled method", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Adder {
   base: number;
@@ -2073,7 +2073,7 @@ export default Sensor({
   test("method calls another method on this", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Calc {
   value: number;
@@ -2123,7 +2123,7 @@ export default Sensor({
   test("method returns a computed value", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Rect {
   w: number;
@@ -2172,7 +2172,7 @@ export default Sensor({
   test("method with no explicit return returns nil", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Tracker {
   count: number;
@@ -2220,7 +2220,7 @@ export default Sensor({
   test("multiple methods on the same class", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class TwoD {
   x: number;
@@ -2275,7 +2275,7 @@ export default Sensor({
   test("compound assignment this.x += value reads, computes, and writes back", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Accumulator {
   total: number;
@@ -2323,7 +2323,7 @@ export default Sensor({
 
   test("recompiling a class with changed shape picks up new fields", () => {
     const sourceV1 = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class ShapeEvol {
   x: number = 1;
@@ -2348,7 +2348,7 @@ export default Sensor({
     assert.equal(defV1.fields.size(), 1);
 
     const sourceV2 = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class ShapeEvol {
   x: number = 1;
@@ -2377,7 +2377,7 @@ export default Sensor({
   test("simple static field assignment compiles without diagnostics", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Counter {
   static count: number = 0;
@@ -2405,7 +2405,7 @@ export default Sensor({
   test("compound static field assignment (+=) compiles without diagnostics", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Counter {
   static count: number = 0;
@@ -2433,7 +2433,7 @@ export default Sensor({
   test("prefix increment on static field compiles without diagnostics", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Counter {
   static count: number = 0;
@@ -2461,7 +2461,7 @@ export default Sensor({
   test("postfix increment on static field compiles without diagnostics", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Counter {
   static count: number = 0;
@@ -2489,7 +2489,7 @@ export default Sensor({
   test("assigning to a static method produces AssignmentTargetNotVariable", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Utils {
   static double(n: number): number { return n * 2; }
@@ -2516,7 +2516,7 @@ export default Sensor({
   test("prefix increment on static method produces a diagnostic", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Utils {
   static double(n: number): number { return n * 2; }
@@ -2546,7 +2546,7 @@ export default Sensor({
   test("static field assignment and read produces correct runtime values", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Counter {
   static count: number = 0;
@@ -2590,7 +2590,7 @@ export default Sensor({
   test("prefix and postfix increment on static field produce correct values", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Counter {
   static count: number = 0;
@@ -2639,7 +2639,7 @@ export default Sensor({
   test("this.field read and this.method() call in static method", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Counter {
   static count: number = 0;
@@ -2688,7 +2688,7 @@ export default Sensor({
   test("this.field compound assignment and increment in static method", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Acc {
   static value: number = 10;
@@ -2734,7 +2734,7 @@ export default Sensor({
   test("this.otherMethod() call chain in static methods", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Utils {
   static base: number = 10;
@@ -2781,7 +2781,7 @@ export default Sensor({
   test("bare this in static method produces diagnostic", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Foo {
   static getSelf(): number {
@@ -2808,7 +2808,7 @@ export default Sensor({
   test("this.field postfix increment in static method", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Seq {
   static val: number = 0;

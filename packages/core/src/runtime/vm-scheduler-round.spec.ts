@@ -10,7 +10,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { List } from "@mindcraft-lang/core";
+import { List } from "@wendoo-lang/core";
 import {
   BYTECODE_VERSION,
   ErrorCode,
@@ -28,8 +28,8 @@ import {
   type Program,
   type Value,
   VM,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 
 const RECORD_FN_ID = 9001;
 const SPAWN_CHILD_FN_ID = 9002;

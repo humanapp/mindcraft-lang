@@ -9,11 +9,11 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { mkVariableTileId, TilePlacement } from "@mindcraft-lang/core/brain";
-import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { BrainDef } from "@mindcraft-lang/core/brain/model";
-import { BrainTileOperatorDef, BrainTileSensorDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { mkVariableTileId, TilePlacement } from "@wendoo-lang/core/brain";
+import { __test__appendTile, __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { BrainDef } from "@wendoo-lang/core/brain/model";
+import { BrainTileOperatorDef, BrainTileSensorDef, BrainTileVariableDef } from "@wendoo-lang/core/brain/tiles";
 import {
   type ActionDescriptor,
   CoreTypeIds,
@@ -23,7 +23,7 @@ import {
   mkCallDef,
   mkNumberValue,
   setCallSiteState,
-} from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
 
 let services: BrainServices;
 let opAssign: BrainTileOperatorDef;

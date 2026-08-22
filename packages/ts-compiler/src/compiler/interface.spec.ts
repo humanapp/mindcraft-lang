@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, runtime } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext, Scheduler } from "@mindcraft-lang/core/runtime";
+import { List, runtime } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { ExecutionContext, Scheduler } from "@wendoo-lang/core/runtime";
 import {
   CoreTypeIds,
   HandleTable,
@@ -18,8 +18,8 @@ import {
   type Value,
   ValueDict,
   VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
@@ -64,7 +64,7 @@ describe("interface declarations", () => {
   test("basic interface registers as struct type with correct fields", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 interface Point {
   x: number;
@@ -104,7 +104,7 @@ export default Sensor({
   test("interface with optional field registers nullable type", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 interface Config {
   name: string;
@@ -147,7 +147,7 @@ export default Sensor({
   test("interface-typed object literal compiles and executes", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 interface Point {
   x: number;
@@ -189,7 +189,7 @@ export default Sensor({
   test("interface with nested struct field", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 interface Vec2 {
   x: number;
@@ -237,7 +237,7 @@ export default Sensor({
   test("generic interface is silently skipped (no rejection diagnostic)", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 interface Container<T> {
   value: T;
@@ -269,7 +269,7 @@ export default Sensor({
     });
     const ambientSource = buildAmbientDeclarations(types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 interface AmbientPoint {
   x: number;
@@ -294,7 +294,7 @@ export default Sensor({
   test("interface with index signature emits diagnostic", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 interface StringMap {
   [key: string]: number;
@@ -322,7 +322,7 @@ export default Sensor({
   test("interface with call signature emits diagnostic", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 interface Callable {
   (x: number): string;
@@ -350,7 +350,7 @@ export default Sensor({
   test("interface with boolean and string fields", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 interface Settings {
   enabled: boolean;

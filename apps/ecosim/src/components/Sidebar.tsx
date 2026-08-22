@@ -1,8 +1,8 @@
-import { parseExtensionReference } from "@mindcraft-lang/app-host";
-import type { ExtensionTransactionToasts, LibraryUninstallImpact } from "@mindcraft-lang/bridge-app";
-import { presentExtensionTransaction, runGuardedLibraryUninstall } from "@mindcraft-lang/bridge-app";
-import { useDocsSidebar } from "@mindcraft-lang/docs";
-import { Button, ExtensionBrowserDialog, Slider, Switch } from "@mindcraft-lang/ui";
+import { parseExtensionReference } from "@wendoo-lang/app-host";
+import type { ExtensionTransactionToasts, LibraryUninstallImpact } from "@wendoo-lang/bridge-app";
+import { presentExtensionTransaction, runGuardedLibraryUninstall } from "@wendoo-lang/bridge-app";
+import { useDocsSidebar } from "@wendoo-lang/docs";
+import { Button, ExtensionBrowserDialog, Slider, Switch } from "@wendoo-lang/ui";
 import {
   Blocks,
   BookOpen,
@@ -754,7 +754,7 @@ export function Sidebar({
       {/* GitHub link */}
       <div className="border-t border-border p-3 flex justify-end">
         <a
-          href="https://github.com/humanapp/mindcraft-lang"
+          href="https://github.com/humanapp/wendoo-lang"
           target="_blank"
           rel="noopener noreferrer"
           className="text-muted-foreground hover:text-foreground transition-colors"

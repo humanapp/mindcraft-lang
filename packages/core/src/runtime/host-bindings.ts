@@ -210,7 +210,7 @@ export type BrainEvents = {
 };
 
 /**
- * Runtime surface of a Mindcraft brain: every observable behavior reachable
+ * Runtime surface of a Wendoo brain: every observable behavior reachable
  * during a tick (variable storage, page lifecycle FSM, scheduler-driven
  * `think`, event channel) without any authoring-side compile / link / edit
  * concerns. Implemented by `BrainRuntime` in `runtime/brain-runtime.ts`.

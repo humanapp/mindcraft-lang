@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { ExtensionFetchTransport } from "@mindcraft-lang/app-host";
-import { ExtensionFetchErrorCode, fetchExtensionSnapshot } from "@mindcraft-lang/app-host";
+import type { ExtensionFetchTransport } from "@wendoo-lang/app-host";
+import { ExtensionFetchErrorCode, fetchExtensionSnapshot } from "@wendoo-lang/app-host";
 
 const encoder = new TextEncoder();
 
@@ -47,7 +47,7 @@ const MANIFEST_TEXT = JSON.stringify({
 const ICON_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff, 0xfe, 0x0d, 0x0a]);
 
 const SNAPSHOT_FILES: Record<string, Uint8Array> = {
-  "mindcraft.json": encoder.encode(MANIFEST_TEXT),
+  "wendoo.json": encoder.encode(MANIFEST_TEXT),
   "index.ts": encoder.encode("export const position = 1;\n"),
   "assets/icon.png": ICON_BYTES,
 };
@@ -67,11 +67,11 @@ describe("fetchExtensionSnapshot", () => {
     assert.equal(result.snapshot.manifest.identity, "example-org/position-ext");
     assert.deepStrictEqual(
       result.snapshot.files.map((file) => file.path),
-      ["mindcraft.json", "index.ts", "assets/icon.png"]
+      ["wendoo.json", "index.ts", "assets/icon.png"]
     );
     assert.deepStrictEqual(result.snapshot.files[2].content, ICON_BYTES);
     assert.deepStrictEqual(transport.requests, [
-      "file example-org/position-ext@v0.1.0 mindcraft.json",
+      "file example-org/position-ext@v0.1.0 wendoo.json",
       "file example-org/position-ext@v0.1.0 index.ts",
       "file example-org/position-ext@v0.1.0 assets/icon.png",
     ]);
@@ -82,7 +82,7 @@ describe("fetchExtensionSnapshot", () => {
     const transport = createRecordingTransport({
       content: {
         [`example-org/position-ext@${pin}`]: {
-          "mindcraft.json": encoder.encode(JSON.stringify({ name: "P", version: "0.1.0" })),
+          "wendoo.json": encoder.encode(JSON.stringify({ name: "P", version: "0.1.0" })),
         },
       },
     });
@@ -91,7 +91,7 @@ describe("fetchExtensionSnapshot", () => {
 
     assert.ok(result.ok);
     assert.equal(result.snapshot.specifier, pin);
-    assert.deepStrictEqual(transport.requests, [`file example-org/position-ext@${pin} mindcraft.json`]);
+    assert.deepStrictEqual(transport.requests, [`file example-org/position-ext@${pin} wendoo.json`]);
   });
 
   it("resolves a #branch reference to a commit SHA and fetches that commit", async () => {
@@ -100,7 +100,7 @@ describe("fetchExtensionSnapshot", () => {
       branches: { "example-org/position-ext#main": sha },
       content: {
         [`example-org/position-ext@${sha}`]: {
-          "mindcraft.json": encoder.encode(JSON.stringify({ name: "P", version: "0.2.0", files: ["index.ts"] })),
+          "wendoo.json": encoder.encode(JSON.stringify({ name: "P", version: "0.2.0", files: ["index.ts"] })),
           "index.ts": encoder.encode("export {};\n"),
         },
       },
@@ -113,7 +113,7 @@ describe("fetchExtensionSnapshot", () => {
     assert.equal(result.snapshot.manifest.version, "0.2.0");
     assert.deepStrictEqual(transport.requests, [
       "branch example-org/position-ext#main",
-      `file example-org/position-ext@${sha} mindcraft.json`,
+      `file example-org/position-ext@${sha} wendoo.json`,
       `file example-org/position-ext@${sha} index.ts`,
     ]);
   });
@@ -153,7 +153,7 @@ describe("fetchExtensionSnapshot", () => {
     assert.equal(result.error.code, ExtensionFetchErrorCode.RATE_LIMITED);
   });
 
-  it("fails with MANIFEST_MISSING when the snapshot has no mindcraft.json", async () => {
+  it("fails with MANIFEST_MISSING when the snapshot has no wendoo.json", async () => {
     const transport = createRecordingTransport({ content: { "example-org/position-ext@v0.1.0": {} } });
     const result = await fetchExtensionSnapshot("gh:example-org/position-ext@v0.1.0", transport);
     assert.ok(!result.ok);
@@ -163,7 +163,7 @@ describe("fetchExtensionSnapshot", () => {
   it("fails with MANIFEST_UNPARSEABLE when the manifest is not a valid content manifest", async () => {
     const transport = createRecordingTransport({
       content: {
-        "example-org/position-ext@v0.1.0": { "mindcraft.json": encoder.encode("{ not json") },
+        "example-org/position-ext@v0.1.0": { "wendoo.json": encoder.encode("{ not json") },
       },
     });
     const result = await fetchExtensionSnapshot("gh:example-org/position-ext@v0.1.0", transport);
@@ -175,7 +175,7 @@ describe("fetchExtensionSnapshot", () => {
     const transport = createRecordingTransport({
       content: {
         "example-org/position-ext@v0.1.0": {
-          "mindcraft.json": encoder.encode(JSON.stringify({ name: "P", version: "0.1.0", files: ["index.ts"] })),
+          "wendoo.json": encoder.encode(JSON.stringify({ name: "P", version: "0.1.0", files: ["index.ts"] })),
         },
       },
     });

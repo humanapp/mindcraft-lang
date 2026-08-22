@@ -5,17 +5,17 @@ import {
   type CompiledActionArtifact,
   type CompiledActionBundle,
   coreModule,
-  createMindcraftEnvironment,
+  createWendooEnvironment,
   Dict,
   List,
-  type MindcraftEnvironment,
-  type MindcraftModule,
-} from "@mindcraft-lang/core";
-import { type BrainServices, type IBrainRuleDef, TilePlacement } from "@mindcraft-lang/core/brain";
-import type { TypecheckResult } from "@mindcraft-lang/core/brain/compiler";
-import { TypeDiagCode } from "@mindcraft-lang/core/brain/compiler";
-import { BrainDef } from "@mindcraft-lang/core/brain/model";
-import { BrainTileActuatorDef, BrainTileParameterDef, BrainTileSensorDef } from "@mindcraft-lang/core/brain/tiles";
+  type WendooEnvironment,
+  type WendooModule,
+} from "@wendoo-lang/core";
+import { type BrainServices, type IBrainRuleDef, TilePlacement } from "@wendoo-lang/core/brain";
+import type { TypecheckResult } from "@wendoo-lang/core/brain/compiler";
+import { TypeDiagCode } from "@wendoo-lang/core/brain/compiler";
+import { BrainDef } from "@wendoo-lang/core/brain/model";
+import { BrainTileActuatorDef, BrainTileParameterDef, BrainTileSensorDef } from "@wendoo-lang/core/brain/tiles";
 import {
   type BrainActionCallDef,
   BYTECODE_VERSION,
@@ -30,7 +30,7 @@ import {
   param,
   type StructTypeDef,
   type TypeId,
-} from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
 
 const noopCodec = {
   encode(): void {},
@@ -44,7 +44,7 @@ const noopCodec = {
 
 const kSteerPositionTypeId = mkTypeId(NativeType.Struct, "SteerPosition");
 
-function getEnvironmentServices(environment: MindcraftEnvironment): BrainServices {
+function getEnvironmentServices(environment: WendooEnvironment): BrainServices {
   return (environment as unknown as { brainServices: BrainServices }).brainServices;
 }
 
@@ -60,7 +60,7 @@ function hasDiag(rule: IBrainRuleDef, code: TypeDiagCode): boolean {
 }
 
 /** A struct type module so the environment's type registry knows SteerPosition. */
-function structTypeModule(): MindcraftModule {
+function structTypeModule(): WendooModule {
   return {
     id: "steer-position-module",
     install(api): void {
@@ -169,7 +169,7 @@ function bundle(
  * restored rule and brain.
  */
 function restoredRuleWith(
-  environment: MindcraftEnvironment,
+  environment: WendooEnvironment,
   actuator: BrainTileActuatorDef,
   value: BrainTileSensorDef
 ): { rule: IBrainRuleDef; brain: BrainDef } {
@@ -185,7 +185,7 @@ function restoredRuleWith(
 
 describe("edit-time typecheck resolves against the bundle catalog", () => {
   test("a user struct-typed anonymous parameter slot resolves without TileNotFound", () => {
-    const environment = createMindcraftEnvironment({ modules: [coreModule(), structTypeModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule(), structTypeModule()] });
 
     const steerCallDef = mkCallDef(bag(param("steer.position", { anonymous: true })));
     const steer = actuatorTile("steer", steerCallDef);
@@ -216,7 +216,7 @@ describe("edit-time typecheck resolves against the bundle catalog", () => {
   });
 
   test("a built-in anonymous parameter slot still resolves (no regression)", () => {
-    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule()] });
 
     const callDef = mkCallDef(bag(param(CoreParameterId.AnonymousNumber, { anonymous: true })));
     const nudge = actuatorTile("nudge", callDef);
@@ -239,7 +239,7 @@ describe("edit-time typecheck resolves against the bundle catalog", () => {
   });
 
   test("a genuinely-unknown parameter tile id still reports TileNotFound", () => {
-    const environment = createMindcraftEnvironment({ modules: [coreModule(), structTypeModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule(), structTypeModule()] });
 
     // The actuator's anonymous slot references a parameter tile id that is
     // registered in no catalog at all.

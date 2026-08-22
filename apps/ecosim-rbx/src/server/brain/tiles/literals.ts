@@ -1,4 +1,4 @@
-import { BrainTileLiteralDef, type MindcraftModuleApi, mkNativeStructValue } from "@mindcraft-lang/core/app";
+import { BrainTileLiteralDef, mkNativeStructValue, type WendooModuleApi } from "@wendoo-lang/core/app";
 import { getSelf, getTargetActor } from "../execution-context-types";
 import { TargetActorCapabilityBitSet } from "../tileids";
 import { EcosimTypeIds } from "../type-system";
@@ -8,7 +8,7 @@ import { EcosimTypeIds } from "../type-system";
  *
  * @param api - The module registration API.
  */
-export function registerLiteralTiles(api: MindcraftModuleApi) {
+export function registerLiteralTiles(api: WendooModuleApi) {
   const meVisual = {
     label: "me",
   };

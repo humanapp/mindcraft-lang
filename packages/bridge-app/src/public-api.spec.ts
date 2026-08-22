@@ -11,12 +11,12 @@ import type {
   ProjectFileChange,
   ProjectFileSnapshot,
   ProjectFileSystem,
-} from "@mindcraft-lang/bridge-app";
+} from "@wendoo-lang/bridge-app";
 import {
   createCompilationFeature,
   type DiagnosticSnapshot,
   type ProjectFileCompiler,
-} from "@mindcraft-lang/bridge-app/compilation";
+} from "@wendoo-lang/bridge-app/compilation";
 
 type RootContracts = [
   AppBridge,

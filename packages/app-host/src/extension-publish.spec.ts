@@ -5,7 +5,7 @@ import type {
   ExtensionPublishCommit,
   ExtensionPublishSource,
   PublishVersionBump,
-} from "@mindcraft-lang/app-host";
+} from "@wendoo-lang/app-host";
 import {
   bumpVersion,
   deriveCoordinateFromRemoteUrl,
@@ -14,7 +14,7 @@ import {
   publishExtensionVersion,
   serializeProjectContentManifest,
   validateProjectContentManifest,
-} from "@mindcraft-lang/app-host";
+} from "@wendoo-lang/app-host";
 
 const COORDINATE = "acme/position";
 
@@ -22,7 +22,7 @@ function memorySource(files: Record<string, string | Uint8Array>): ExtensionPubl
   const encoder = new TextEncoder();
   return {
     readManifest: async () => {
-      const content = files["mindcraft.json"];
+      const content = files["wendoo.json"];
       if (content === undefined) return undefined;
       return typeof content === "string" ? content : new TextDecoder().decode(content);
     },
@@ -105,7 +105,7 @@ describe("githubRemoteUrlForCoordinate", () => {
   });
 
   it("round-trips through deriveCoordinateFromRemoteUrl", () => {
-    for (const coordinate of ["acme/position", "mindcraft-lang/lib-codal-position", "a1/b2.c3"]) {
+    for (const coordinate of ["acme/position", "wendoo-lang/lib-codal-position", "a1/b2.c3"]) {
       assert.equal(deriveCoordinateFromRemoteUrl(githubRemoteUrlForCoordinate(coordinate)), coordinate);
     }
   });
@@ -119,7 +119,7 @@ describe("githubRemoteUrlForCoordinate", () => {
 describe("publishExtensionVersion", () => {
   it("publishes the bumped manifest followed by each listed file", async () => {
     const source = memorySource({
-      "mindcraft.json": manifestText({ name: "Position", version: "0.1.0", files: ["index.ts", "assets/a.bin"] }),
+      "wendoo.json": manifestText({ name: "Position", version: "0.1.0", files: ["index.ts", "assets/a.bin"] }),
       "index.ts": "export const x = 1;",
       "assets/a.bin": new Uint8Array([0, 1, 255, 128]),
     });
@@ -134,7 +134,7 @@ describe("publishExtensionVersion", () => {
     assert.equal(commit.tag, "v0.1.1");
     assert.deepEqual(
       commit.files.map((file) => file.path),
-      ["mindcraft.json", "index.ts", "assets/a.bin", "README.md"]
+      ["wendoo.json", "index.ts", "assets/a.bin", "README.md"]
     );
     const published = JSON.parse(decode(commit.files[0].content)) as Record<string, unknown>;
     assert.equal(published.version, "0.1.1");
@@ -149,7 +149,7 @@ describe("publishExtensionVersion", () => {
       ["major", "2.0.0"],
     ];
     for (const [bump, expected] of cases) {
-      const source = memorySource({ "mindcraft.json": manifestText({ name: "P", version: "1.2.3" }) });
+      const source = memorySource({ "wendoo.json": manifestText({ name: "P", version: "1.2.3" }) });
       const { backend } = memoryBackend();
       const result = await publishExtensionVersion({ bump, coordinate: COORDINATE, source, backend });
       assert.equal(result.ok, true);
@@ -169,7 +169,7 @@ describe("publishExtensionVersion", () => {
       brains: { main: { rules: [1, 2, 3], nested: { deep: true } } },
       appChunk: ["verbatim", null, 4],
     });
-    const source = memorySource({ "mindcraft.json": original, "index.ts": "export {};" });
+    const source = memorySource({ "wendoo.json": original, "index.ts": "export {};" });
     const { backend, applied } = memoryBackend();
 
     const result = await publishExtensionVersion({ bump: "patch", coordinate: COORDINATE, source, backend });
@@ -182,7 +182,7 @@ describe("publishExtensionVersion", () => {
 
   it("stamps the identity on a first as-is publish of a manifest without one", async () => {
     const source = memorySource({
-      "mindcraft.json": manifestText({ name: "P", version: "0.3.0", files: ["index.ts"] }),
+      "wendoo.json": manifestText({ name: "P", version: "0.3.0", files: ["index.ts"] }),
       "index.ts": "export {};",
     });
     const { backend, applied } = memoryBackend({
@@ -200,7 +200,7 @@ describe("publishExtensionVersion", () => {
 
   it("restamps a changed identity and reports the replaced value", async () => {
     const source = memorySource({
-      "mindcraft.json": manifestText({ name: "P", version: "0.3.0", identity: "old-owner/position" }),
+      "wendoo.json": manifestText({ name: "P", version: "0.3.0", identity: "old-owner/position" }),
     });
     const { backend, applied } = memoryBackend();
 
@@ -220,7 +220,7 @@ describe("publishExtensionVersion", () => {
   it("refuses a publish without a coordinate", async () => {
     const result = await publishExtensionVersion({
       bump: "patch",
-      source: memorySource({ "mindcraft.json": manifestText({ name: "P", version: "0.1.0" }) }),
+      source: memorySource({ "wendoo.json": manifestText({ name: "P", version: "0.1.0" }) }),
       backend: memoryBackend().backend,
     });
     assert.equal(result.ok, false);
@@ -230,7 +230,7 @@ describe("publishExtensionVersion", () => {
   it("refuses an as-is publish when the repository already has tags", async () => {
     const result = await publishExtensionVersion({
       coordinate: COORDINATE,
-      source: memorySource({ "mindcraft.json": manifestText({ name: "P", version: "0.3.0" }) }),
+      source: memorySource({ "wendoo.json": manifestText({ name: "P", version: "0.3.0" }) }),
       backend: memoryBackend({ hasAnyTags: async () => true }).backend,
     });
     assert.equal(result.ok, false);
@@ -252,7 +252,7 @@ describe("publishExtensionVersion", () => {
     const result = await publishExtensionVersion({
       bump: "patch",
       coordinate: COORDINATE,
-      source: memorySource({ "mindcraft.json": JSON.stringify({ version: "1.0.0" }) }),
+      source: memorySource({ "wendoo.json": JSON.stringify({ version: "1.0.0" }) }),
       backend: memoryBackend().backend,
     });
     assert.equal(result.ok, false);
@@ -264,7 +264,7 @@ describe("publishExtensionVersion", () => {
 
   it("refuses an unconfirmed branch dependency and proceeds when confirmed", async () => {
     const files = {
-      "mindcraft.json": manifestText({
+      "wendoo.json": manifestText({
         name: "P",
         version: "0.1.0",
         extensions: { "author/steering": "gh:author/steering#main" },
@@ -295,7 +295,7 @@ describe("publishExtensionVersion", () => {
 
   it("refuses an unconfirmed pin the fetch source does not serve and passes a published pin silently", async () => {
     const files = {
-      "mindcraft.json": manifestText({
+      "wendoo.json": manifestText({
         name: "P",
         version: "0.1.0",
         extensions: {
@@ -342,7 +342,7 @@ describe("publishExtensionVersion", () => {
       bump: "patch",
       coordinate: COORDINATE,
       source: memorySource({
-        "mindcraft.json": manifestText({
+        "wendoo.json": manifestText({
           name: "P",
           version: "0.1.0",
           extensions: { "author/position": "embedded:author/position" },
@@ -359,7 +359,7 @@ describe("publishExtensionVersion", () => {
       coordinate: COORDINATE,
       isPinPublished: async () => true,
       source: memorySource({
-        "mindcraft.json": manifestText({
+        "wendoo.json": manifestText({
           name: "P",
           version: "0.1.0",
           extensions: { "author/published": "gh:author/published@v1.0.0" },
@@ -375,12 +375,12 @@ describe("publishExtensionVersion", () => {
       bump: "patch",
       coordinate: COORDINATE,
       source: memorySource({
-        "mindcraft.json": manifestText({
+        "wendoo.json": manifestText({
           name: "P",
           version: "0.1.0",
           targets: {
-            "mindcraft-lang/lib-codal": { packageVersion: "^0.2.0" },
-            "mindcraft-lang/trg-microbit-v2": { packageVersion: "^0.2.0" },
+            "wendoo-lang/lib-codal": { packageVersion: "^0.2.0" },
+            "wendoo-lang/trg-microbit-v2": { packageVersion: "^0.2.0" },
           },
         }),
       }),
@@ -393,7 +393,7 @@ describe("publishExtensionVersion", () => {
     const result = await publishExtensionVersion({
       bump: "patch",
       coordinate: COORDINATE,
-      source: memorySource({ "mindcraft.json": manifestText({ name: "P", version: "0.1.0" }) }),
+      source: memorySource({ "wendoo.json": manifestText({ name: "P", version: "0.1.0" }) }),
       backend: memoryBackend({ isClean: async () => false }).backend,
     });
     assert.equal(result.ok, false);
@@ -404,7 +404,7 @@ describe("publishExtensionVersion", () => {
     const result = await publishExtensionVersion({
       bump: "patch",
       coordinate: COORDINATE,
-      source: memorySource({ "mindcraft.json": manifestText({ name: "P", version: "0.1.0" }) }),
+      source: memorySource({ "wendoo.json": manifestText({ name: "P", version: "0.1.0" }) }),
       backend: memoryBackend({
         readHeadManifest: async () => manifestText({ name: "P", version: "0.1.1" }),
       }).backend,
@@ -417,7 +417,7 @@ describe("publishExtensionVersion", () => {
     const result = await publishExtensionVersion({
       bump: "patch",
       coordinate: COORDINATE,
-      source: memorySource({ "mindcraft.json": manifestText({ name: "P", version: "0.1.0" }) }),
+      source: memorySource({ "wendoo.json": manifestText({ name: "P", version: "0.1.0" }) }),
       backend: memoryBackend({ tagExists: async (tag) => tag === "v0.1.1" }).backend,
     });
     assert.equal(result.ok, false);
@@ -429,7 +429,7 @@ describe("publishExtensionVersion", () => {
       bump: "patch",
       coordinate: COORDINATE,
       source: memorySource({
-        "mindcraft.json": manifestText({ name: "P", version: "0.1.0", files: ["ghost.ts"] }),
+        "wendoo.json": manifestText({ name: "P", version: "0.1.0", files: ["ghost.ts"] }),
       }),
       backend: memoryBackend().backend,
     });
@@ -442,7 +442,7 @@ describe("publishExtensionVersion", () => {
 
   it("publishes host-app bundle files at their content-relative paths after the listed files", async () => {
     const source = memorySource({
-      "mindcraft.json": manifestText({
+      "wendoo.json": manifestText({
         name: "Microbit V2",
         version: "0.1.0",
         files: ["index.ts"],
@@ -460,7 +460,7 @@ describe("publishExtensionVersion", () => {
     const commit = applied[0];
     assert.deepEqual(
       commit.files.map((file) => file.path),
-      ["mindcraft.json", "index.ts", "app/index.html", "app/assets/main.js", "README.md"]
+      ["wendoo.json", "index.ts", "app/index.html", "app/assets/main.js", "README.md"]
     );
     const published = JSON.parse(decode(commit.files[0].content)) as { hostApp?: unknown };
     assert.deepEqual(published.hostApp, { path: "app", files: ["app/index.html", "app/assets/main.js"] });
@@ -471,7 +471,7 @@ describe("publishExtensionVersion", () => {
     const result = await publishExtensionVersion({
       coordinate: COORDINATE,
       source: memorySource({
-        "mindcraft.json": manifestText({
+        "wendoo.json": manifestText({
           name: "Microbit V2",
           version: "0.1.0",
           hostApp: { path: "app", files: ["app/index.html", "app/ghost.js"] },
@@ -489,7 +489,7 @@ describe("publishExtensionVersion", () => {
 
   it("publishes the bumped manifest once even when the files list names it", async () => {
     const source = memorySource({
-      "mindcraft.json": manifestText({ name: "P", version: "0.1.0", files: ["mindcraft.json", "index.ts"] }),
+      "wendoo.json": manifestText({ name: "P", version: "0.1.0", files: ["wendoo.json", "index.ts"] }),
       "index.ts": "export {};",
     });
     const { backend, applied } = memoryBackend();
@@ -497,7 +497,7 @@ describe("publishExtensionVersion", () => {
     const result = await publishExtensionVersion({ bump: "patch", coordinate: COORDINATE, source, backend });
 
     assert.equal(result.ok, true);
-    const manifestEntries = applied[0].files.filter((file) => file.path === "mindcraft.json");
+    const manifestEntries = applied[0].files.filter((file) => file.path === "wendoo.json");
     assert.equal(manifestEntries.length, 1);
     const published = JSON.parse(decode(manifestEntries[0].content)) as Record<string, unknown>;
     assert.equal(published.version, "0.1.1");
@@ -505,7 +505,7 @@ describe("publishExtensionVersion", () => {
 
   it("adds a generated README carrying the name, coordinate, version, and library import to a library publish", async () => {
     const source = memorySource({
-      "mindcraft.json": manifestText({
+      "wendoo.json": manifestText({
         name: "Position",
         version: "0.1.0",
         description: "Tracks the robot position.",
@@ -530,7 +530,7 @@ describe("publishExtensionVersion", () => {
 
   it("adds a generated README with no library import to a target publish", async () => {
     const source = memorySource({
-      "mindcraft.json": manifestText({
+      "wendoo.json": manifestText({
         name: "Microbit V2",
         version: "0.2.0",
         files: ["index.ts"],
@@ -556,7 +556,7 @@ describe("publishExtensionVersion", () => {
   it("publishes the author's own README byte-for-byte and does not generate one", async () => {
     const authored = "# Written by the author\n\nCustom prose the generator would never produce.\n";
     const source = memorySource({
-      "mindcraft.json": manifestText({ name: "Position", version: "0.1.0", files: ["index.ts"] }),
+      "wendoo.json": manifestText({ name: "Position", version: "0.1.0", files: ["index.ts"] }),
       "index.ts": "export {};",
       "README.md": authored,
     });
@@ -574,7 +574,7 @@ describe("publishExtensionVersion", () => {
 
   it("leaves the published manifest's files array unchanged by the README furniture", async () => {
     const source = memorySource({
-      "mindcraft.json": manifestText({ name: "Position", version: "0.1.0", files: ["index.ts"] }),
+      "wendoo.json": manifestText({ name: "Position", version: "0.1.0", files: ["index.ts"] }),
       "index.ts": "export {};",
     });
     const { backend, applied } = memoryBackend();
@@ -589,7 +589,7 @@ describe("publishExtensionVersion", () => {
 
   it("does not add README furniture when the manifest already lists a README", async () => {
     const source = memorySource({
-      "mindcraft.json": manifestText({ name: "Position", version: "0.1.0", files: ["index.ts", "README.md"] }),
+      "wendoo.json": manifestText({ name: "Position", version: "0.1.0", files: ["index.ts", "README.md"] }),
       "index.ts": "export {};",
       "README.md": "# listed readme\n",
     });
@@ -630,7 +630,7 @@ function targetManifest(version: string, stamp = version): string {
 
 function targetSource(version: string, stamp = version): ExtensionPublishSource {
   return memorySource({
-    "mindcraft.json": targetManifest(version, stamp),
+    "wendoo.json": targetManifest(version, stamp),
     "index.ts": "export {};",
     "app/index.html": "<!doctype html>",
   });
@@ -679,7 +679,7 @@ describe("publishExtensionVersion for a target (hostApp)", () => {
   it("ships the rehearsal adapter the manifest declares", async () => {
     const { backend, applied } = memoryBackend();
     const source = memorySource({
-      "mindcraft.json": manifestText({
+      "wendoo.json": manifestText({
         name: "Microbit V2",
         version: "0.9.1",
         hostApp: { path: "app", files: ["app/index.html"] },
@@ -700,7 +700,7 @@ describe("publishExtensionVersion for a target (hostApp)", () => {
 
   it("refuses a target whose declared rehearsal adapter is not in the project", async () => {
     const source = memorySource({
-      "mindcraft.json": manifestText({
+      "wendoo.json": manifestText({
         name: "Microbit V2",
         version: "0.9.1",
         hostApp: { path: "app", files: ["app/index.html"] },
@@ -717,7 +717,7 @@ describe("publishExtensionVersion for a target (hostApp)", () => {
 
   it("ships a target that carries no build-version stamp", async () => {
     const source = memorySource({
-      "mindcraft.json": manifestText({
+      "wendoo.json": manifestText({
         name: "Microbit V2",
         version: "0.9.1",
         files: ["index.ts"],

@@ -13,11 +13,11 @@ import {
   type ProjectFileSnapshot,
   type ProjectFileSystem,
   type ProjectManager,
-} from "@mindcraft-lang/app-host";
-import type { IBrainDef, MindcraftBrain } from "@mindcraft-lang/core/app";
-import { BrainDef, CoreTypeIds, coreModule, List, mkSensorTileId } from "@mindcraft-lang/core/app";
-import type { IBrainActionTileDef, IBrainTileDef } from "@mindcraft-lang/core/brain";
-import { type CompileDiagnostic, declarationMount, type WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
+} from "@wendoo-lang/app-host";
+import type { IBrainDef, WendooBrain } from "@wendoo-lang/core/app";
+import { BrainDef, CoreTypeIds, coreModule, List, mkSensorTileId } from "@wendoo-lang/core/app";
+import type { IBrainActionTileDef, IBrainTileDef } from "@wendoo-lang/core/brain";
+import { type CompileDiagnostic, declarationMount, type WorkspaceCompileResult } from "@wendoo-lang/ts-compiler";
 import { AppEnvironmentHost } from "./app-environment-host.js";
 import { collectBrainTileCompileDiagnostics } from "./brain-diagnostics.js";
 import type { EmbeddedExtension } from "./embedded-extensions.js";
@@ -97,12 +97,9 @@ function installEmptyLocalStorage(): () => void {
   };
 }
 
-const CORE_AMBIENT = readFileSync(
-  fileURLToPath(new URL("../../core/lib/mindcraft.core.d.ts", import.meta.url)),
-  "utf8"
-);
+const CORE_AMBIENT = readFileSync(fileURLToPath(new URL("../../core/lib/wendoo.core.d.ts", import.meta.url)), "utf8");
 
-const NO_ID_SENSOR_SOURCE = `import { Sensor, type Context } from "mindcraft";
+const NO_ID_SENSOR_SOURCE = `import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "scan",
@@ -154,7 +151,7 @@ describe("AppEnvironmentHost user-action id write-back", () => {
     const host = new AppEnvironmentHost({
       projectManager: stubProjectManager(filesystem),
       modules: [coreModule()],
-      mounts: [declarationMount([{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }])],
+      mounts: [declarationMount([{ path: "wendoo.core.d.ts", content: CORE_AMBIENT }])],
     });
 
     try {
@@ -355,7 +352,7 @@ describe("AppEnvironmentHost project transitions", () => {
 
 const PROJECT_ID = "p1";
 
-const POSITION_SOURCE = `import { NumberType, type StructOf, StructType } from "mindcraft";
+const POSITION_SOURCE = `import { NumberType, type StructOf, StructType } from "wendoo";
 
 export const Position = StructType({
   name: "Position",
@@ -367,7 +364,7 @@ export const Position = StructType({
 export type Position = StructOf<typeof Position>;
 `;
 
-const STICK_SENSOR_SOURCE = `import { type Context, Sensor } from "mindcraft";
+const STICK_SENSOR_SOURCE = `import { type Context, Sensor } from "wendoo";
 import { Position } from "./position";
 
 export default Sensor({
@@ -473,7 +470,7 @@ function createHost(projectManager: ProjectManager): AppEnvironmentHost {
   return new AppEnvironmentHost({
     projectManager,
     modules: [coreModule()],
-    mounts: [declarationMount([{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }])],
+    mounts: [declarationMount([{ path: "wendoo.core.d.ts", content: CORE_AMBIENT }])],
   });
 }
 
@@ -693,13 +690,13 @@ describe("AppEnvironmentHost namespaced-key save and reload", () => {
   });
 
   it("stores extension references absolute while own references stay relative, and both survive import", async () => {
-    const POS_COORDINATE = "mindcraft-lang/pos-lib";
+    const POS_COORDINATE = "wendoo-lang/pos-lib";
     const POS_EXTENSION: EmbeddedExtension = {
       canonicalOrigin: POS_COORDINATE,
       files: [
         {
           path: "index.ts",
-          content: `import { type Context, NumberType, Sensor, type StructOf, StructType } from "mindcraft";
+          content: `import { type Context, NumberType, Sensor, type StructOf, StructType } from "wendoo";
 
 export const EPos = StructType({
   name: "EPos",
@@ -727,7 +724,7 @@ export default Sensor({
       new AppEnvironmentHost({
         projectManager,
         modules: [coreModule()],
-        mounts: [declarationMount([{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }])],
+        mounts: [declarationMount([{ path: "wendoo.core.d.ts", content: CORE_AMBIENT }])],
         embeddedExtensions: [POS_EXTENSION],
       });
     const installExtension = (stub: AppDataStub): void => {
@@ -873,7 +870,7 @@ export default Sensor({
 // ---------------------------------------------------------------------------
 
 const DEMO_REPO = "demo-lib";
-const DEMO_COORDINATE = `mindcraft-lang/${DEMO_REPO}`;
+const DEMO_COORDINATE = `wendoo-lang/${DEMO_REPO}`;
 const DEMO_REFERENCE = `embedded:${DEMO_COORDINATE}`;
 
 /** A minimal embedded extension whose entry re-exports a pure helper. */
@@ -886,8 +883,8 @@ const DEMO_EXTENSION: EmbeddedExtension = {
 };
 
 /** A sensor whose value comes from the embedded extension's helper, imported via `@lib`. */
-const EXT_SENSOR_SOURCE = `import { Sensor, type Context } from "mindcraft";
-import { level } from "@lib/mindcraft-lang/demo-lib";
+const EXT_SENSOR_SOURCE = `import { Sensor, type Context } from "wendoo";
+import { level } from "@lib/wendoo-lang/demo-lib";
 
 export default Sensor({
   id: "extSensor00000001",
@@ -902,7 +899,7 @@ function createEmbeddedExtensionHost(projectManager: ProjectManager): AppEnviron
   return new AppEnvironmentHost({
     projectManager,
     modules: [coreModule()],
-    mounts: [declarationMount([{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }])],
+    mounts: [declarationMount([{ path: "wendoo.core.d.ts", content: CORE_AMBIENT }])],
     embeddedExtensions: [DEMO_EXTENSION],
   });
 }
@@ -967,7 +964,7 @@ describe("AppEnvironmentHost live extension changes", () => {
     const host = new AppEnvironmentHost({
       projectManager,
       modules: [coreModule()],
-      mounts: [declarationMount([{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }])],
+      mounts: [declarationMount([{ path: "wendoo.core.d.ts", content: CORE_AMBIENT }])],
       embeddedExtensions: [DEMO_EXTENSION],
       onDidCompile: (result) => {
         latest = result;
@@ -1005,7 +1002,7 @@ describe("AppEnvironmentHost live extension changes", () => {
       assert.equal(hasLevelTile(), true, "the sensor compiles into a user tile once the add-on is installed live");
       assert.equal(levelActionOffered(), true, "the tile becomes executable once the add-on is installed live");
 
-      // Uninstall live: the mount drops, `.libraries/mindcraft-lang/demo-lib`
+      // Uninstall live: the mount drops, `.libraries/wendoo-lang/demo-lib`
       // de-materializes, and the import is unresolved once more. The user's
       // tile keeps its last successfully compiled program for the session.
       await host.updateProjectExtensions({});
@@ -1027,7 +1024,7 @@ describe("AppEnvironmentHost resolution-warning subscription", () => {
     const host = new AppEnvironmentHost({
       projectManager,
       modules: [coreModule()],
-      mounts: [declarationMount([{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }])],
+      mounts: [declarationMount([{ path: "wendoo.core.d.ts", content: CORE_AMBIENT }])],
       embeddedExtensions: [DEMO_EXTENSION],
     });
 
@@ -1158,7 +1155,7 @@ describe("AppEnvironmentHost brain persistence across project switches", () => {
 // ---------------------------------------------------------------------------
 
 const SIGNAL_REPO = "signal-lib";
-const SIGNAL_COORDINATE = `mindcraft-lang/${SIGNAL_REPO}`;
+const SIGNAL_COORDINATE = `wendoo-lang/${SIGNAL_REPO}`;
 const SIGNAL_REFERENCE = `embedded:${SIGNAL_COORDINATE}`;
 const SIGNAL_SENSOR_ID = "signalSensor0001";
 
@@ -1171,7 +1168,7 @@ const SIGNAL_EXTENSION: EmbeddedExtension = {
   files: [
     {
       path: "index.ts",
-      content: `import { Sensor, type Context } from "mindcraft";
+      content: `import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   id: "${SIGNAL_SENSOR_ID}",
@@ -1186,7 +1183,7 @@ export default Sensor({
 };
 
 /** A host-owned sensor that keeps the bundle non-empty whether or not the extension is installed. */
-const HOST_SENSOR_SOURCE = `import { Sensor, type Context } from "mindcraft";
+const HOST_SENSOR_SOURCE = `import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   id: "hostSensor000001",
@@ -1205,7 +1202,7 @@ function findBundleTile(tiles: readonly IBrainTileDef[], tileId: string): IBrain
 }
 
 /** True when the brain's linked program binds the given bytecode action key. */
-function brainBindsAction(brain: MindcraftBrain, key: string): boolean {
+function brainBindsAction(brain: WendooBrain, key: string): boolean {
   const actions = brain.getProgram()?.actions;
   if (!actions) return false;
   for (let i = 0; i < actions.size(); i++) {
@@ -1227,7 +1224,7 @@ describe("AppEnvironmentHost compile-scheduled brain rebuild", () => {
     const host = new AppEnvironmentHost({
       projectManager,
       modules: [coreModule()],
-      mounts: [declarationMount([{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }])],
+      mounts: [declarationMount([{ path: "wendoo.core.d.ts", content: CORE_AMBIENT }])],
       embeddedExtensions: [SIGNAL_EXTENSION],
       onDidCompile: (result) => {
         if (result.bundle) {
@@ -1313,7 +1310,7 @@ describe("AppEnvironmentHost brain cache reconciliation", () => {
     const host = new AppEnvironmentHost({
       projectManager: stubProjectManagerWithAppData(appData),
       modules: [coreModule()],
-      mounts: [declarationMount([{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }])],
+      mounts: [declarationMount([{ path: "wendoo.core.d.ts", content: CORE_AMBIENT }])],
     });
 
     try {
@@ -1323,7 +1320,7 @@ describe("AppEnvironmentHost brain cache reconciliation", () => {
       await host.saveBrainForKey("drop", BrainDef.emptyBrainDef(host.env.brainServices, "dropped"));
       const keptInstance = host.getCachedBrain("keep");
 
-      // Simulate an external mindcraft.json edit: the stored brains record is
+      // Simulate an external wendoo.json edit: the stored brains record is
       // rewritten with "edit" replaced and "drop" removed.
       const replacement = host.serializeBrainForStorage(BrainDef.emptyBrainDef(host.env.brainServices, "after"));
       const record = JSON.parse(appData.get("brains")!) as Record<string, unknown>;
@@ -1387,7 +1384,7 @@ describe("AppEnvironmentHost unreadable stored records", () => {
     return new AppEnvironmentHost({
       projectManager,
       modules: [coreModule()],
-      mounts: [declarationMount([{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }])],
+      mounts: [declarationMount([{ path: "wendoo.core.d.ts", content: CORE_AMBIENT }])],
     });
   }
 
@@ -1585,7 +1582,7 @@ describe("AppEnvironmentHost tile compile errors", () => {
     const host = new AppEnvironmentHost({
       projectManager,
       modules: [coreModule()],
-      mounts: [declarationMount([{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }])],
+      mounts: [declarationMount([{ path: "wendoo.core.d.ts", content: CORE_AMBIENT }])],
       embeddedExtensions: [DEMO_EXTENSION],
       onDidCompile: (result) => {
         latest = result;
@@ -1660,7 +1657,7 @@ describe("AppEnvironmentHost tile compile errors", () => {
 // ---------------------------------------------------------------------------
 
 /** The `level` sensor rewritten without the `@lib` import, so it compiles cleanly. */
-const EXT_SENSOR_FIXED_SOURCE = `import { Sensor, type Context } from "mindcraft";
+const EXT_SENSOR_FIXED_SOURCE = `import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   id: "extSensor00000001",
@@ -1721,7 +1718,7 @@ describe("AppEnvironmentHost broken-tile brain diagnostics", () => {
     const host = new AppEnvironmentHost({
       projectManager,
       modules: [coreModule()],
-      mounts: [declarationMount([{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }])],
+      mounts: [declarationMount([{ path: "wendoo.core.d.ts", content: CORE_AMBIENT }])],
       embeddedExtensions: [DEMO_EXTENSION],
       onDidCompile: (result) => {
         latest = result;

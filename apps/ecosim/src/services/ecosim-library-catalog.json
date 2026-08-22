@@ -1,18 +1,18 @@
 {
-  "format": "mindcraft.catalog/1",
+  "format": "wendoo.catalog/1",
   "entries": [
     {
       "kind": "library",
-      "coordinate": "mindcraft-lang/lib-ecosim-teleport",
-      "ref": "embedded:mindcraft-lang/lib-ecosim-teleport",
+      "coordinate": "wendoo-lang/lib-ecosim-teleport",
+      "ref": "embedded:wendoo-lang/lib-ecosim-teleport",
       "name": "Teleport",
       "version": "0.1.1",
       "description": "Teleport actuator for the ecosystem simulation: move an actor to a position, another actor, or the current target."
     },
     {
       "kind": "library",
-      "coordinate": "mindcraft-lang/lib-ecosim-detect",
-      "ref": "embedded:mindcraft-lang/lib-ecosim-detect",
+      "coordinate": "wendoo-lang/lib-ecosim-detect",
+      "ref": "embedded:wendoo-lang/lib-ecosim-detect",
       "name": "Detect",
       "version": "0.1.1",
       "description": "Detect sensor for the ecosystem simulation: find the nearest actor by kind and distance, exposing it as the rule target."

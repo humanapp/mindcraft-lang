@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { ProjectFileChange } from "@mindcraft-lang/app-host";
-import type { FileSystemNotification, FolderAppMessage, FolderHostMessage } from "@mindcraft-lang/bridge-protocol";
-import { FOLDER_SESSION_PROTOCOL_VERSION, FolderSessionErrorCode } from "@mindcraft-lang/bridge-protocol";
+import type { ProjectFileChange } from "@wendoo-lang/app-host";
+import type { FileSystemNotification, FolderAppMessage, FolderHostMessage } from "@wendoo-lang/bridge-protocol";
+import { FOLDER_SESSION_PROTOCOL_VERSION, FolderSessionErrorCode } from "@wendoo-lang/bridge-protocol";
 import type { FolderAppDataCodec, FolderHostPort, FolderHostSession } from "./folder-host-session.js";
 import { connectFolderHostSession, FolderSessionError } from "./folder-host-session.js";
 import { WorkspaceFolderStoreError, WorkspaceFolderStoreErrorCode } from "./workspace-folder-project-store.js";
 
 const APP_NAME = "test-app";
 const PROJECT_ID = "folder-project";
-const MANIFEST_PATH = "mindcraft.json";
+const MANIFEST_PATH = "wendoo.json";
 
 /** In-memory folder model speaking the host side of the folder-session protocol. */
 class FakeFolderHost {
@@ -76,7 +76,7 @@ class FakeFolderHost {
             id: message.id,
             payload: {
               code: FolderSessionErrorCode.PROJECT_MANIFEST_NOT_FOUND,
-              message: "mindcraft.json not found",
+              message: "wendoo.json not found",
             },
           });
           return;
@@ -190,7 +190,7 @@ function manifestText(overrides?: Record<string, unknown>): string {
       name: "Folder Project",
       version: "0.1.0",
       description: "on disk",
-      extensions: { "mindcraft-lang/microbit-v2": "embedded:mindcraft-lang/microbit-v2" },
+      extensions: { "wendoo-lang/microbit-v2": "embedded:wendoo-lang/microbit-v2" },
       keepMe: { nested: true },
       ...overrides,
     },
@@ -224,7 +224,7 @@ describe("WorkspaceFolderProjectStore", () => {
     assert.strictEqual(project.version, "0.1.0");
     assert.strictEqual(project.description, "on disk");
     assert.deepStrictEqual(project.extensions, {
-      "mindcraft-lang/microbit-v2": "embedded:mindcraft-lang/microbit-v2",
+      "wendoo-lang/microbit-v2": "embedded:wendoo-lang/microbit-v2",
     });
 
     const collections = await store.listProjectCollections();

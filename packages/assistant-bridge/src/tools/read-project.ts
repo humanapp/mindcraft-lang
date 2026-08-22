@@ -1,9 +1,9 @@
-import type { ReadonlyList } from "@mindcraft-lang/core";
-import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
-import { RuleSide } from "@mindcraft-lang/core/brain";
-import { tileSentenceWord } from "@mindcraft-lang/core/brain/language-service";
-import type { BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import type { Localizer } from "@mindcraft-lang/core/localization";
+import type { ReadonlyList } from "@wendoo-lang/core";
+import type { IBrainTileDef } from "@wendoo-lang/core/brain";
+import { RuleSide } from "@wendoo-lang/core/brain";
+import { tileSentenceWord } from "@wendoo-lang/core/brain/language-service";
+import type { BrainPageDef, BrainRuleDef } from "@wendoo-lang/core/brain/model";
+import type { Localizer } from "@wendoo-lang/core/localization";
 import type { AuthoringWorkspace } from "./workspace.js";
 
 /** One tile as it appears on a rule side. */

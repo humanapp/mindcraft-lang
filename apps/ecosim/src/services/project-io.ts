@@ -1,10 +1,10 @@
-import { buildActiveProjectExportDocument, type ProjectManager } from "@mindcraft-lang/app-host";
+import { buildActiveProjectExportDocument, type ProjectManager } from "@wendoo-lang/app-host";
 import type { Archetype } from "@/brain/actor";
 import { ARCHETYPES } from "@/brain/archetypes";
 import type { Obstacle } from "@/brain/vision";
 import { name as simName } from "../../package.json";
 
-/** One actor roster entry of the sim's session chunk in a shared `.mindcraft` document. */
+/** One actor roster entry of the sim's session chunk in a shared `.wendoo` document. */
 export interface EcosimAppChunkActor {
   /** Archetype name of the roster entry. */
   archetype: string;
@@ -21,7 +21,7 @@ export interface EcosimAppChunk {
 }
 
 /**
- * Builds a shared `.mindcraft` document string for the active project: the
+ * Builds a shared `.wendoo` document string for the active project: the
  * common export document with the sim's session chunk embedded in the
  * manifest's `app` map under the sim's own key. Chunks stored for other apps
  * are preserved.

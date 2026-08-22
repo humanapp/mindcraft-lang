@@ -1,17 +1,17 @@
-import type { AuthoringWorkspace } from "@mindcraft-lang/assistant-bridge";
-import type { ToolCallMediator } from "@mindcraft-lang/assistant-bridge/relay";
-import { serveToolCalls, unservedToolResults } from "@mindcraft-lang/assistant-bridge/relay";
+import type { AuthoringWorkspace } from "@wendoo-lang/assistant-bridge";
+import type { ToolCallMediator } from "@wendoo-lang/assistant-bridge/relay";
+import { serveToolCalls, unservedToolResults } from "@wendoo-lang/assistant-bridge/relay";
 import type {
   ConversationTurnEnding,
   RelayToolCallBatch,
   RelayToolManifest,
   RelayToolResultBatch,
-} from "@mindcraft-lang/assistant-relay";
+} from "@wendoo-lang/assistant-relay";
 import {
   ASSISTANT_RELAY_PROTOCOL_VERSION,
   ConversationTurnFailureCode,
   RelayTakeoverCode,
-} from "@mindcraft-lang/assistant-relay";
+} from "@wendoo-lang/assistant-relay";
 import type { PersonActivity } from "../app/person-activity";
 import type { ConversationStore, ConversationUpdate } from "../conversation/store";
 import { emptyConversationStore, recordFor, withActiveBrain, withUpdate } from "../conversation/store";

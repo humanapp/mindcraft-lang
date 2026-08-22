@@ -14,7 +14,7 @@
     "moduleDetection": "force",
     "strict": true,
     "target": "ESNext",
-    "typeRoots": ["node_modules/@rbxts", "node_modules/@mindcraft-lang"],
+    "typeRoots": ["node_modules/@rbxts", "node_modules/@wendoo-lang"],
     "rootDir": "src",
     "outDir": "out",
     "baseUrl": "src",

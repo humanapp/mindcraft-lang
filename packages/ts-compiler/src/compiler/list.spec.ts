@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, runtime } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
+import { List, runtime } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { ExecutionContext } from "@wendoo-lang/core/runtime";
 import {
   type BooleanValue,
   ContextTypeIds,
@@ -31,8 +31,8 @@ import {
   type Value,
   ValueDict,
   VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
@@ -158,7 +158,7 @@ describe("array/list literal compilation", () => {
   test("array literal with 3 elements compiles and executes", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "make-list",
@@ -200,7 +200,7 @@ export default Sensor({
   test("empty array compiles to empty list", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "empty-list",
@@ -239,7 +239,7 @@ export default Sensor({
   test("array as return value (contextual type from return annotation)", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "return-list",
@@ -279,7 +279,7 @@ export default Sensor({
   test("nested arrays compile to nested list construction", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Vector2, type Vector2List } from "mindcraft";
+import { Sensor, type Context, type Vector2, type Vector2List } from "wendoo";
 
 export default Sensor({
   name: "nested-list",
@@ -349,7 +349,7 @@ describe("mixed-type list compilation (AnyList)", () => {
   test("mixed-type array literal compiles and executes", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type AnyList } from "mindcraft";
+import { Sensor, type Context, type AnyList } from "wendoo";
 
 export default Sensor({
   name: "mixed-list",
@@ -391,7 +391,7 @@ export default Sensor({
   test("homogeneous array still resolves to NumberList, not AnyList", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "num-list",
@@ -431,7 +431,7 @@ export default Sensor({
   test("empty array with AnyList annotation compiles correctly", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type AnyList } from "mindcraft";
+import { Sensor, type Context, type AnyList } from "wendoo";
 
 export default Sensor({
   name: "empty-any",
@@ -470,7 +470,7 @@ export default Sensor({
   test("buildAmbientDeclarations includes AnyList type alias", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     assert.ok(
-      ambientSource.includes("export type AnyList = Array<MindcraftValue>;"),
+      ambientSource.includes("export type AnyList = Array<WendooValue>;"),
       "AnyList type alias should be in ambient declarations"
     );
   });
@@ -498,7 +498,7 @@ describe("list element access and methods", () => {
   test("element access reads from list by index", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-elem-access",
@@ -532,7 +532,7 @@ export default Sensor({
   test("element access with variable index", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, optional, param, type Context, type NumberList } from "mindcraft";
+import { Sensor, optional, param, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-elem-var-idx",
@@ -570,7 +570,7 @@ export default Sensor({
   test("element access on list supports stringified indexes", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-elem-string-idx",
@@ -604,7 +604,7 @@ export default Sensor({
   test('element access on list supports "length" like JS', () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-elem-length",
@@ -638,7 +638,7 @@ export default Sensor({
   test("element access on string supports stringified indexes", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test-str-elem-string-idx",
@@ -672,7 +672,7 @@ export default Sensor({
   test('element access on string supports "length" like JS', () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test-str-elem-length",
@@ -706,7 +706,7 @@ export default Sensor({
   test("element assignment sets value at index", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-elem-assign",
@@ -746,7 +746,7 @@ export default Sensor({
   test(".push() appends element to list", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-push",
@@ -784,7 +784,7 @@ export default Sensor({
   test(".indexOf() returns index of matching element", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-indexof",
@@ -818,7 +818,7 @@ export default Sensor({
   test(".indexOf() returns -1 when element not found", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-indexof-miss",
@@ -852,7 +852,7 @@ export default Sensor({
   test(".filter() creates new list with matching elements", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-filter",
@@ -890,7 +890,7 @@ export default Sensor({
   test(".filter() with closure capturing threshold variable", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, optional, param, type Context, type NumberList } from "mindcraft";
+import { Sensor, optional, param, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-filter-closure",
@@ -933,7 +933,7 @@ export default Sensor({
   test(".map() transforms each element", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-map",
@@ -972,7 +972,7 @@ export default Sensor({
   test(".map() with closure capturing multiplier", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, optional, param, type Context, type NumberList } from "mindcraft";
+import { Sensor, optional, param, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-map-closure",
@@ -1016,7 +1016,7 @@ export default Sensor({
   test(".forEach() iterates over all elements", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-foreach",
@@ -1054,7 +1054,7 @@ export default Sensor({
   test("for...of iterates over list elements", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-for-of",
@@ -1092,7 +1092,7 @@ export default Sensor({
   test("for...in iterates over list keys", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-for-in-list",
@@ -1130,7 +1130,7 @@ export default Sensor({
   test("for...of with break exits early", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-for-of-break",
@@ -1171,7 +1171,7 @@ export default Sensor({
   test("for...of with continue skips iteration", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-for-of-continue",
@@ -1213,7 +1213,7 @@ export default Sensor({
   test("for...of over empty list executes no body", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-for-of-empty",
@@ -1251,7 +1251,7 @@ export default Sensor({
   test(".includes() returns true when element found", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-includes-true",
@@ -1285,7 +1285,7 @@ export default Sensor({
   test(".includes() returns false when element not found", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-includes-false",
@@ -1319,7 +1319,7 @@ export default Sensor({
   test(".some() returns true when any element matches", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-some-true",
@@ -1353,7 +1353,7 @@ export default Sensor({
   test(".some() returns false when no element matches", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-some-false",
@@ -1387,7 +1387,7 @@ export default Sensor({
   test(".every() returns true when all elements match", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-every-true",
@@ -1421,7 +1421,7 @@ export default Sensor({
   test(".every() returns false when any element fails", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-every-false",
@@ -1455,7 +1455,7 @@ export default Sensor({
   test(".find() returns matching element", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-find-match",
@@ -1493,7 +1493,7 @@ export default Sensor({
   test(".find() returns undefined when no match", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-find-nomatch",
@@ -1531,7 +1531,7 @@ export default Sensor({
   test(".concat() merges two lists", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-concat",
@@ -1572,7 +1572,7 @@ export default Sensor({
   test(".reverse() creates reversed list", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-reverse",
@@ -1611,7 +1611,7 @@ export default Sensor({
   test(".slice() extracts sub-array", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-slice",
@@ -1650,7 +1650,7 @@ export default Sensor({
   test(".slice() with no args copies entire list", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-slice-copy",
@@ -1689,7 +1689,7 @@ export default Sensor({
   test(".join() concatenates elements with separator", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-join",
@@ -1723,7 +1723,7 @@ export default Sensor({
   test("unsupported array method produces diagnostic", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-sort",

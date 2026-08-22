@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, runtime } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext, Scheduler } from "@mindcraft-lang/core/runtime";
+import { List, runtime } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { ExecutionContext, Scheduler } from "@wendoo-lang/core/runtime";
 import {
   HandleTable,
   NativeType,
@@ -12,8 +12,8 @@ import {
   type StringValue,
   type Value,
   VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";
@@ -93,7 +93,7 @@ describe("Object literal - shorthand properties (struct)", () => {
 
   test("shorthand property creates struct field", () => {
     const v = compileAndRunNumber(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 interface Point { x: number; y: number; }
 export default Sensor({
   name: "test",
@@ -110,7 +110,7 @@ export default Sensor({
 
   test("mixed shorthand and explicit properties", () => {
     const v = compileAndRunNumber(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 interface Rect { x: number; y: number; w: number; h: number; }
 export default Sensor({
   name: "test",
@@ -127,7 +127,7 @@ export default Sensor({
 
   test("shorthand from function parameter", () => {
     const v = compileAndRunNumber(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 interface Named { name: string; age: number; }
 function makeNamed(name: string, age: number): Named {
   return { name, age };
@@ -145,7 +145,7 @@ export default Sensor({
 
   test("shorthand as function argument", () => {
     const v = compileAndRunNumber(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 interface Vec2 { x: number; y: number; }
 function sum(v: Vec2): number { return v.x + v.y; }
 export default Sensor({
@@ -166,7 +166,7 @@ describe("Object literal - shorthand properties (map)", () => {
 
   test("shorthand property creates map entry", () => {
     const v = compileAndRunNumber(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 export default Sensor({
   name: "test",
   onExecute(ctx: Context): number {
@@ -181,7 +181,7 @@ export default Sensor({
 
   test("mixed shorthand and explicit in map", () => {
     const v = compileAndRunNumber(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 export default Sensor({
   name: "test",
   onExecute(ctx: Context): number {

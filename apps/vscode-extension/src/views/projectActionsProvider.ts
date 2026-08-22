@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { PROJECT_ACTIONS } from "./projectActions";
 
-/** Tree data provider for the desktop Mindcraft explorer view: a flat list of command launchers. */
+/** Tree data provider for the desktop Wendoo explorer view: a flat list of command launchers. */
 export class ProjectActionsProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
   // TreeView.reveal resolves elements by identity, so getChildren must return
   // the same instances on every call.

@@ -8,8 +8,8 @@ import type {
   StructTypeDef,
   TypeDef,
   UnionTypeDef,
-} from "@mindcraft-lang/core/runtime";
-import { NativeType } from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
+import { NativeType } from "@wendoo-lang/core/runtime";
 
 const AMBIENT_HEADER = `/// <reference no-default-lib="true"/>
 
@@ -21,17 +21,17 @@ declare function parseFloat(string: string): number;
 declare function isNaN(number: number): boolean;
 declare function isFinite(number: number): boolean;
 
-/** @deprecated Not supported in Mindcraft Runtime */
+/** @deprecated Not supported in Wendoo Runtime */
 type Object = {};
-/** @deprecated Not supported in Mindcraft Runtime */
+/** @deprecated Not supported in Wendoo Runtime */
 type Function = {};
-/** @deprecated Not supported in Mindcraft Runtime */
+/** @deprecated Not supported in Wendoo Runtime */
 type CallableFunction = {};
-/** @deprecated Not supported in Mindcraft Runtime */
+/** @deprecated Not supported in Wendoo Runtime */
 type NewableFunction = {};
-/** @deprecated Not supported in Mindcraft Runtime */
+/** @deprecated Not supported in Wendoo Runtime */
 type IArguments = {};
-/** @deprecated Not supported in Mindcraft Runtime */
+/** @deprecated Not supported in Wendoo Runtime */
 type RegExp = {};
 
 interface SymbolConstructor {
@@ -337,8 +337,8 @@ type NoInfer<T> = intrinsic;
 `;
 
 const AMBIENT_MODULE_START = `
-declare module "mindcraft" {
-  interface MindcraftTypeMap {
+declare module "wendoo" {
+  interface WendooTypeMap {
     boolean: boolean;
     number: number;
     string: string;
@@ -346,12 +346,12 @@ declare module "mindcraft" {
 `;
 
 const AMBIENT_MODULE_END = `
-  type MindcraftValue = MindcraftTypeMap[keyof MindcraftTypeMap];
-  type MindcraftType = keyof MindcraftTypeMap | (string & {});
+  type WendooValue = WendooTypeMap[keyof WendooTypeMap];
+  type WendooType = keyof WendooTypeMap | (string & {});
   /** An \`enum\` binding used where a type is named; it names the enum's registered type. */
   type EnumTypeRef = Record<string, string | number>;
 
-  export interface MindcraftPlatformContext {}
+  export interface WendooPlatformContext {}
 
   interface ModifierSpec {
     readonly __brand: "modifier";
@@ -379,7 +379,7 @@ const AMBIENT_MODULE_END = `
   export function modifier(id: string, opts?: { label: string; icon?: string }): ModifierSpec;
   export function param(
     name: string,
-    opts: { type: MindcraftType | TypeRef<unknown> | EnumTypeRef; default?: unknown; anonymous?: boolean }
+    opts: { type: WendooType | TypeRef<unknown> | EnumTypeRef; default?: unknown; anonymous?: boolean }
   ): ParamSpec;
   export function choice(name: string, ...items: ArgSpec[]): ChoiceSpec;
   export function choice(...items: ArgSpec[]): ChoiceSpec;
@@ -398,7 +398,7 @@ const AMBIENT_MODULE_END = `
     /** Output name; the second half of the output identity. */
     name: string;
     /** Output value type, named by TypeRef token (preferred) or type name; the first half of the output identity. */
-    type: MindcraftType | TypeRef<unknown> | EnumTypeRef;
+    type: WendooType | TypeRef<unknown> | EnumTypeRef;
     label?: string;
     icon?: string;
     docs?: string;
@@ -458,14 +458,14 @@ const AMBIENT_MODULE_END = `
      */
     presenceGated?: boolean;
     /** Return value type, named by TypeRef token (preferred) or type name; defaults to the \`onExecute\` return annotation. */
-    returnType?: MindcraftType | TypeRef<unknown> | EnumTypeRef;
+    returnType?: WendooType | TypeRef<unknown> | EnumTypeRef;
     /**
      * Declares that this sensor consumes the rule's WHEN result, named by TypeRef
      * token (preferred) or type name. The editor uses it to offer and validate the
      * tile against the WHEN-result type. Declare it when \`onExecute\` reads
      * \`ctx.getWhenResult()\`.
      */
-    consumesWhenResult?: MindcraftType | TypeRef<unknown> | EnumTypeRef;
+    consumesWhenResult?: WendooType | TypeRef<unknown> | EnumTypeRef;
     args?: ArgSpec[];
     /** Named, typed outputs this sensor exposes; each surfaces downstream as an inline value-tile written via \`setOutput\`. */
     outputs?: OutputSpec[];
@@ -490,7 +490,7 @@ const AMBIENT_MODULE_END = `
      * tile against the WHEN-result type. Declare it when \`onExecute\` reads
      * \`ctx.getWhenResult()\`.
      */
-    consumesWhenResult?: MindcraftType | TypeRef<unknown> | EnumTypeRef;
+    consumesWhenResult?: WendooType | TypeRef<unknown> | EnumTypeRef;
     args?: ArgSpec[];
     onExecute(ctx: Context, args: Record<string, unknown>): void | Promise<void>;
     onPageEntered?(ctx: Context): void;
@@ -533,7 +533,7 @@ const AMBIENT_MODULE_END = `
   export function System<S, M>(config: SystemConfig<S> & M & ThisType<S & M>): S & M;
 
   /**
-   * Value token naming a registered Mindcraft type. \`T\` is the TS-side value
+   * Value token naming a registered Wendoo type. \`T\` is the TS-side value
    * type the token names; a surface that accepts a TypeRef infers its argument
    * and return types from the token.
    */
@@ -565,8 +565,8 @@ const AMBIENT_MODULE_END = `
   /** The TS value type a struct field type spec names. */
   type StructFieldValue<S> = S extends TypeRef<infer V>
     ? V
-    : S extends keyof MindcraftTypeMap
-      ? MindcraftTypeMap[S]
+    : S extends keyof WendooTypeMap
+      ? WendooTypeMap[S]
       : unknown;
 
   /** The TS object type of a struct instance, derived from a fields config. */
@@ -587,7 +587,7 @@ const AMBIENT_MODULE_END = `
    * accepted and constructs instances when called. Every importer of the
    * binding resolves to the one declared type.
    */
-  export function StructType<const F extends Record<string, TypeRef<unknown> | MindcraftType>>(
+  export function StructType<const F extends Record<string, TypeRef<unknown> | WendooType>>(
     config: StructTypeConfig<F>
   ): StructTypeBinding<StructValueOf<F>>;
 
@@ -599,9 +599,9 @@ const AMBIENT_MODULE_END = `
     /** Stable identifier for this conversion, assigned automatically on first compile. Treat as opaque; do not edit or reuse. */
     id?: string;
     /** Source type, named by an imported TypeRef token (preferred) or a type name. */
-    from: TypeRef<F> | MindcraftType;
+    from: TypeRef<F> | WendooType;
     /** Target type, named by an imported TypeRef token (preferred) or a type name. */
-    to: TypeRef<T> | MindcraftType;
+    to: TypeRef<T> | WendooType;
     /** Relative cost used to pick among conversion paths; a small positive integer. */
     cost: number;
     /** Computes the \`to\`-typed value from a \`from\`-typed value. Must be synchronous. */
@@ -654,7 +654,7 @@ function typeDefToTs(def: TypeDef, registry: ITypeRegistry): string {
     case NativeType.Buffer:
       return "Buffer";
     case NativeType.Any:
-      return "MindcraftValue";
+      return "WendooValue";
     case NativeType.Struct:
     case NativeType.Enum:
       return def.name;
@@ -703,7 +703,7 @@ function propertyName(name: string): string {
 function generateStructInterface(def: StructTypeDef, registry: ITypeRegistry): string {
   const nativeBacked = isNativeBacked(def);
   const hasPerFieldReadOnly = def.fields.some((f) => f.readOnly === true);
-  const extension = def.name === "Context" ? " extends MindcraftPlatformContext" : "";
+  const extension = def.name === "Context" ? " extends WendooPlatformContext" : "";
   let result = `  export interface ${def.name}${extension} {\n`;
   if (nativeBacked) {
     result += "    readonly __brand: unique symbol;\n";
@@ -849,7 +849,7 @@ export function buildAmbientDeclarations(types: ITypeRegistry): string {
   return buildAmbientDeclarationsFromRegistry(types);
 }
 
-/** Generate the core ambient declaration file for a registry containing only core Mindcraft types. */
+/** Generate the core ambient declaration file for a registry containing only core Wendoo types. */
 export function buildCoreAmbientDeclarations(types: ITypeRegistry): string {
   return buildAmbientDeclarationsFromRegistry(types);
 }
@@ -869,7 +869,7 @@ export interface PlatformAmbientOptions {
   includeAugmentations?: boolean;
 }
 
-/** Generate a platform ambient declaration file that augments the core Mindcraft module declarations. */
+/** Generate a platform ambient declaration file that augments the core Wendoo module declarations. */
 export function buildPlatformAmbientDeclarations(
   baseTypes: ITypeRegistry,
   platformTypes: ITypeRegistry,
@@ -882,5 +882,5 @@ export function buildPlatformAmbientDeclarations(
     (def) => baseTypes.get(def.typeId) === undefined && includeType(def)
   );
   const augmentations = includeAugmentations ? buildStructAugmentations(baseTypes, platformTypes) : "";
-  return `declare module "mindcraft" {\n  interface MindcraftTypeMap {\n${parts.typeMapEntries}  }\n\n${parts.typeDeclarations}${augmentations}}\n`;
+  return `declare module "wendoo" {\n  interface WendooTypeMap {\n${parts.typeMapEntries}  }\n\n${parts.typeDeclarations}${augmentations}}\n`;
 }

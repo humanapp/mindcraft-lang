@@ -1,5 +1,5 @@
-import type { BrainCommandHistory } from "@mindcraft-lang/core/brain/model";
-import { BrainEditOrigin } from "@mindcraft-lang/core/brain/model";
+import type { BrainCommandHistory } from "@wendoo-lang/core/brain/model";
+import { BrainEditOrigin } from "@wendoo-lang/core/brain/model";
 import type { RulePickupController } from "./RulePickupContext";
 
 /**

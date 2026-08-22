@@ -8,7 +8,7 @@ import { LoweringDiagCode } from "./diag-codes.js";
 describe("lowering diagnostics: list and array operations", () => {
   test("ArrayFromNonListSource: Array.from over a non-list value", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "t",
@@ -23,7 +23,7 @@ export default Sensor({
 
   test("CannotDetermineArrayFromResultListType: Array.from mapping to object elements", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "t",
@@ -39,7 +39,7 @@ export default Sensor({
 
   test("CannotDetermineListType: array literal of object elements", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "t",
@@ -54,7 +54,7 @@ export default Sensor({
 
   test("CannotDetermineMapResultListType: .map() callback returning `any`", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "t",
@@ -70,7 +70,7 @@ export default Sensor({
 
   test("CannotResolveOperatorForArrayMethod: .includes() over a struct array", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class P {
   x: number;
@@ -93,7 +93,7 @@ export default Sensor({
 
   test("ElementAccessOnNonListType: indexing an `any` value", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "t",
@@ -108,7 +108,7 @@ export default Sensor({
 
   test("ElementAccessAssignOnNonListType: index-assign to an `any` value", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "t",
@@ -124,7 +124,7 @@ export default Sensor({
 
   test("EveryRequiresOneArg: .every() called with two arguments", () => {
     const source = `
-import { Sensor, type Context, type AnyList } from "mindcraft";
+import { Sensor, type Context, type AnyList } from "wendoo";
 
 export default Sensor({
   name: "t",
@@ -139,7 +139,7 @@ export default Sensor({
 
   test("FilterRequiresOneArg: .filter() called with two arguments", () => {
     const source = `
-import { Sensor, type Context, type AnyList } from "mindcraft";
+import { Sensor, type Context, type AnyList } from "wendoo";
 
 export default Sensor({
   name: "t",
@@ -154,7 +154,7 @@ export default Sensor({
 
   test("FindIndexRequiresOneArg: .findIndex() called with two arguments", () => {
     const source = `
-import { Sensor, type Context, type AnyList } from "mindcraft";
+import { Sensor, type Context, type AnyList } from "wendoo";
 
 export default Sensor({
   name: "t",
@@ -169,7 +169,7 @@ export default Sensor({
 
   test("FindRequiresOneArg: .find() called with two arguments (thisArg)", () => {
     const source = `
-import { Sensor, type Context, type AnyList } from "mindcraft";
+import { Sensor, type Context, type AnyList } from "wendoo";
 
 export default Sensor({
   name: "find-two-args",
@@ -185,7 +185,7 @@ export default Sensor({
 
   test("ForEachRequiresOneArg: .forEach() called with two arguments (thisArg)", () => {
     const source = `
-import { Sensor, type Context, type AnyList } from "mindcraft";
+import { Sensor, type Context, type AnyList } from "wendoo";
 
 export default Sensor({
   name: "foreach-two-args",
@@ -201,7 +201,7 @@ export default Sensor({
 
   test("IncludesRequiresOneArg: .includes() with two arguments", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "t",
@@ -216,7 +216,7 @@ export default Sensor({
 
   test("IndexOfRequiresOneArg: .indexOf() with two arguments", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "t",
@@ -231,7 +231,7 @@ export default Sensor({
 
   test("LastIndexOfRequiresOneArg: .lastIndexOf() with two arguments", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "t",
@@ -248,7 +248,7 @@ export default Sensor({
     // The ambient `.map(callbackfn, thisArg?)` signature makes the second
     // argument optional, so TypeScript accepts two args; lowering requires one.
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "t",
@@ -264,7 +264,7 @@ export default Sensor({
 
   test("PushRequiresOneArg: `.push()` called with zero arguments", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 export default Sensor({
   name: "t",
   onExecute(ctx: Context): number {
@@ -280,7 +280,7 @@ export default Sensor({
   test("ReverseTakesNoArgs: .reverse() with a spread argument", () => {
     expectDiagnostic(
       compileTileDiagnostics(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 export default Sensor({
   name: "t",
   onExecute(ctx: Context): number {
@@ -298,7 +298,7 @@ export default Sensor({
   test("ShiftTakesNoArgs: .shift() with a spread argument", () => {
     expectDiagnostic(
       compileTileDiagnostics(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 export default Sensor({
   name: "t",
   onExecute(ctx: Context): number {
@@ -316,7 +316,7 @@ export default Sensor({
   test("SomeRequiresOneArg: .some() called with two arguments", () => {
     expectDiagnostic(
       compileTileDiagnostics(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 export default Sensor({
   name: "t",
   onExecute(ctx: Context): boolean {
@@ -332,7 +332,7 @@ export default Sensor({
   test("SliceTakesAtMostTwoArgs: .slice() with a trailing spread argument", () => {
     expectDiagnostic(
       compileTileDiagnostics(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 export default Sensor({
   name: "t",
   onExecute(ctx: Context): number {
@@ -349,7 +349,7 @@ export default Sensor({
 
   test("UnshiftRequiresOneArg: .unshift() with two arguments", () => {
     const source = `
-import { Sensor, type Context, type AnyList } from "mindcraft";
+import { Sensor, type Context, type AnyList } from "wendoo";
 export default Sensor({
   name: "t",
   onExecute(ctx: Context): AnyList {
@@ -366,7 +366,7 @@ export default Sensor({
 describe("lowering diagnostics: map literals and constructors", () => {
   test("MapConstructorBadArgument: constructor argument is not an array literal", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "t",
@@ -384,7 +384,7 @@ export default Sensor({
     // `new Map<K, V>()` typechecks for any K/V, but a `symbol` value type has
     // no VM type id, so lowering cannot resolve the map type.
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "t",
@@ -399,7 +399,7 @@ export default Sensor({
 
   test("UnsupportedPropertyInMapLiteral: getter in a map literal", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 export default Sensor({
   name: "t",
   onExecute(ctx: Context): number {
@@ -413,7 +413,7 @@ export default Sensor({
 
   test("UnsupportedPropertyNameInMapLiteral: computed property name in a map literal", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 export default Sensor({
   name: "t",
   onExecute(ctx: Context): number {
@@ -429,7 +429,7 @@ export default Sensor({
 describe("lowering diagnostics: object literals", () => {
   test("ObjectLiteralTypeUnresolvable: object literal typed as `any`", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 export default Sensor({
   name: "t",
   onExecute(ctx: Context): number {
@@ -443,7 +443,7 @@ export default Sensor({
 
   test("UnsupportedPropertyInObjectLiteral: getter in an object literal", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 interface Point { x: number; y: number; }
 export default Sensor({
   name: "t",
@@ -458,7 +458,7 @@ export default Sensor({
 
   test("UnsupportedPropertyNameInObjectLiteral: computed property name in an object literal", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 interface Point { x: number; y: number; }
 export default Sensor({
   name: "t",
@@ -475,7 +475,7 @@ export default Sensor({
 describe("lowering diagnostics: operators, conversions, and assignments", () => {
   test("CannotDetermineTypesForBinaryOp: binary op on `any` operands", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "t",
@@ -492,7 +492,7 @@ export default Sensor({
 
   test("CannotDetermineTypesForCompoundAssign: compound assign on `any`", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "t",
@@ -508,7 +508,7 @@ export default Sensor({
 
   test("CannotDetermineTypeForNotOperand: `!` on an `any` operand", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "t",
@@ -524,7 +524,7 @@ export default Sensor({
 
   test("CompoundAssignRequiresGetterAndSetter: compound assign to a setter-only property", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class C {
   _v: number = 0;
@@ -545,7 +545,7 @@ export default Sensor({
 
   test("IncrDecrTargetNotVariable: increment on element access", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "t",
@@ -561,7 +561,7 @@ export default Sensor({
 
   test("UnsupportedOperator: unsigned right shift", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "t",
@@ -577,7 +577,7 @@ export default Sensor({
 
   test("UnsupportedPrefixOperator: unary plus", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "t",
@@ -592,7 +592,7 @@ export default Sensor({
 
   test("UnsupportedCompoundAssignOperator: logical-or-assign on element access", () => {
     const source = `
-import { Sensor, type Context, type AnyList } from "mindcraft";
+import { Sensor, type Context, type AnyList } from "wendoo";
 export default Sensor({
   name: "t",
   onExecute(ctx: Context): number {
@@ -607,7 +607,7 @@ export default Sensor({
 
   test("UnsupportedPropertyAccess: property access on the argument bag", () => {
     const source = `
-import { Sensor, param, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "t",
@@ -627,7 +627,7 @@ export default Sensor({
 describe("lowering diagnostics: control flow", () => {
   test("ForOfOnNonListType: for...of over a string", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "forof-string",
@@ -645,7 +645,7 @@ export default Sensor({
 
   test("ForOfRequiresSingleIdentifier: for...of with array destructuring binding", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "forof-destructure",
@@ -662,7 +662,7 @@ export default Sensor({
 
   test("ForInRequiresVariableDeclaration: for...in with pre-declared binding", () => {
     const source = `
-import { Sensor, type Context, type AnyList } from "mindcraft";
+import { Sensor, type Context, type AnyList } from "wendoo";
 
 export default Sensor({
   name: "forin-predeclared",
@@ -680,7 +680,7 @@ export default Sensor({
 
   test("ForOfRequiresVariableDeclaration: for...of with pre-declared binding", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "forof-predeclared",
@@ -700,7 +700,7 @@ export default Sensor({
 describe("lowering diagnostics: destructuring, spread, and rest", () => {
   test("CannotResolveRestParamListType: rest parameter typed `any[]`", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function f(...args: any[]): number {
   return args.length;
@@ -719,7 +719,7 @@ export default Sensor({
   test("SpreadMustBeLastArgument: spread argument followed by a positional argument", () => {
     expectDiagnostic(
       compileTileDiagnostics(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 function sumAll(...xs: number[]): number {
   let s = 0;
   for (const x of xs) {
@@ -742,7 +742,7 @@ export default Sensor({
   test("SpreadRequiresRestTarget: spread into a callee without a rest parameter", () => {
     expectDiagnostic(
       compileTileDiagnostics(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 function addTwo(a: number, b: number): number {
   return a + b;
 }
@@ -761,7 +761,7 @@ export default Sensor({
   test("SpreadSourceUnresolvable: object spread of an unresolvable source", () => {
     expectDiagnostic(
       compileTileDiagnostics(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 interface Point { x: number; y: number; }
 export default Sensor({
   name: "t",
@@ -780,7 +780,7 @@ export default Sensor({
 describe("lowering diagnostics: classes, structs, and constructors", () => {
   test("ComputedClassMemberNameNotSupported: class member with a computed name", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class C {
   ["foo"]: number = 1;
@@ -802,7 +802,7 @@ export default Sensor({
     // `new ns.Foo()` is valid TypeScript, but lowering only supports a bare
     // identifier as the new target.
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Foo {
   value: number;
@@ -828,7 +828,7 @@ export default Sensor({
     // but lowering only collects module-level class declarations, so its
     // constructor is not in the function table.
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "t",
@@ -849,7 +849,7 @@ export default Sensor({
     // lowering only collects identifier-named static members, so it sees no
     // such static member.
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Foo {
   static ["count"]: number = 0;
@@ -871,7 +871,7 @@ export default Sensor({
 
   test("PropertyNotOnStruct: accessing a constructor parameter property", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 class Pt {
   constructor(public a: number) {}
 }
@@ -889,7 +889,7 @@ export default Sensor({
   test("ThisOutsideClassContext: `this` referenced in a tile body", () => {
     expectDiagnostic(
       compileTileDiagnostics(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 export default Sensor({
   name: "t",
   onExecute(ctx: Context): number {
@@ -905,7 +905,7 @@ export default Sensor({
   test("UnresolvableInterfaceFieldType: interface field typed `symbol`", () => {
     expectDiagnostic(
       compileTileDiagnostics(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 interface HasSym { s: symbol; }
 export default Sensor({
   name: "t",
@@ -921,7 +921,7 @@ export default Sensor({
   test("StructurallyIncompatibleTypes: assigning between structurally incompatible interfaces", () => {
     expectDiagnostic(
       compileTileDiagnostics(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 interface A { x?: number; }
 interface B { x: number; }
 export default Sensor({
@@ -941,7 +941,7 @@ export default Sensor({
 describe("lowering diagnostics: tile structure and outputs", () => {
   test("FunctionHasNoBody: overload signature has no body", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function twice(x: number): number;
 function twice(x: number): number {
@@ -960,7 +960,7 @@ export default Sensor({
 
   test("OnExecuteHasNoBody: onExecute as an arrow with an expression body", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 export default Sensor({
   name: "t",
   onExecute: (ctx: Context): number => 1,
@@ -971,7 +971,7 @@ export default Sensor({
 
   test("OnPageEnteredHasNoBody: onPageEntered as an arrow with an expression body", () => {
     const source = `
-import { Actuator, type Context } from "mindcraft";
+import { Actuator, type Context } from "wendoo";
 export default Actuator({
   name: "t",
   onExecute(ctx: Context): void {},
@@ -984,7 +984,7 @@ export default Actuator({
   test("SetOutputWrongArgCount: setOutput() with a trailing spread argument", () => {
     expectDiagnostic(
       compileTileDiagnostics(`
-import { Sensor, setOutput, type Context } from "mindcraft";
+import { Sensor, setOutput, type Context } from "wendoo";
 export default Sensor({
   name: "t",
   outputs: [{ name: "o", type: "number" }],
@@ -1002,7 +1002,7 @@ export default Sensor({
   test("SystemStateNotObject: reading a System member off a non-object state", () => {
     expectDiagnostic(
       compileTileDiagnostics(`
-import { System, Sensor, type Context } from "mindcraft";
+import { System, Sensor, type Context } from "wendoo";
 const state = { count: 0 };
 const S = System({ name: "s", state, think() {} });
 export default Sensor({
@@ -1021,7 +1021,7 @@ describe("lowering diagnostics: statements, expressions, and references", () => 
   test("UndefinedVariable: reference to an undefined global", () => {
     expectDiagnostic(
       compileTileDiagnostics(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 export default Sensor({
   name: "t",
   onExecute(ctx: Context): number {
@@ -1035,7 +1035,7 @@ export default Sensor({
 
   test("UnsupportedStatement: throw statement", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "t",
@@ -1049,7 +1049,7 @@ export default Sensor({
 
   test("UnsupportedExpression: void expression", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 export default Sensor({
   name: "t",
   onExecute(ctx: Context): number {
@@ -1063,7 +1063,7 @@ export default Sensor({
 
   test("UnsupportedFunctionCall: static function-typed field called as a method", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 class Helper {
   static fn: () => number = (): number => 5;
 }
@@ -1079,7 +1079,7 @@ export default Sensor({
 
   test("UnsupportedBindingPattern: numeric-literal property name in destructuring", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 export default Sensor({
   name: "t",
   onExecute(ctx: Context): number {
@@ -1095,7 +1095,7 @@ export default Sensor({
   test("StringMethodWrongArgCount: string method called with a spread argument", () => {
     expectDiagnostic(
       compileTileDiagnostics(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 export default Sensor({
   name: "t",
   onExecute(ctx: Context): number {

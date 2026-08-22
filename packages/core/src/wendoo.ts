@@ -79,10 +79,10 @@ interface StructDefineOptions {
 }
 
 /**
- * Type definition accepted by {@link MindcraftModuleApi.defineType}. The shape
+ * Type definition accepted by {@link WendooModuleApi.defineType}. The shape
  * fields determine the type's category (struct, enum, list, etc.).
  */
-export type MindcraftTypeDefinition =
+export type WendooTypeDefinition =
   | TypeDefInput
   | (TypeDefInput & StructTypeShape & StructDefineOptions)
   | (TypeDefInput & EnumTypeShape)
@@ -299,7 +299,7 @@ export interface OperatorDefinition {
 }
 
 /** A catalog of tile definitions. Brains are matched against catalogs to enumerate available tiles. */
-export interface MindcraftCatalog {
+export interface WendooCatalog {
   has(tileId: string): boolean;
   get(tileId: string): TileDefinitionInput | undefined;
   getAll(): readonly TileDefinitionInput[];
@@ -307,18 +307,18 @@ export interface MindcraftCatalog {
   delete(tileId: string): boolean;
 }
 
-/** Options for {@link MindcraftEnvironment.createBrain}. */
+/** Options for {@link WendooEnvironment.createBrain}. */
 export interface CreateBrainOptions {
   /** Opaque value forwarded to the brain's runtime context. */
   context?: unknown;
   /** Catalogs the brain should consult when resolving tiles. */
-  catalogs?: readonly MindcraftCatalog[];
+  catalogs?: readonly WendooCatalog[];
   /** Optional lifecycle observers attached to the underlying VM instance. */
   vmEvents?: VmEvents;
 }
 
-/** A brain instance produced by {@link MindcraftEnvironment.createBrain}. */
-export interface MindcraftBrain extends IBrain {
+/** A brain instance produced by {@link WendooEnvironment.createBrain}. */
+export interface WendooBrain extends IBrain {
   readonly definition: IBrainDef;
   readonly status: "active" | "invalidated" | "disposed";
   /** Recompile and rebuild this brain against the current environment. */
@@ -330,17 +330,17 @@ export interface MindcraftBrain extends IBrain {
 /** Function that mutates an in-memory `BrainJson` to upgrade it from an older module schema. */
 export type BrainJsonMigration = (json: unknown) => void;
 
-/** A unit of installable functionality (types, host functions, tiles, operators) for a {@link MindcraftEnvironment}. */
-export interface MindcraftModule {
+/** A unit of installable functionality (types, host functions, tiles, operators) for a {@link WendooEnvironment}. */
+export interface WendooModule {
   readonly id: string;
-  install(api: MindcraftModuleApi): void;
+  install(api: WendooModuleApi): void;
   migrateBrainJson?: BrainJsonMigration;
 }
 
-/** API exposed to {@link MindcraftModule.install} for registering types, tiles, functions, operators, and conversions. */
-export interface MindcraftModuleApi {
+/** API exposed to {@link WendooModule.install} for registering types, tiles, functions, operators, and conversions. */
+export interface WendooModuleApi {
   readonly brainServices: BrainServices;
-  defineType(def: MindcraftTypeDefinition): string;
+  defineType(def: WendooTypeDefinition): string;
   registerHostSensor(def: HostSensorDefinition): void;
   registerHostActuator(def: HostActuatorDefinition): void;
   registerFunction(def: HostFunctionDefinition): void;
@@ -373,7 +373,7 @@ export interface ParameterTileInput {
   readonly hidden?: boolean;
 }
 
-/** Snapshot of tile metadata applied via {@link MindcraftEnvironment.hydrateTileMetadata}. */
+/** Snapshot of tile metadata applied via {@link WendooEnvironment.hydrateTileMetadata}. */
 export interface HydratedTileMetadataSnapshot {
   readonly revision: string;
   readonly tiles: readonly TileDefinitionInput[];
@@ -381,7 +381,7 @@ export interface HydratedTileMetadataSnapshot {
 
 /**
  * A bundle of compiled user actions and the tiles they back. Apply with
- * {@link MindcraftEnvironment.replaceActionBundle}.
+ * {@link WendooEnvironment.replaceActionBundle}.
  */
 export interface CompiledActionBundle {
   readonly revision: string;
@@ -389,21 +389,21 @@ export interface CompiledActionBundle {
   readonly actions: Dict<string, CompiledActionArtifact>;
 }
 
-/** Result of {@link MindcraftEnvironment.replaceActionBundle}: which actions changed and which brains were invalidated. */
+/** Result of {@link WendooEnvironment.replaceActionBundle}: which actions changed and which brains were invalidated. */
 export interface ActionBundleUpdate {
   readonly changedActionKeys: readonly string[];
-  readonly invalidatedBrains: readonly MindcraftBrain[];
+  readonly invalidatedBrains: readonly WendooBrain[];
 }
 
-/** Event payload for {@link MindcraftEnvironment.onBrainsInvalidated}. */
+/** Event payload for {@link WendooEnvironment.onBrainsInvalidated}. */
 export interface BrainInvalidationEvent extends ActionBundleUpdate {}
 
 /**
- * Top-level Mindcraft environment: hosts brain services, manages catalogs and
- * action bundles, and creates {@link MindcraftBrain} instances. Build with
- * {@link createMindcraftEnvironment}.
+ * Top-level Wendoo environment: hosts brain services, manages catalogs and
+ * action bundles, and creates {@link WendooBrain} instances. Build with
+ * {@link createWendooEnvironment}.
  */
-export interface MindcraftEnvironment {
+export interface WendooEnvironment {
   readonly brainServices: BrainServices;
   /**
    * Host-supplied app services (currently just the RNG) shared by every brain
@@ -411,7 +411,7 @@ export interface MindcraftEnvironment {
    */
   readonly appServices: AppServices;
   withServices<T>(callback: (services: BrainServices) => T): T;
-  createCatalog(): MindcraftCatalog;
+  createCatalog(): WendooCatalog;
   /**
    * Deserialize in-memory brain JSON whose identifiers are already fully
    * qualified runtime ids (the shape produced by `IBrainDef.toJson`).
@@ -425,7 +425,7 @@ export interface MindcraftEnvironment {
    */
   deserializeBrainJsonFromPlain(plain: unknown, projectNamespace: string): IBrainDef;
   hydrateTileMetadata(snapshot: HydratedTileMetadataSnapshot): void;
-  createBrain(definition: IBrainDef, options?: CreateBrainOptions): MindcraftBrain;
+  createBrain(definition: IBrainDef, options?: CreateBrainOptions): WendooBrain;
   /** Compiles and links a brain definition into a {@link BrainBuildResult}. */
   linkBrain(definition: IBrainDef): BrainBuildResult;
   replaceActionBundle(bundle: CompiledActionBundle): ActionBundleUpdate;
@@ -438,12 +438,12 @@ export interface MindcraftEnvironment {
    */
   appliedActionBundle(): CompiledActionBundle | undefined;
   onBrainsInvalidated(listener: (event: BrainInvalidationEvent) => void): () => void;
-  rebuildInvalidatedBrains(brains?: readonly MindcraftBrain[]): void;
+  rebuildInvalidatedBrains(brains?: readonly WendooBrain[]): void;
   tileCatalogs(): readonly ITileCatalog[];
 }
 
-type CreateMindcraftEnvironmentOptions = {
-  readonly modules?: readonly MindcraftModule[];
+type CreateWendooEnvironmentOptions = {
+  readonly modules?: readonly WendooModule[];
   /**
    * Random-number stream shared with every brain created by this environment.
    * Defaults to {@link createDefaultRng} when omitted.
@@ -508,13 +508,13 @@ function assertRegisteredTypeId(actual: string, expected: string, name: string):
   return actual;
 }
 
-function rejectStructuralAtomId(definition: MindcraftTypeDefinition): void {
+function rejectStructuralAtomId(definition: WendooTypeDefinition): void {
   if (definition.atomId !== undefined) {
     throw new Error(`Structural type '${definition.name}' must not declare an atomId (got ${definition.atomId})`);
   }
 }
 
-function registerMindcraftTypeDefinition(services: BrainServices, definition: MindcraftTypeDefinition): string {
+function registerWendooTypeDefinition(services: BrainServices, definition: WendooTypeDefinition): string {
   const nullableDef = definition as NullableTypeDef;
   if (definition.nullable && nullableDef.baseTypeId !== undefined) {
     rejectStructuralAtomId(definition);
@@ -670,7 +670,7 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
       );
     }
     default:
-      throw new Error(`Unsupported mindcraft type '${definition.name}' (coreType: ${definition.coreType})`);
+      throw new Error(`Unsupported wendoo type '${definition.name}' (coreType: ${definition.coreType})`);
   }
 
   return registeredTypeId;
@@ -773,7 +773,7 @@ function toActionKeySet(keys: readonly string[]): Dict<string, boolean> {
   return set;
 }
 
-class MindcraftCatalogImpl implements MindcraftCatalog {
+class WendooCatalogImpl implements WendooCatalog {
   constructor(private readonly catalog: TileCatalog = new TileCatalog()) {}
 
   rawCatalog(): TileCatalog {
@@ -802,8 +802,8 @@ class MindcraftCatalogImpl implements MindcraftCatalog {
   }
 }
 
-function unwrapCatalog(catalog: MindcraftCatalog): ITileCatalog {
-  if (catalog instanceof MindcraftCatalogImpl) {
+function unwrapCatalog(catalog: WendooCatalog): ITileCatalog {
+  if (catalog instanceof WendooCatalogImpl) {
     return catalog.rawCatalog();
   }
 
@@ -815,15 +815,15 @@ function unwrapCatalog(catalog: MindcraftCatalog): ITileCatalog {
   return clone;
 }
 
-class EnvironmentModuleApi implements MindcraftModuleApi {
+class EnvironmentModuleApi implements WendooModuleApi {
   readonly brainServices: BrainServices;
 
   constructor(services: BrainServices) {
     this.brainServices = services;
   }
 
-  defineType(def: MindcraftTypeDefinition): string {
-    return registerMindcraftTypeDefinition(this.brainServices, def);
+  defineType(def: WendooTypeDefinition): string {
+    return registerWendooTypeDefinition(this.brainServices, def);
   }
 
   registerHostSensor(def: HostSensorDefinition): void {
@@ -882,14 +882,14 @@ class EnvironmentModuleApi implements MindcraftModuleApi {
 }
 
 class EnvironmentActionResolver implements BrainActionResolver {
-  constructor(private readonly environment: MindcraftEnvironmentImpl) {}
+  constructor(private readonly environment: WendooEnvironmentImpl) {}
 
   resolveAction(descriptor: ActionDescriptor): ResolvedAction | undefined {
     return this.environment.resolveAction(descriptor);
   }
 }
 
-class MindcraftEnvironmentImpl implements MindcraftEnvironment {
+class WendooEnvironmentImpl implements WendooEnvironment {
   readonly brainServices: BrainServices;
   readonly appServices: AppServices;
   private readonly bundleCatalog = new TileCatalog();
@@ -898,18 +898,13 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
   private bundleRevision: string | undefined;
   /** `(fromType, toType)` pairs this environment registered from the active bundle's conversion artifacts. */
   private readonly bundleConversionPairs = new List<{ fromType: TypeId; toType: TypeId }>();
-  private readonly trackedBrains = List.empty<ManagedMindcraftBrain>();
-  private readonly invalidatedBrains = List.empty<ManagedMindcraftBrain>();
+  private readonly trackedBrains = List.empty<ManagedWendooBrain>();
+  private readonly invalidatedBrains = List.empty<ManagedWendooBrain>();
   private readonly invalidationListeners = List.empty<(event: BrainInvalidationEvent) => void>();
   private readonly actionResolver: BrainActionResolver;
   private readonly brainJsonMigrations_ = List.empty<BrainJsonMigration>();
 
-  constructor(
-    modules: readonly MindcraftModule[],
-    rng?: IRngServices,
-    numerics?: ProfileNumerics,
-    localizer?: Localizer
-  ) {
+  constructor(modules: readonly WendooModule[], rng?: IRngServices, numerics?: ProfileNumerics, localizer?: Localizer) {
     this.appServices = createAppServices(rng, numerics, localizer);
     this.brainServices = createBrainServices(this.appServices);
     this.actionResolver = new EnvironmentActionResolver(this);
@@ -917,15 +912,15 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
   }
 
   withServices<T>(callback: (services: BrainServices) => T): T {
-    return withMindcraftEnvironmentServices(this, callback);
+    return withWendooEnvironmentServices(this, callback);
   }
 
   tileCatalogs(): readonly ITileCatalog[] {
     return [this.brainServices.edit.tiles, this.bundleCatalog];
   }
 
-  createCatalog(): MindcraftCatalog {
-    return new MindcraftCatalogImpl();
+  createCatalog(): WendooCatalog {
+    return new WendooCatalogImpl();
   }
 
   deserializeBrainJson(json: BrainJson): IBrainDef {
@@ -943,9 +938,9 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
     this.replaceCatalogContents(this.bundleCatalog, List.from(snapshot.tiles));
   }
 
-  createBrain(definition: IBrainDef, options?: CreateBrainOptions): MindcraftBrain {
+  createBrain(definition: IBrainDef, options?: CreateBrainOptions): WendooBrain {
     const overlayCatalogs = this.resolveOverlayCatalogs(options?.catalogs);
-    const brain = new ManagedMindcraftBrain(this, definition, overlayCatalogs);
+    const brain = new ManagedWendooBrain(this, definition, overlayCatalogs);
     this.trackBrain(brain);
     try {
       brain.initialize(options?.context, options?.vmEvents);
@@ -990,7 +985,7 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
 
     this.replaceBundleConversions(nextActions);
 
-    const invalidated = List.empty<MindcraftBrain>();
+    const invalidated = List.empty<WendooBrain>();
     if (hasChangedActions) {
       for (let i = 0; i < this.trackedBrains.size(); i++) {
         const brain = this.trackedBrains.get(i)!;
@@ -1038,11 +1033,11 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
     };
   }
 
-  rebuildInvalidatedBrains(brains?: readonly MindcraftBrain[]): void {
+  rebuildInvalidatedBrains(brains?: readonly WendooBrain[]): void {
     const targets = brains ? List.from(brains) : List.from(this.invalidatedBrains.toArray());
     for (let i = 0; i < targets.size(); i++) {
       const candidate = targets.get(i);
-      if (!(candidate instanceof ManagedMindcraftBrain)) {
+      if (!(candidate instanceof ManagedWendooBrain)) {
         continue;
       }
       if (candidate.owner() !== this || candidate.isDisposed()) {
@@ -1117,7 +1112,7 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
     return this.brainServices.runtime.actions.resolveAction(descriptor);
   }
 
-  removeBrain(brain: ManagedMindcraftBrain): void {
+  removeBrain(brain: ManagedWendooBrain): void {
     const trackedIndex = this.trackedBrains.indexOf(brain);
     if (trackedIndex >= 0) {
       this.trackedBrains.remove(trackedIndex);
@@ -1128,7 +1123,7 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
     }
   }
 
-  markBrainActive(brain: ManagedMindcraftBrain): void {
+  markBrainActive(brain: ManagedWendooBrain): void {
     brain.markActive();
     const invalidatedIndex = this.invalidatedBrains.indexOf(brain);
     if (invalidatedIndex >= 0) {
@@ -1142,13 +1137,13 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
     }
   }
 
-  private installModules(modules: readonly MindcraftModule[]): void {
+  private installModules(modules: readonly WendooModule[]): void {
     const seen = new Dict<string, boolean>();
     const moduleList = List.from(modules);
     for (let i = 0; i < moduleList.size(); i++) {
       const module = moduleList.get(i)!;
       if (seen.has(module.id)) {
-        throw new Error(`Mindcraft module '${module.id}' is already installed`);
+        throw new Error(`Wendoo module '${module.id}' is already installed`);
       }
       seen.set(module.id, true);
 
@@ -1160,7 +1155,7 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
     }
   }
 
-  private markBrainInvalidated(brain: ManagedMindcraftBrain): void {
+  private markBrainInvalidated(brain: ManagedWendooBrain): void {
     brain.markInvalidated();
     if (this.invalidatedBrains.indexOf(brain) === -1) {
       this.invalidatedBrains.push(brain);
@@ -1210,7 +1205,7 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
     }
   }
 
-  private resolveOverlayCatalogs(catalogs?: readonly MindcraftCatalog[]): List<ITileCatalog> {
+  private resolveOverlayCatalogs(catalogs?: readonly WendooCatalog[]): List<ITileCatalog> {
     const resolved = List.empty<ITileCatalog>();
     if (!catalogs) {
       return resolved;
@@ -1223,12 +1218,12 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
     return resolved;
   }
 
-  private trackBrain(brain: ManagedMindcraftBrain): void {
+  private trackBrain(brain: ManagedWendooBrain): void {
     this.trackedBrains.push(brain);
   }
 }
 
-class ManagedMindcraftBrain extends Brain implements MindcraftBrain {
+class ManagedWendooBrain extends Brain implements WendooBrain {
   status: "active" | "invalidated" | "disposed" = "active";
   private readonly linkEnvironmentRef: BrainLinkEnvironment;
   private readonly linkedActionRevisions = new Dict<string, string>();
@@ -1238,7 +1233,7 @@ class ManagedMindcraftBrain extends Brain implements MindcraftBrain {
   private started = false;
 
   constructor(
-    private readonly environment: MindcraftEnvironmentImpl,
+    private readonly environment: WendooEnvironmentImpl,
     public readonly definition: IBrainDef,
     overlayCatalogs: List<ITileCatalog>
   ) {
@@ -1248,7 +1243,7 @@ class ManagedMindcraftBrain extends Brain implements MindcraftBrain {
     this.overlayCatalogs = overlayCatalogs;
   }
 
-  owner(): MindcraftEnvironmentImpl {
+  owner(): WendooEnvironmentImpl {
     return this.environment;
   }
 
@@ -1394,32 +1389,32 @@ class ManagedMindcraftBrain extends Brain implements MindcraftBrain {
   }
 }
 
-/** Construct a {@link MindcraftEnvironment}, installing each module in `options.modules`. */
-export function createMindcraftEnvironment(options: CreateMindcraftEnvironmentOptions = {}): MindcraftEnvironment {
-  return new MindcraftEnvironmentImpl(options.modules ?? [], options.rng, options.numerics, options.localizer);
+/** Construct a {@link WendooEnvironment}, installing each module in `options.modules`. */
+export function createWendooEnvironment(options: CreateWendooEnvironmentOptions = {}): WendooEnvironment {
+  return new WendooEnvironmentImpl(options.modules ?? [], options.rng, options.numerics, options.localizer);
 }
 
-/** The built-in `mindcraft.core` module: registers the core types, operators, and tile components every brain needs. */
-export function coreModule(): MindcraftModule {
+/** The built-in `wendoo.core` module: registers the core types, operators, and tile components every brain needs. */
+export function coreModule(): WendooModule {
   return {
-    id: "mindcraft.core",
-    install(api: MindcraftModuleApi): void {
+    id: "wendoo.core",
+    install(api: WendooModuleApi): void {
       installCoreBrainComponents(api.brainServices);
     },
   };
 }
 
-/** Access the underlying {@link BrainServices} of a {@link MindcraftEnvironment}. Throws on foreign implementations. */
-export function getMindcraftEnvironmentServices(environment: MindcraftEnvironment): BrainServices {
-  if (!(environment instanceof MindcraftEnvironmentImpl)) {
-    throw new Error("Unsupported MindcraftEnvironment implementation");
+/** Access the underlying {@link BrainServices} of a {@link WendooEnvironment}. Throws on foreign implementations. */
+export function getWendooEnvironmentServices(environment: WendooEnvironment): BrainServices {
+  if (!(environment instanceof WendooEnvironmentImpl)) {
+    throw new Error("Unsupported WendooEnvironment implementation");
   }
   return environment.brainServices;
 }
 
 /** Run `callback` with the environment's {@link BrainServices} and return its result. */
-export function withMindcraftEnvironmentServices<T>(
-  environment: MindcraftEnvironment,
+export function withWendooEnvironmentServices<T>(
+  environment: WendooEnvironment,
   callback: (services: BrainServices) => T
 ): T {
   return callback(environment.brainServices);

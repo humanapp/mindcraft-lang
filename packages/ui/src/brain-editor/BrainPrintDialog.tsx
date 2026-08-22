@@ -1,4 +1,4 @@
-import type { BrainDef } from "@mindcraft-lang/core/brain/model";
+import type { BrainDef } from "@wendoo-lang/core/brain/model";
 import { FileText, Form, Printer } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { createPortal } from "react-dom";

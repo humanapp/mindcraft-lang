@@ -12,18 +12,18 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
-import { createHostActuator, createHostSensor, Dict, List, type ReadonlyList } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { CoreCapabilityBits, type IBrainTileDef, type ITileCatalog, TilePlacement } from "@mindcraft-lang/core/brain";
-import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { compileBrain, ParseDiagCode, runBrainLinkPipeline } from "@mindcraft-lang/core/brain/compiler";
-import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+import { createHostActuator, createHostSensor, Dict, List, type ReadonlyList } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { CoreCapabilityBits, type IBrainTileDef, type ITileCatalog, TilePlacement } from "@wendoo-lang/core/brain";
+import { __test__appendTile, __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { compileBrain, ParseDiagCode, runBrainLinkPipeline } from "@wendoo-lang/core/brain/compiler";
+import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
 import {
   type BrainTileActuatorDef,
   BrainTileLiteralDef,
   BrainTileOperatorDef,
   BrainTileSensorDef,
-} from "@mindcraft-lang/core/brain/tiles";
+} from "@wendoo-lang/core/brain/tiles";
 import {
   BrainRuntime,
   CoreHostActions,
@@ -43,9 +43,9 @@ import {
   TRUE_VALUE,
   type Value,
   VOID_VALUE,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
-import { BitSet } from "@mindcraft-lang/core/util";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
+import { BitSet } from "@wendoo-lang/core/util";
 
 let services: BrainServices;
 let otherwiseTile: IBrainTileDef;

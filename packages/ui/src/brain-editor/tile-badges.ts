@@ -18,10 +18,10 @@ import type {
   Span,
   UnaryOpExpr,
   VariableExpr,
-} from "@mindcraft-lang/core/brain";
-import { acceptExprVisitor, isActionTileDef } from "@mindcraft-lang/core/brain";
-import type { TypeInfoDiag } from "@mindcraft-lang/core/brain/compiler";
-import { ParseDiagCode, TypeDiagCode } from "@mindcraft-lang/core/brain/compiler";
+} from "@wendoo-lang/core/brain";
+import { acceptExprVisitor, isActionTileDef } from "@wendoo-lang/core/brain";
+import type { TypeInfoDiag } from "@wendoo-lang/core/brain/compiler";
+import { ParseDiagCode, TypeDiagCode } from "@wendoo-lang/core/brain/compiler";
 
 /** Badge attached to a tile in the editor to surface a parser or type-checker diagnostic. */
 export interface TileBadge {

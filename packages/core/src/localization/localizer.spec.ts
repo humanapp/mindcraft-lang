@@ -5,8 +5,8 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { LocaleCatalog } from "@mindcraft-lang/core/localization";
-import { createDefaultLocalizer, createLocalizer, defaultPluralRule } from "@mindcraft-lang/core/localization";
+import type { LocaleCatalog } from "@wendoo-lang/core/localization";
+import { createDefaultLocalizer, createLocalizer, defaultPluralRule } from "@wendoo-lang/core/localization";
 
 /** A partially translated catalog: one plain key and two contextualized keys. */
 const partialCatalog: LocaleCatalog = {

@@ -1,18 +1,18 @@
-import { fileContentText } from "@mindcraft-lang/app-host";
-import { type ConnectionStatus, type FileSystemNotification, Project } from "@mindcraft-lang/bridge-client";
-import type { ExtensionClientMessage, ExtensionServerMessage } from "@mindcraft-lang/bridge-protocol";
+import { fileContentText } from "@wendoo-lang/app-host";
+import { type ConnectionStatus, type FileSystemNotification, Project } from "@wendoo-lang/bridge-client";
+import type { ExtensionClientMessage, ExtensionServerMessage } from "@wendoo-lang/bridge-protocol";
 
 type ExtensionProject = Project<ExtensionClientMessage, ExtensionServerMessage>;
 
 import * as vscode from "vscode";
-import { MINDCRAFT_JSON } from "../mindcraft-json";
+import { WENDOO_JSON } from "../wendoo-json";
 import { BuildMembershipTracker } from "./build-membership-tracker";
 import { DiagnosticsManager } from "./diagnostics-manager";
-import { MINDCRAFT_SCHEME, MindcraftFileSystemProvider } from "./mindcraft-fs-provider";
+import { WENDOO_SCHEME, WendooFileSystemProvider } from "./wendoo-fs-provider";
 
-const BINDING_TOKEN_KEY = "mindcraft.bindingToken";
-const PROJECT_NAME_KEY = "mindcraft.projectName";
-const DEFAULT_WORKSPACE_FOLDER_NAME = "Mindcraft";
+const BINDING_TOKEN_KEY = "wendoo.bindingToken";
+const PROJECT_NAME_KEY = "wendoo.projectName";
+const DEFAULT_WORKSPACE_FOLDER_NAME = "Wendoo";
 
 // Deduplication key for pending changes: same action + path overwrites the
 // previous pending entry so only the latest write/delete is sent after reconnect.
@@ -39,9 +39,9 @@ export class ProjectManager implements vscode.Disposable {
   private _pendingChanges: FileSystemNotification[] = [];
   private readonly _unsubs: (() => void)[] = [];
   private readonly _disposables: vscode.Disposable[] = [];
-  private readonly _fsProvider = new MindcraftFileSystemProvider();
+  private readonly _fsProvider = new WendooFileSystemProvider();
   private readonly _diagnosticsManager = new DiagnosticsManager();
-  private readonly _buildMembership = new BuildMembershipTracker(MINDCRAFT_SCHEME);
+  private readonly _buildMembership = new BuildMembershipTracker(WENDOO_SCHEME);
   private _globalState: vscode.Memento | undefined;
   private _workspaceFolderName = DEFAULT_WORKSPACE_FOLDER_NAME;
 
@@ -60,7 +60,7 @@ export class ProjectManager implements vscode.Disposable {
   private readonly _onDidChangePendingChanges = new vscode.EventEmitter<number>();
   readonly onDidChangePendingChanges = this._onDidChangePendingChanges.event;
 
-  get fsProvider(): MindcraftFileSystemProvider {
+  get fsProvider(): WendooFileSystemProvider {
     return this._fsProvider;
   }
 
@@ -115,9 +115,9 @@ export class ProjectManager implements vscode.Disposable {
   connect(joinCode?: string, savedToken?: string): void {
     this.disconnectActive();
 
-    const bridgeUrl = vscode.workspace.getConfiguration("mindcraft").get<string>("bridgeUrl", "");
+    const bridgeUrl = vscode.workspace.getConfiguration("wendoo").get<string>("bridgeUrl", "");
     if (!bridgeUrl) {
-      throw new Error("mindcraft.bridgeUrl is not configured");
+      throw new Error("wendoo.bridgeUrl is not configured");
     }
 
     const bindingToken = savedToken ?? this._globalState?.get<string>(BINDING_TOKEN_KEY);
@@ -145,7 +145,7 @@ export class ProjectManager implements vscode.Disposable {
           }
         } else if (status === "disconnected") {
           this.disconnectActive();
-          this.closeMindcraftTabs();
+          this.closeWendooTabs();
           this.removeWorkspaceFolder();
         }
       })
@@ -191,7 +191,7 @@ export class ProjectManager implements vscode.Disposable {
 
     project.toRemoteFileChange = (ev) => {
       this.sendChangeWithAck(project, ev);
-      if (ev.action === "write" && ev.path === MINDCRAFT_JSON) {
+      if (ev.action === "write" && ev.path === WENDOO_JSON) {
         this.updateFolderNameFromProject(project);
       }
       this._buildMembership.refresh(project.files.raw);
@@ -209,7 +209,7 @@ export class ProjectManager implements vscode.Disposable {
 
   disconnect(): void {
     this.disconnectActive();
-    this.closeMindcraftTabs();
+    this.closeWendooTabs();
     this.removeWorkspaceFolder();
     this._globalState?.update(BINDING_TOKEN_KEY, undefined);
     this._globalState?.update(PROJECT_NAME_KEY, undefined);
@@ -328,13 +328,13 @@ export class ProjectManager implements vscode.Disposable {
 
   private handleFilesystemNotification(ev: FileSystemNotification): void {
     const events: vscode.FileChangeEvent[] = [];
-    const uri = (path: string) => vscode.Uri.from({ scheme: MINDCRAFT_SCHEME, path: `/${path}` });
+    const uri = (path: string) => vscode.Uri.from({ scheme: WENDOO_SCHEME, path: `/${path}` });
 
     switch (ev.action) {
       case "write":
         events.push({ type: vscode.FileChangeType.Created, uri: uri(ev.path) });
         events.push({ type: vscode.FileChangeType.Changed, uri: uri(ev.path) });
-        if (ev.path === MINDCRAFT_JSON && this._project) {
+        if (ev.path === WENDOO_JSON && this._project) {
           this.updateFolderNameFromProject(this._project);
         }
         break;
@@ -362,7 +362,7 @@ export class ProjectManager implements vscode.Disposable {
   }
 
   private fireRootChanged(): void {
-    const uri = vscode.Uri.from({ scheme: MINDCRAFT_SCHEME, path: "/" });
+    const uri = vscode.Uri.from({ scheme: WENDOO_SCHEME, path: "/" });
     this._fsProvider.fireChanges([{ type: vscode.FileChangeType.Changed, uri }]);
     this._buildMembership.refresh(this._project?.files.raw);
   }
@@ -377,7 +377,7 @@ export class ProjectManager implements vscode.Disposable {
   notifyLocalCreate(paths: readonly string[]): void {
     const events = paths.map((path) => ({
       type: vscode.FileChangeType.Created,
-      uri: vscode.Uri.from({ scheme: MINDCRAFT_SCHEME, path: `/${path}` }),
+      uri: vscode.Uri.from({ scheme: WENDOO_SCHEME, path: `/${path}` }),
     }));
     this._fsProvider.fireChanges(events);
   }
@@ -392,7 +392,7 @@ export class ProjectManager implements vscode.Disposable {
   notifyLocalWrite(paths: readonly string[]): void {
     const events = paths.map((path) => ({
       type: vscode.FileChangeType.Changed,
-      uri: vscode.Uri.from({ scheme: MINDCRAFT_SCHEME, path: `/${path}` }),
+      uri: vscode.Uri.from({ scheme: WENDOO_SCHEME, path: `/${path}` }),
     }));
     this._fsProvider.fireChanges(events);
   }
@@ -402,7 +402,7 @@ export class ProjectManager implements vscode.Disposable {
   }
 
   private addWorkspaceFolder(): void {
-    const uri = vscode.Uri.from({ scheme: MINDCRAFT_SCHEME, path: "/" });
+    const uri = vscode.Uri.from({ scheme: WENDOO_SCHEME, path: "/" });
     const existing = this.findWorkspaceFolderIndex();
     if (existing !== -1) return;
     vscode.workspace.updateWorkspaceFolders(vscode.workspace.workspaceFolders?.length ?? 0, 0, {
@@ -418,13 +418,13 @@ export class ProjectManager implements vscode.Disposable {
 
   private updateFolderNameFromProject(project: ExtensionProject): void {
     try {
-      const content = fileContentText(project.files.raw.read(MINDCRAFT_JSON));
+      const content = fileContentText(project.files.raw.read(WENDOO_JSON));
       const json = content === undefined ? undefined : JSON.parse(content);
       if (json?.name) {
         this.renameWorkspaceFolder(json.name);
       }
     } catch {
-      // mindcraft.json missing or invalid -- keep default name
+      // wendoo.json missing or invalid -- keep default name
     }
   }
 
@@ -438,14 +438,14 @@ export class ProjectManager implements vscode.Disposable {
     vscode.workspace.updateWorkspaceFolders(index, 1, { uri: folder.uri, name });
   }
 
-  private closeMindcraftTabs(): void {
+  private closeWendooTabs(): void {
     const tabs = vscode.window.tabGroups.all.flatMap((group) =>
       group.tabs.filter((tab) => {
         if (tab.input instanceof vscode.TabInputText) {
-          return tab.input.uri.scheme === MINDCRAFT_SCHEME;
+          return tab.input.uri.scheme === WENDOO_SCHEME;
         }
         if (tab.input instanceof vscode.TabInputCustom) {
-          return tab.input.uri.scheme === MINDCRAFT_SCHEME;
+          return tab.input.uri.scheme === WENDOO_SCHEME;
         }
         return false;
       })
@@ -464,7 +464,7 @@ export class ProjectManager implements vscode.Disposable {
   private findWorkspaceFolderIndex(): number {
     const folders = vscode.workspace.workspaceFolders;
     if (!folders) return -1;
-    return folders.findIndex((f) => f.uri.scheme === MINDCRAFT_SCHEME);
+    return folders.findIndex((f) => f.uri.scheme === WENDOO_SCHEME);
   }
 
   dispose(): void {

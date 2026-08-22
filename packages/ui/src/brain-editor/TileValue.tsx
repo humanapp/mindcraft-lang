@@ -1,11 +1,11 @@
-import { assertUnreachable } from "@mindcraft-lang/core";
-import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
+import { assertUnreachable } from "@wendoo-lang/core";
+import type { IBrainTileDef } from "@wendoo-lang/core/brain";
 import type {
   BrainTileAccessorDef,
   BrainTileLiteralDef,
   BrainTileOutputDef,
   BrainTileVariableDef,
-} from "@mindcraft-lang/core/brain/tiles";
+} from "@wendoo-lang/core/brain/tiles";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { formatValue } from "./tile-value-utils";
 

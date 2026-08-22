@@ -1,4 +1,4 @@
-import { APP_CAPABILITY_BIT_OFFSET, BitSet } from "@mindcraft-lang/core/app";
+import { APP_CAPABILITY_BIT_OFFSET, BitSet } from "@wendoo-lang/core/app";
 
 export const TileIds = {
   Modifier: {

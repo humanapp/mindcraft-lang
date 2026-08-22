@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// Shared release script for @mindcraft-lang packages.
+// Shared release script for @wendoo-lang packages.
 //
 // Usage: node scripts/release.js <patch|minor|major> [--skip-deps]
 //
@@ -30,7 +30,7 @@ const { readFileSync, existsSync } = require("node:fs");
 const { join, resolve } = require("node:path");
 
 const VALID_BUMPS = ["patch", "minor", "major"];
-const SCOPE = "@mindcraft-lang/";
+const SCOPE = "@wendoo-lang/";
 
 function readPkgAt(dir) {
   return JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
@@ -50,7 +50,7 @@ function shortNameOf(pkg) {
 }
 
 // Collect the topological release order for a package directory.
-// Only includes public @mindcraft-lang/* file: dependencies.
+// Only includes public @wendoo-lang/* file: dependencies.
 function collectReleaseDeps(pkgDir, visited, order, isRoot) {
   const realDir = resolve(pkgDir);
   if (visited.has(realDir)) return;

@@ -1,29 +1,29 @@
 import * as vscode from "vscode";
-import { MINDCRAFT_JSON } from "../mindcraft-json";
-import type { MindcraftFileSystemProvider } from "../services/mindcraft-fs-provider";
-import { MINDCRAFT_SCHEME } from "../services/mindcraft-fs-provider";
+import type { WendooFileSystemProvider } from "../services/wendoo-fs-provider";
+import { WENDOO_SCHEME } from "../services/wendoo-fs-provider";
+import { WENDOO_JSON } from "../wendoo-json";
 
-export class MindcraftJsonCodeLensProvider implements vscode.CodeLensProvider {
+export class WendooJsonCodeLensProvider implements vscode.CodeLensProvider {
   private readonly _onDidChangeCodeLenses = new vscode.EventEmitter<void>();
   readonly onDidChangeCodeLenses = this._onDidChangeCodeLenses.event;
 
-  constructor(private readonly _fsProvider: MindcraftFileSystemProvider) {
-    _fsProvider.onDidChangeMindcraftJsonLock(() => this._onDidChangeCodeLenses.fire());
+  constructor(private readonly _fsProvider: WendooFileSystemProvider) {
+    _fsProvider.onDidChangeWendooJsonLock(() => this._onDidChangeCodeLenses.fire());
   }
 
   provideCodeLenses(document: vscode.TextDocument): vscode.CodeLens[] {
-    if (document.uri.scheme !== MINDCRAFT_SCHEME) {
+    if (document.uri.scheme !== WENDOO_SCHEME) {
       return [];
     }
 
     const path = document.uri.path.replace(/^\//, "");
-    if (path !== MINDCRAFT_JSON) {
+    if (path !== WENDOO_JSON) {
       return [];
     }
 
     const range = new vscode.Range(0, 0, 0, 0);
 
-    if (this._fsProvider.isMindcraftJsonUnlocked) {
+    if (this._fsProvider.isWendooJsonUnlocked) {
       return [
         new vscode.CodeLens(range, {
           title: "$(warning) Editing unlocked. Be careful, manual changes may break your project.",
@@ -39,7 +39,7 @@ export class MindcraftJsonCodeLensProvider implements vscode.CodeLensProvider {
       }),
       new vscode.CodeLens(range, {
         title: "$(key) Unlock for Editing",
-        command: "mindcraft.unlockMindcraftJson",
+        command: "wendoo.unlockWendooJson",
       }),
     ];
   }

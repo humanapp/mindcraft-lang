@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, type ReadonlyList, runtime } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext, Scheduler } from "@mindcraft-lang/core/runtime";
+import { List, type ReadonlyList, runtime } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { ExecutionContext, Scheduler } from "@wendoo-lang/core/runtime";
 import {
   ContextTypeIds,
   CoreTypeIds,
@@ -15,8 +15,8 @@ import {
   type NumberValue,
   type Value,
   VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";
@@ -112,7 +112,7 @@ function expectNumber(value: Value | undefined, expected: number): void {
 /** A sensor with two number args `a` and `b`, whose onExecute body is `body`. */
 function twoArgSensor(body: string): string {
   return `
-import { Sensor, type Context, param } from "mindcraft";
+import { Sensor, type Context, param } from "wendoo";
 
 export default Sensor({
   name: "shadow-probe",
@@ -127,7 +127,7 @@ export default Sensor({
 /** An actuator with two number args `a` and `b`, whose onExecute body is `body`. */
 function twoArgActuator(body: string): string {
   return `
-import { Actuator, type Context, param } from "mindcraft";
+import { Actuator, type Context, param } from "wendoo";
 
 export default Actuator({
   name: "shadow-actuator",
@@ -190,7 +190,7 @@ describe("a local shadowing an arg name resolves independently of the arg (senso
     // the word placed (args.green true) but the button not held (local false),
     // `args.green` and a bare `green` must resolve independently.
     const source = `
-import { Sensor, type Context, modifier } from "mindcraft";
+import { Sensor, type Context, modifier } from "wendoo";
 
 export default Sensor({
   name: "modifier-shadow",

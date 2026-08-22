@@ -6,7 +6,7 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { MindcraftModule, MindcraftModuleApi, Value } from "@mindcraft-lang/core/app";
+import type { Value, WendooModule, WendooModuleApi } from "@wendoo-lang/core/app";
 import {
   BrainTileLiteralDef,
   CoreTypeIds,
@@ -17,8 +17,8 @@ import {
   mkNumberValue,
   mkTypeId,
   NativeType,
-} from "@mindcraft-lang/core/app";
-import { mkBufferValueFromHex, TARGET_TYPE_ATOM_BASE } from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/app";
+import { mkBufferValueFromHex, TARGET_TYPE_ATOM_BASE } from "@wendoo-lang/core/runtime";
 import { createRehearsalEnvironment, createSeededRng } from "./environment.js";
 import type { NumberText } from "./value-text.js";
 import { createValueLabeler, renderValue } from "./value-text.js";
@@ -50,10 +50,10 @@ const numberText: NumberText = (value) => String(value);
  * A module registering the tone struct type and three literal tiles over it:
  * two baking tone contents, one baking a host object.
  */
-function toneModule(): MindcraftModule {
+function toneModule(): WendooModule {
   return {
-    id: "mindcraft.assistant-bridge.tone",
-    install(api: MindcraftModuleApi): void {
+    id: "wendoo.assistant-bridge.tone",
+    install(api: WendooModuleApi): void {
       api.defineType({
         coreType: NativeType.Struct,
         typeId: kToneTypeId,

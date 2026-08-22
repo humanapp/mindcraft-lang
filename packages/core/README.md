@@ -1,14 +1,14 @@
-[![Publish @mindcraft-lang/core](https://github.com/humanapp/mindcraft-lang/actions/workflows/publish-core.yml/badge.svg)](https://github.com/humanapp/mindcraft-lang/actions/workflows/publish-core.yml)
+[![Publish @wendoo-lang/core](https://github.com/humanapp/wendoo-lang/actions/workflows/publish-core.yml/badge.svg)](https://github.com/humanapp/wendoo-lang/actions/workflows/publish-core.yml)
 
-# @mindcraft-lang/core
+# @wendoo-lang/core
 
-The core implementation of the **Mindcraft** programming language -- a tile-based visual language designed for creating behaviors in interactive worlds.
+The core implementation of the **Wendoo** programming language -- a tile-based visual language designed for creating behaviors in interactive worlds.
 
-## The Mindcraft Language
+## The Wendoo Language
 
-Mindcraft is a visual programming language where programs are built by arranging **tiles** -- typed, composable tokens -- into rules. Each rule has a **WHEN** side (conditions) and a **DO** side (actions), making behavior logic readable at a glance.
+Wendoo is a visual programming language where programs are built by arranging **tiles** -- typed, composable tokens -- into rules. Each rule has a **WHEN** side (conditions) and a **DO** side (actions), making behavior logic readable at a glance.
 
-A Mindcraft program is called a **brain**. A brain contains **pages** of rules, and actors in a simulation each run their own brain instance. This makes it natural to express autonomous agent behaviors: "WHEN I see food, DO move toward it."
+A Wendoo program is called a **brain**. A brain contains **pages** of rules, and actors in a simulation each run their own brain instance. This makes it natural to express autonomous agent behaviors: "WHEN I see food, DO move toward it."
 
 ### What makes it interesting
 
@@ -41,14 +41,14 @@ Layers follow a strict bottom-up dependency hierarchy: `primitives -> platform -
 
 ## Integration
 
-To use this package in your own app, see the [Integration Guide](https://github.com/humanapp/mindcraft-lang/blob/main/INTEGRATION.md).
+To use this package in your own app, see the [Integration Guide](https://github.com/humanapp/wendoo-lang/blob/main/INTEGRATION.md).
 
-The main app integration entry point is `createMindcraftEnvironment()`:
+The main app integration entry point is `createWendooEnvironment()`:
 
 ```typescript
-import { createMindcraftEnvironment, coreModule } from "@mindcraft-lang/core";
+import { createWendooEnvironment, coreModule } from "@wendoo-lang/core";
 
-const environment = createMindcraftEnvironment({
+const environment = createWendooEnvironment({
   modules: [coreModule(), createAppModule()],
 });
 
@@ -57,9 +57,9 @@ brain.startup();
 brain.think(now);
 ```
 
-Sub-path imports (`@mindcraft-lang/core/brain`, `@mindcraft-lang/core/brain/model`, etc.)
+Sub-path imports (`@wendoo-lang/core/brain`, `@wendoo-lang/core/brain/model`, etc.)
 remain available for esoteric use cases (like Roblox) and internal consumption, but webapps should
-prefer the root-level `createMindcraftEnvironment` / `coreModule` api.
+prefer the root-level `createWendooEnvironment` / `coreModule` api.
 
 ## Getting Started
 
@@ -97,17 +97,17 @@ Each target build has three steps: TypeScript compilation, platform file resolut
 npm test
 ```
 
-Tests use `node:test` and `node:assert/strict`, run via `tsx`. A `pretest` step builds the Node target first because spec files use package imports (`@mindcraft-lang/core/brain/compiler`, etc.) that resolve against `dist/node/`.
+Tests use `node:test` and `node:assert/strict`, run via `tsx`. A `pretest` step builds the Node target first because spec files use package imports (`@wendoo-lang/core/brain/compiler`, etc.) that resolve against `dist/node/`.
 
 ## Development Guide
 
 ### Ambient Type Declarations
 
-Core publishes a checked-in ambient declaration file at `lib/mindcraft.core.d.ts`.
-This file is the base type surface for user-authored Mindcraft TypeScript. It provides
-the small `lib.d.ts`-style runtime surface used by Mindcraft user code and declares the
-core `"mindcraft"` module types, including `Context`, `BrainContext`, `EngineContext`,
-`Sensor`, `Actuator`, `MindcraftTypeMap`, and the core host methods registered by
+Core publishes a checked-in ambient declaration file at `lib/wendoo.core.d.ts`.
+This file is the base type surface for user-authored Wendoo TypeScript. It provides
+the small `lib.d.ts`-style runtime surface used by Wendoo user code and declares the
+core `"wendoo"` module types, including `Context`, `BrainContext`, `EngineContext`,
+`Sensor`, `Actuator`, `WendooTypeMap`, and the core host methods registered by
 `coreModule()`.
 
 Generate the file from `packages/core/`:
@@ -116,16 +116,16 @@ Generate the file from `packages/core/`:
 npm run generate:ambient
 ```
 
-The command builds the Node target and `@mindcraft-lang/ts-compiler`, then writes
-`lib/mindcraft.core.d.ts` from the runtime registry installed by `coreModule()`.
+The command builds the Node target and `@wendoo-lang/ts-compiler`, then writes
+`lib/wendoo.core.d.ts` from the runtime registry installed by `coreModule()`.
 Regenerate it whenever core changes the user-code type surface: registered core types,
 context fields, sensors, actuators, operators, arg-spec helper types, or the ambient
 generator itself.
 
 The generated file should be checked in. Apps and command-line tooling consume it as a
-package asset via `@mindcraft-lang/core/lib/mindcraft.core.d.ts`, and the sim exposes
-it to its workspace VFS as the readonly root file `mindcraft.core.d.ts`. Biome ignores
-`lib/mindcraft.core.d.ts` because the file intentionally contains `no-default-lib`
+package asset via `@wendoo-lang/core/lib/wendoo.core.d.ts`, and the sim exposes
+it to its workspace VFS as the readonly root file `wendoo.core.d.ts`. Biome ignores
+`lib/wendoo.core.d.ts` because the file intentionally contains `no-default-lib`
 declarations and TypeScript built-in shapes that do not follow source-code lint rules.
 
 ### Platform Abstraction Pattern
@@ -172,19 +172,19 @@ Breaking these rules creates circular dependencies that fail the Roblox build.
 Tests are colocated as `*.spec.ts` files next to the code they test.
 
 1. Create `<module>.spec.ts` beside the source file
-2. Import from package exports (`@mindcraft-lang/core/brain/compiler`), not relative paths
+2. Import from package exports (`@wendoo-lang/core/brain/compiler`), not relative paths
 3. Use `describe`/`it` from `node:test` and `assert` from `node:assert/strict`
 4. `npm test` picks up new files automatically via the glob `src/**/*.spec.ts`
 
 ### Package Exports
 
 ```typescript
-import { List } from "@mindcraft-lang/core/platform";
-import { fourCC } from "@mindcraft-lang/core/primitives";
-import * as brainModel from "@mindcraft-lang/core/brain/model";
-import * as brainTiles from "@mindcraft-lang/core/brain/tiles";
-import * as brainCompiler from "@mindcraft-lang/core/brain/compiler";
-import * as brainRuntime from "@mindcraft-lang/core/brain/runtime";
+import { List } from "@wendoo-lang/core/platform";
+import { fourCC } from "@wendoo-lang/core/primitives";
+import * as brainModel from "@wendoo-lang/core/brain/model";
+import * as brainTiles from "@wendoo-lang/core/brain/tiles";
+import * as brainCompiler from "@wendoo-lang/core/brain/compiler";
+import * as brainRuntime from "@wendoo-lang/core/brain/runtime";
 ```
 
 ## Where to Start Reading

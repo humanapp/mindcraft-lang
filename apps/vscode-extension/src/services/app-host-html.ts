@@ -1,4 +1,4 @@
-import { FOLDER_HOST_MODE_FOLDER, FOLDER_HOST_MODE_GLOBAL } from "@mindcraft-lang/bridge-protocol";
+import { FOLDER_HOST_MODE_FOLDER, FOLDER_HOST_MODE_GLOBAL } from "@wendoo-lang/bridge-protocol";
 
 /** Inputs for {@link buildAppHostHtml}. */
 export interface AppHostHtmlOptions {
@@ -70,7 +70,7 @@ export function buildAppLoadFailureHtml(message: string): string {
 
 /** Build the webview document shown while the app the tab will host is being prepared. */
 export function buildAppLoadingHtml(): string {
-  return buildStaticPage("Loading the Mindcraft editor...");
+  return buildStaticPage("Loading the Wendoo editor...");
 }
 
 function buildStaticPage(message: string): string {

@@ -1,8 +1,8 @@
-import { List } from "@mindcraft-lang/core";
-import { type BrainServices, type IBrainTileDef, type ITileCatalog, RuleSide } from "@mindcraft-lang/core/brain";
-import { type CatalogTileJson, TileCatalog } from "@mindcraft-lang/core/brain/tiles";
-import { kDefaultTileHue } from "@mindcraft-lang/ui/brain-editor/tile-visual-utils";
-import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
+import { List } from "@wendoo-lang/core";
+import { type BrainServices, type IBrainTileDef, type ITileCatalog, RuleSide } from "@wendoo-lang/core/brain";
+import { type CatalogTileJson, TileCatalog } from "@wendoo-lang/core/brain/tiles";
+import { kDefaultTileHue } from "@wendoo-lang/ui/brain-editor/tile-visual-utils";
+import type { TileVisual } from "@wendoo-lang/ui/brain-editor/types";
 import type { Element } from "hast";
 import type { ReactNode } from "react";
 import Markdown, { type Components } from "react-markdown";

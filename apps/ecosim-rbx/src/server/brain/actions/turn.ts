@@ -19,7 +19,7 @@ import {
   repeated,
   type Value,
   VOID_VALUE,
-} from "@mindcraft-lang/core/app";
+} from "@wendoo-lang/core/app";
 import { EcosimHostActions } from "../abi-ids";
 import type { Actor } from "../actor";
 import { getSelf } from "../execution-context-types";

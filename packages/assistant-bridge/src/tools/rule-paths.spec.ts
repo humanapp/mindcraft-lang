@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+import type { BrainPageDef, BrainRuleDef } from "@wendoo-lang/core/brain/model";
 import { createTargetAdapter } from "../testing/index.js";
 import type { AuthoringWorkspace } from "./workspace.js";
 import { createAuthoringWorkspace, findRule, locateRules, ruleIdsByPath } from "./workspace.js";

@@ -1,20 +1,20 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List } from "@mindcraft-lang/core";
-import type { BrainServices, IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
+import { List } from "@wendoo-lang/core";
+import type { BrainServices, IBrainTileDef, ITileCatalog } from "@wendoo-lang/core/brain";
 import {
   CoreLiteralFactoryId,
   CoreVariableFactoryId,
   mkLiteralFactoryTileId,
   mkOperatorTileId,
   mkVariableFactoryTileId,
-} from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { runBrainLinkPipeline } from "@mindcraft-lang/core/brain/compiler";
-import { BrainDef } from "@mindcraft-lang/core/brain/model";
-import type { BrainTileFactoryDef } from "@mindcraft-lang/core/brain/tiles";
-import { manufactureLiteralTile, manufactureVariableTile } from "@mindcraft-lang/core/brain/tiles";
-import { CoreOpId } from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { runBrainLinkPipeline } from "@wendoo-lang/core/brain/compiler";
+import { BrainDef } from "@wendoo-lang/core/brain/model";
+import type { BrainTileFactoryDef } from "@wendoo-lang/core/brain/tiles";
+import { manufactureLiteralTile, manufactureVariableTile } from "@wendoo-lang/core/brain/tiles";
+import { CoreOpId } from "@wendoo-lang/core/runtime";
 
 let services: BrainServices;
 

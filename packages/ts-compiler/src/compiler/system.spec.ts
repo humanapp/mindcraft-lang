@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { type BrainServices, mkVariableTileId } from "@mindcraft-lang/core/brain";
-import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { BrainDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+import { type BrainServices, mkVariableTileId } from "@wendoo-lang/core/brain";
+import { __test__appendTile, __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { BrainDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
 import {
   type BrainTileActuatorDef,
   BrainTileLiteralDef,
   BrainTileOperatorDef,
   type BrainTileSensorDef,
   BrainTileVariableDef,
-} from "@mindcraft-lang/core/brain/tiles";
-import { CoreTypeIds, extractNumberValue, type IBrain, type Value } from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/brain/tiles";
+import { CoreTypeIds, extractNumberValue, type IBrain, type Value } from "@wendoo-lang/core/runtime";
 import { registerUserTile } from "../runtime/registration-bridge.js";
 import { buildUserTileMetadata } from "../runtime/user-tile-metadata.js";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
@@ -114,7 +114,7 @@ describe("System (user-code shared singleton)", () => {
     const [readCount] = compileTiles(
       {
         "counter.ts": `
-import { System, Sensor, type Context } from "mindcraft";
+import { System, Sensor, type Context } from "wendoo";
 
 const Counter = System({
   name: "counter",
@@ -150,7 +150,7 @@ export default Sensor({
     const [accAndRead] = compileTiles(
       {
         "acc.ts": `
-import { System, Sensor, type Context } from "mindcraft";
+import { System, Sensor, type Context } from "wendoo";
 
 const Acc = System({
   name: "accumulator",
@@ -184,7 +184,7 @@ export default Sensor({
     const [readCount] = compileTiles(
       {
         "helpers.ts": `
-import { System, Sensor, type Context } from "mindcraft";
+import { System, Sensor, type Context } from "wendoo";
 
 const Acc = System({
   name: "helpers",
@@ -224,7 +224,7 @@ export default Sensor({
     const [readA, readB] = compileTiles(
       {
         "lib/movement.ts": `
-import { System } from "mindcraft";
+import { System } from "wendoo";
 
 export const Counter = System({
   name: "counter",
@@ -233,7 +233,7 @@ export const Counter = System({
 });
 `,
         "tiles/read-a.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Counter } from "../lib/movement";
 
 export default Sensor({
@@ -242,7 +242,7 @@ export default Sensor({
 });
 `,
         "tiles/read-b.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Counter } from "../lib/movement";
 
 export default Sensor({
@@ -280,7 +280,7 @@ export default Sensor({
     const [readCount] = compileTiles(
       {
         "ticker.ts": `
-import { System, Sensor, type Context } from "mindcraft";
+import { System, Sensor, type Context } from "wendoo";
 
 const Ticker = System({
   name: "ticker",
@@ -334,7 +334,7 @@ export default Sensor({
     const [readCount] = compileTiles(
       {
         "named.ts": `
-import { System, Sensor, type Context } from "mindcraft";
+import { System, Sensor, type Context } from "wendoo";
 
 const Counter = System({
   name: "counter",
@@ -376,7 +376,7 @@ export default Sensor({
     const [readCount, plain] = compileTiles(
       {
         "reach.ts": `
-import { System, Sensor, type Context } from "mindcraft";
+import { System, Sensor, type Context } from "wendoo";
 
 const R = System({
   name: "reachable",
@@ -390,7 +390,7 @@ export default Sensor({
 });
 `,
         "plain.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "plain", inline: true,
@@ -430,7 +430,7 @@ export default Sensor({
     // `init` as a named-function reference (not a method/inline function).
     expectLoweringDiagnostic(
       `
-import { System, Sensor, type Context } from "mindcraft";
+import { System, Sensor, type Context } from "wendoo";
 function setup(ctx: Context): void {}
 const S = System({ name: "s", state: { count: 0 }, init: setup });
 export default Sensor({ name: "t1", onExecute(ctx: Context): number { return S.count; } });
@@ -441,7 +441,7 @@ export default Sensor({ name: "t1", onExecute(ctx: Context): number { return S.c
     // A config member that is not a method.
     expectLoweringDiagnostic(
       `
-import { System, Sensor, type Context } from "mindcraft";
+import { System, Sensor, type Context } from "wendoo";
 const S = System({ name: "s", state: { count: 0 }, speed: 5 });
 export default Sensor({ name: "t2", onExecute(ctx: Context): number { return S.count; } });
 `,
@@ -451,7 +451,7 @@ export default Sensor({ name: "t2", onExecute(ctx: Context): number { return S.c
     // An empty state shape cannot be lowered to a struct.
     expectLoweringDiagnostic(
       `
-import { System, Sensor, type Context } from "mindcraft";
+import { System, Sensor, type Context } from "wendoo";
 const S = System({ name: "s", state: {}, think() {} });
 export default Sensor({ name: "t3", onExecute(ctx: Context): number { return 0; } });
 `,
@@ -461,7 +461,7 @@ export default Sensor({ name: "t3", onExecute(ctx: Context): number { return 0; 
     // `name` provided as a non-literal expression.
     expectLoweringDiagnostic(
       `
-import { System, Sensor, type Context } from "mindcraft";
+import { System, Sensor, type Context } from "wendoo";
 const label: string = "s";
 const S = System({ name: label, state: { count: 0 } });
 export default Sensor({ name: "t4", onExecute(ctx: Context): number { return S.count; } });
@@ -472,7 +472,7 @@ export default Sensor({ name: "t4", onExecute(ctx: Context): number { return S.c
     // An external System method read as a value (not called).
     expectLoweringDiagnostic(
       `
-import { System, Sensor, type Context } from "mindcraft";
+import { System, Sensor, type Context } from "wendoo";
 const S = System({ name: "s", state: { count: 0 }, drive() { this.count = 1; } });
 export default Sensor({ name: "t5", onExecute(ctx: Context): number { const f = S.drive; f; return S.count; } });
 `,
@@ -482,7 +482,7 @@ export default Sensor({ name: "t5", onExecute(ctx: Context): number { const f = 
     // A sibling System method read as a value inside a method body.
     expectLoweringDiagnostic(
       `
-import { System, Sensor, type Context } from "mindcraft";
+import { System, Sensor, type Context } from "wendoo";
 const S = System({ name: "s", state: { count: 0 }, drive() { this.count = 1; }, go() { const f = this.drive; f; } });
 export default Sensor({ name: "t6", onExecute(ctx: Context): number { return S.count; } });
 `,
@@ -498,7 +498,7 @@ export default Sensor({ name: "t6", onExecute(ctx: Context): number { return S.c
     const [readValue] = compileTiles(
       {
         "lib/dev.ts": `
-import { System, type Context } from "mindcraft";
+import { System, type Context } from "wendoo";
 
 const BASE = 20;
 function bump(n: number): number { return n + BASE + 7; }
@@ -510,7 +510,7 @@ export const Dev = System({
 });
 `,
         "tiles/read-value.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Dev } from "../lib/dev";
 
 export default Sensor({
@@ -543,7 +543,7 @@ export default Sensor({
     const [readValue] = compileTiles(
       {
         "lib/rate.ts": `
-import { System, type Context } from "mindcraft";
+import { System, type Context } from "wendoo";
 
 export const RATE = 6;
 
@@ -554,7 +554,7 @@ export const Rated = System({
 });
 `,
         "tiles/read-rate.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Rated } from "../lib/rate";
 
 export default Sensor({
@@ -583,7 +583,7 @@ export default Sensor({
     const [readA, readB] = compileTiles(
       {
         "lib/arb.ts": `
-import { System, type Context } from "mindcraft";
+import { System, type Context } from "wendoo";
 
 const STEP = 4;
 function scale(n: number): number { return n * STEP; }
@@ -595,12 +595,12 @@ export const Arb = System({
 });
 `,
         "tiles/a.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Arb } from "../lib/arb";
 export default Sensor({ name: "arb read a", inline: true, onExecute(ctx: Context): number { return Arb.total; } });
 `,
         "tiles/b.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Arb } from "../lib/arb";
 export default Sensor({ name: "arb read b", inline: true, onExecute(ctx: Context): number { return Arb.total; } });
 `,
@@ -652,7 +652,7 @@ export default Sensor({ name: "arb read b", inline: true, onExecute(ctx: Context
         [
           "lib/bad.ts",
           `
-import { System, type Context } from "mindcraft";
+import { System, type Context } from "wendoo";
 let counter = 0;
 export const Bad = System({
   name: "bad",
@@ -664,7 +664,7 @@ export const Bad = System({
         [
           "tiles/use-bad.ts",
           `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Bad } from "../lib/bad";
 export default Sensor({ name: "use bad", onExecute(ctx: Context): number { return Bad.value; } });
 `,
@@ -698,7 +698,7 @@ export default Sensor({ name: "use bad", onExecute(ctx: Context): number { retur
         [
           "lib/mode.ts",
           `
-import { System, type Context } from "mindcraft";
+import { System, type Context } from "wendoo";
 enum Mode { Idle = 0, Run = 1 }
 export const Machine = System({
   name: "machine",
@@ -710,7 +710,7 @@ export const Machine = System({
         [
           "tiles/use-mode.ts",
           `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Machine } from "../lib/mode";
 export default Sensor({ name: "use mode", onExecute(ctx: Context): number { return Machine.value; } });
 `,
@@ -736,7 +736,7 @@ export default Sensor({ name: "use mode", onExecute(ctx: Context): number { retu
     const [readValue] = compileTiles(
       {
         "colocated.ts": `
-import { System, Sensor, type Context } from "mindcraft";
+import { System, Sensor, type Context } from "wendoo";
 
 const RATE = 6;
 function scaled(): number { return RATE * 2; }
@@ -778,7 +778,7 @@ export default Sensor({
     // reports a precise diagnostic, not a runtime fault and not a raw 3010.
     expectLoweringDiagnostic(
       `
-import { System, Sensor, type Context } from "mindcraft";
+import { System, Sensor, type Context } from "wendoo";
 const CFG = { addr: 16 };
 const Sys = System({ name: "s", state: { v: 0 }, think(ctx: Context) { this.v = CFG.addr; } });
 export default Sensor({ name: "t", onExecute(ctx: Context): number { return Sys.v; } });
@@ -794,17 +794,17 @@ export default Sensor({ name: "t", onExecute(ctx: Context): number { return Sys.
     const [readAB] = compileTiles(
       {
         "mods/a.ts": `
-import { System, type Context } from "mindcraft";
+import { System, type Context } from "wendoo";
 function fmt(n: number): number { return n + 1; }
 export const A = System({ name: "a", state: { v: 0 }, think(ctx: Context) { this.v = fmt(0); } });
 `,
         "mods/b.ts": `
-import { System, type Context } from "mindcraft";
+import { System, type Context } from "wendoo";
 function fmt(n: number): number { return n + 2; }
 export const B = System({ name: "b", state: { v: 0 }, think(ctx: Context) { this.v = fmt(0); } });
 `,
         "tiles/read-ab.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { A } from "../mods/a";
 import { B } from "../mods/b";
 export default Sensor({ name: "read ab", inline: true, onExecute(ctx: Context): number { return A.v + B.v; } });
@@ -830,7 +830,7 @@ export default Sensor({ name: "read ab", inline: true, onExecute(ctx: Context): 
     const [readValue] = compileTiles(
       {
         "lib/dev.ts": `
-import { System, type Context } from "mindcraft";
+import { System, type Context } from "wendoo";
 const SECRET = 9;
 export function helper(): number { return SECRET; }
 export const Dev = System({
@@ -840,7 +840,7 @@ export const Dev = System({
 });
 `,
         "tiles/read.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Dev } from "../lib/dev";
 export default Sensor({ name: "dev read", inline: true, onExecute(ctx: Context): number { return Dev.v; } });
 `,
@@ -869,7 +869,7 @@ const SECRET = 5;
 export function compute(): number { return SECRET + 1; }
 `,
         "tiles/use.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { compute } from "../lib/calc";
 export default Sensor({ name: "use compute", inline: true, onExecute(ctx: Context): number { return compute(); } });
 `,
@@ -897,7 +897,7 @@ export default Sensor({ name: "use compute", inline: true, onExecute(ctx: Contex
     const [readValue] = compileTiles(
       {
         "lib/rate.ts": `
-import { System, type Context } from "mindcraft";
+import { System, type Context } from "wendoo";
 export const RATE = 7;
 export function helper(): number { return RATE; }
 export const Sys = System({
@@ -907,7 +907,7 @@ export const Sys = System({
 });
 `,
         "tiles/read.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Sys } from "../lib/rate";
 export default Sensor({ name: "read", inline: true, onExecute(ctx: Context): number { return Sys.v; } });
 `,
@@ -937,7 +937,7 @@ export default Sensor({ name: "read", inline: true, onExecute(ctx: Context): num
       {
         "lib/config.ts": `export const SPEED = 42;`,
         "tile.ts": `
-import { System, Sensor, type Context } from "mindcraft";
+import { System, Sensor, type Context } from "wendoo";
 import { SPEED } from "./lib/config";
 const Sys = System({ name: "s", state: { v: 0 }, think(ctx: Context) { this.v = SPEED; } });
 export default Sensor({ name: "read", inline: true, onExecute(ctx: Context): number { return Sys.v; } });
@@ -961,12 +961,12 @@ export default Sensor({ name: "read", inline: true, onExecute(ctx: Context): num
       {
         "lib/cfg.ts": `export const SPEED = 55;`,
         "lib/mv.ts": `
-import { System, type Context } from "mindcraft";
+import { System, type Context } from "wendoo";
 import { SPEED } from "./cfg";
 export const Mv = System({ name: "mv", state: { v: 0 }, think(ctx: Context) { this.v = SPEED; } });
 `,
         "tile.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Mv } from "./lib/mv";
 export default Sensor({ name: "read", inline: true, onExecute(ctx: Context): number { return Mv.v; } });
 `,
@@ -988,7 +988,7 @@ export default Sensor({ name: "read", inline: true, onExecute(ctx: Context): num
     const [readValue] = compileTiles(
       {
         "tile.ts": `
-import { System, Sensor, type Context } from "mindcraft";
+import { System, Sensor, type Context } from "wendoo";
 const Sys = System({ name: "s", state: { v: 0 }, think(ctx: Context) { this.v = Math.max(3, 7); } });
 export default Sensor({ name: "read", inline: true, onExecute(ctx: Context): number { return Sys.v; } });
 `,
@@ -1018,7 +1018,7 @@ export default Sensor({ name: "read", inline: true, onExecute(ctx: Context): num
         [
           "lib.ts",
           `
-import { System, type Context } from "mindcraft";
+import { System, type Context } from "wendoo";
 const CFG = { addr: 5 };
 export function h(): number { return CFG.addr; }
 export const Sys = System({ name: "s", state: { v: 0 }, think(ctx: Context) { this.v = h(); } });
@@ -1027,7 +1027,7 @@ export const Sys = System({ name: "s", state: { v: 0 }, think(ctx: Context) { th
         [
           "tile.ts",
           `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Sys } from "./lib";
 export default Sensor({ name: "r", onExecute(ctx: Context): number { return Sys.v; } });
 `,
@@ -1056,7 +1056,7 @@ export default Sensor({ name: "r", onExecute(ctx: Context): number { return Sys.
         [
           "lib.ts",
           `
-import { System, type Context } from "mindcraft";
+import { System, type Context } from "wendoo";
 let counter = 0;
 function step(): number { return counter; }
 export const Sys = System({ name: "s", state: { v: 0 }, think(ctx: Context) { this.v = step(); } });
@@ -1065,7 +1065,7 @@ export const Sys = System({ name: "s", state: { v: 0 }, think(ctx: Context) { th
         [
           "tile.ts",
           `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Sys } from "./lib";
 export default Sensor({ name: "r", onExecute(ctx: Context): number { return Sys.v; } });
 `,

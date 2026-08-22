@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { Dict, List, runtime } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { treeshakeProgram as treeshakeLinked } from "@mindcraft-lang/core/brain/compiler";
-import type { BytecodeExecutableAction, ExecutionContext } from "@mindcraft-lang/core/runtime";
+import { Dict, List, runtime } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { treeshakeProgram as treeshakeLinked } from "@wendoo-lang/core/brain/compiler";
+import type { BytecodeExecutableAction, ExecutionContext } from "@wendoo-lang/core/runtime";
 import {
   HandleTable,
   type LinkedBrainProgram,
@@ -16,8 +16,8 @@ import {
   type StringValue,
   type Value,
   VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { UserTileProject } from "./project.js";
@@ -228,7 +228,7 @@ export function unused2(): string {
 }
 `,
       "sensors/entry.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { used } from "../helpers/utils";
 
 export default Sensor({
@@ -278,7 +278,7 @@ export function deadFunc(): number {
 }
 `,
       "sensors/entry.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { usedFunc } from "../helpers/lib";
 
 export default Sensor({
@@ -337,7 +337,7 @@ export class MathHelper {
 }
 `,
       "sensors/entry.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { MathHelper } from "../helpers/math-helper";
 
 export default Sensor({
@@ -389,7 +389,7 @@ export function alsoNeverCalled(): string {
 }
 `,
       "sensors/entry.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { getValue } from "../helpers/lib";
 
 export default Sensor({
@@ -456,7 +456,7 @@ export function timesThree(x: number): number {
 }
 `,
       "sensors/entry.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { addTen } from "../helpers/a";
 import { timesThree } from "../helpers/b";
 
@@ -502,7 +502,7 @@ export function double(x: number): number {
 }
 `,
       "sensors/entry.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { double } from "../helpers/math";
 
 export default Sensor({

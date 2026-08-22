@@ -2,8 +2,8 @@ import type { ExtensionTarget } from "./project-content-manifest.js";
 import { isExtensionCoordinate, parseExtensionReference, validateProjectTargets } from "./project-content-manifest.js";
 import { isSupportedVersionRange, satisfiesRange } from "./semver-range.js";
 
-/** Format marker of a Mindcraft extension catalog document. */
-export const MINDCRAFT_CATALOG_FORMAT = "mindcraft.catalog/1";
+/** Format marker of a Wendoo extension catalog document. */
+export const WENDOO_CATALOG_FORMAT = "wendoo.catalog/1";
 
 /** Entry kind for a library the catalog approves for installation. */
 export const CATALOG_ENTRY_KIND_EXTENSION = "library";
@@ -111,7 +111,7 @@ export type ExtensionCatalogMoves = Readonly<Record<string, readonly ExtensionCa
 
 /** A parsed extension catalog document. */
 export interface ExtensionCatalogDocument {
-  /** The document's format marker ({@link MINDCRAFT_CATALOG_FORMAT}). */
+  /** The document's format marker ({@link WENDOO_CATALOG_FORMAT}). */
   readonly format: string;
   /** The catalog's entries, in document order, with unknown-kind entries skipped. */
   readonly entries: readonly ExtensionCatalogDocumentEntry[];
@@ -948,14 +948,14 @@ export function validateExtensionCatalogDocument(value: unknown): ExtensionCatal
       ],
     };
   }
-  if (value.format !== MINDCRAFT_CATALOG_FORMAT) {
+  if (value.format !== WENDOO_CATALOG_FORMAT) {
     return {
       ok: false,
       errors: [
         {
           code: ExtensionCatalogDocumentErrorCode.INVALID_FORMAT,
           path: "$.format",
-          message: `Catalog document format must be "${MINDCRAFT_CATALOG_FORMAT}".`,
+          message: `Catalog document format must be "${WENDOO_CATALOG_FORMAT}".`,
         },
       ],
     };
@@ -1011,7 +1011,7 @@ export function validateExtensionCatalogDocument(value: unknown): ExtensionCatal
   if (errors.length > 0) {
     return { ok: false, errors };
   }
-  return { ok: true, document: { format: MINDCRAFT_CATALOG_FORMAT, entries, moves }, warnings, errors: [] };
+  return { ok: true, document: { format: WENDOO_CATALOG_FORMAT, entries, moves }, warnings, errors: [] };
 }
 
 /**

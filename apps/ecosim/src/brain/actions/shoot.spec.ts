@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { AuthoringWorkspace, CatalogTile, SimulationRun } from "@mindcraft-lang/assistant-bridge";
-import { catalogDigest, createAuthoringWorkspace, findTile, readCatalog } from "@mindcraft-lang/assistant-bridge";
-import { mkModifierTileId } from "@mindcraft-lang/core/brain";
-import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+import type { AuthoringWorkspace, CatalogTile, SimulationRun } from "@wendoo-lang/assistant-bridge";
+import { catalogDigest, createAuthoringWorkspace, findTile, readCatalog } from "@wendoo-lang/assistant-bridge";
+import { mkModifierTileId } from "@wendoo-lang/core/brain";
+import type { BrainRuleDef } from "@wendoo-lang/core/brain/model";
 import { TileIds } from "@/brain/tileids";
 import { createTargetAdapter } from "@/rehearsal/adapter";
 import { sourceRehearsalContent } from "@/rehearsal/source-content";

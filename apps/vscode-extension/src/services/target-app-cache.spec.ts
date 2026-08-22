@@ -9,7 +9,7 @@ import type {
   FetchedExtensionFile,
   ProjectContentManifest,
   ProjectContentManifestParseResult,
-} from "@mindcraft-lang/app-host";
+} from "@wendoo-lang/app-host";
 import {
   APP_BUNDLE_FETCH_CONCURRENCY,
   deriveTargetAppCacheDir,
@@ -20,8 +20,8 @@ import {
   type TargetAppSource,
 } from "./target-app-cache";
 
-const REFERENCE = "gh:mindcraft-lang/microbit-v2@v0.1.0";
-const COORDINATE = "mindcraft-lang/microbit-v2";
+const REFERENCE = "gh:wendoo-lang/microbit-v2@v0.1.0";
+const COORDINATE = "wendoo-lang/microbit-v2";
 const SPECIFIER = "v0.1.0";
 const CACHE_DIR = `targets/${COORDINATE}/${SPECIFIER}`;
 
@@ -114,7 +114,7 @@ function manifest(hostApp: ProjectContentManifest["hostApp"], files?: readonly s
 
 function snapshot(m: ProjectContentManifest, extraFiles: readonly FetchedExtensionFile[] = []): ExtensionFetchResult {
   const manifestFile: FetchedExtensionFile = {
-    path: "mindcraft.json",
+    path: "wendoo.json",
     content: encoder.encode(JSON.stringify(m)),
   };
   return {
@@ -159,7 +159,7 @@ describe("ensureCachedTargetAppInStore", () => {
     const result = await ensureCachedTargetAppInStore(store, REFERENCE, source, transport);
     assert.deepStrictEqual(result, { ok: true, appDir: `${CACHE_DIR}/app`, manifest: manifest(APP) });
     assert.strictEqual(source.fetches, 1);
-    assert.ok(store.files.has(`${CACHE_DIR}/mindcraft.json`));
+    assert.ok(store.files.has(`${CACHE_DIR}/wendoo.json`));
     assert.ok(store.files.has(`${CACHE_DIR}/app/index.html`));
     assert.ok(store.files.has(`${CACHE_DIR}/app/main.js`));
     // The served index.html sits directly under the returned app dir.
@@ -300,7 +300,7 @@ describe("ensureCachedTargetAppInStore", () => {
     const result = await ensureCachedTargetAppInStore(store, REFERENCE, source, transport);
     assert.deepStrictEqual(result, { ok: true, appDir: `${CACHE_DIR}/app`, manifest: manifest(APP) });
     assert.strictEqual(source.fetches, 1);
-    assert.ok(store.files.has(`${CACHE_DIR}/mindcraft.json`));
+    assert.ok(store.files.has(`${CACHE_DIR}/wendoo.json`));
     assert.ok(store.files.has(`${CACHE_DIR}/app/index.html`));
     assert.ok(store.files.has(`${CACHE_DIR}/app/main.js`));
   });
@@ -308,7 +308,7 @@ describe("ensureCachedTargetAppInStore", () => {
   it("rejects a reference whose specifier escapes the cache root without fetching", async () => {
     const source = fakeSource(snapshot(manifest(APP)));
     const transport = fakeTransport(APP_BUNDLE);
-    const result = await ensureCachedTargetAppInStore(store, "gh:mindcraft-lang/microbit-v2@..", source, transport);
+    const result = await ensureCachedTargetAppInStore(store, "gh:wendoo-lang/microbit-v2@..", source, transport);
     assert.strictEqual(failureCode(result), TargetAppCacheErrorCode.SNAPSHOT_PATH_UNSAFE);
     assert.strictEqual(source.fetches, 0);
     assert.strictEqual(transport.calls, 0);

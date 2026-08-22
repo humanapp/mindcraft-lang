@@ -1,6 +1,6 @@
-# @mindcraft-lang/app-host
+# @wendoo-lang/app-host
 
-Project management and project file storage for Mindcraft apps.
+Project management and project file storage for Wendoo apps.
 
 Provides `ProjectStore` and `ProjectManager` for managing named project
 collections and named projects in IndexedDB. Each project contains a project

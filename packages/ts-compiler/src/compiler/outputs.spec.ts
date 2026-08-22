@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { CoreTypeIds, mkOutputTileId, mkOutputVarKey } from "@mindcraft-lang/core/runtime";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { CoreTypeIds, mkOutputTileId, mkOutputVarKey } from "@wendoo-lang/core/runtime";
 import { buildCompiledActionBundle } from "../runtime/action-bundle.js";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { expectDiagnostic } from "../testsupport/diag-coverage.js";
@@ -27,7 +27,7 @@ function compileProject(files: Record<string, string>) {
 /** A sensor that declares the given `outputs` array text and writes them in `onExecute`. */
 function sensorSource(id: string, name: string, outputs: string, body: string): string {
   return `
-import { Sensor, setOutput, type Context } from "mindcraft";
+import { Sensor, setOutput, type Context } from "wendoo";
 
 export default Sensor({
   id: "${id}",
@@ -150,7 +150,7 @@ describe("setOutput lowering", () => {
   test("setOutput in an actuator (no outputs in scope) is diagnosed", () => {
     const result = compileProject({
       "act.ts": `
-import { Actuator, setOutput, type Context } from "mindcraft";
+import { Actuator, setOutput, type Context } from "wendoo";
 
 export default Actuator({
   id: "acbad",

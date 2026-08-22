@@ -14,8 +14,8 @@ export interface AppSettings {
 
 /** The settings a user who has never saved any gets. */
 export const DEFAULT_APP_SETTINGS: AppSettings = {
-  vscodeBridgeUrl: "vscode-bridge.mindcraft-lang.org",
-  assistantServiceUrl: "mindcraft-assistant.sklanch.net",
+  vscodeBridgeUrl: "vscode-bridge.wendoo-lang.org",
+  assistantServiceUrl: "wendoo-assistant.sklanch.net",
   showBridgePanel: true,
 };
 

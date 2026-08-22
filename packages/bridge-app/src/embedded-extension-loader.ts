@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { basename, relative, resolve, sep } from "node:path";
-import { MINDCRAFT_JSON_PATH, parseProjectContentManifest } from "@mindcraft-lang/app-host";
+import { parseProjectContentManifest, WENDOO_JSON_PATH } from "@wendoo-lang/app-host";
 import type { EmbeddedExtension, EmbeddedExtensionFile } from "./embedded-extensions.js";
 import { findMissingListedFiles } from "./manifest-files.js";
 
@@ -18,15 +18,15 @@ function bundlePathFor(dir: string, entry: string): string {
 
 /**
  * Read and parse the `files` list an extension declares in its own
- * `mindcraft.json`. An extension must declare content `files` or a `hostApp`
+ * `wendoo.json`. An extension must declare content `files` or a `hostApp`
  * bundle: a library names its content files, and a target (a `hostApp`) carries
  * no library content, so it resolves to an empty file list. A manifest that
  * declares neither is rejected.
  */
 function readManifestFiles(dir: string): { manifestText: string; files: readonly string[] } {
-  const manifestPath = resolve(dir, MINDCRAFT_JSON_PATH);
+  const manifestPath = resolve(dir, WENDOO_JSON_PATH);
   if (!existsSync(manifestPath)) {
-    throw new Error(`Embedded extension at ${dir} has no ${MINDCRAFT_JSON_PATH}.`);
+    throw new Error(`Embedded extension at ${dir} has no ${WENDOO_JSON_PATH}.`);
   }
   const manifestText = readFileSync(manifestPath, "utf8");
   const parsed = parseProjectContentManifest(manifestText);
@@ -54,7 +54,7 @@ function readManifestFiles(dir: string): { manifestText: string; files: readonly
  * list are valid content exclusions and are never reported: this checks only the
  * error direction, a listed file the build cannot assemble.
  *
- * @param dir - Directory holding the extension's `mindcraft.json`.
+ * @param dir - Directory holding the extension's `wendoo.json`.
  */
 export function findMissingExtensionFiles(dir: string): readonly string[] {
   const { files } = readManifestFiles(dir);
@@ -63,24 +63,24 @@ export function findMissingExtensionFiles(dir: string): readonly string[] {
 
 /**
  * Absolute paths of every on-disk file that backs an embedded extension: its
- * `mindcraft.json` plus each file its `files` list names. A build-time provider
+ * `wendoo.json` plus each file its `files` list names. A build-time provider
  * watches these so editing extension source refreshes the assembled bundle.
  *
- * @param dir - Directory holding the extension's `mindcraft.json`.
+ * @param dir - Directory holding the extension's `wendoo.json`.
  */
 export function extensionSourceFiles(dir: string): readonly string[] {
   const { files } = readManifestFiles(dir);
-  return [resolve(dir, MINDCRAFT_JSON_PATH), ...files.map((entry) => resolve(dir, entry))];
+  return [resolve(dir, WENDOO_JSON_PATH), ...files.map((entry) => resolve(dir, entry))];
 }
 
 /**
- * Assemble an embedded extension by reading its `mindcraft.json` from `dir`,
+ * Assemble an embedded extension by reading its `wendoo.json` from `dir`,
  * loading exactly the files its `files` list names, and returning the bundle
  * keyed by `canonicalOrigin`. The manifest is included at the extension root as
- * `mindcraft.json` and is never listed by `files`. Each listed entry is resolved
+ * `wendoo.json` and is never listed by `files`. Each listed entry is resolved
  * relative to `dir` and bundled at its extension-relative path.
  *
- * @param dir - Directory holding the extension's `mindcraft.json`.
+ * @param dir - Directory holding the extension's `wendoo.json`.
  * @param canonicalOrigin - The `<owner>/<repo>` coordinate the bundle is keyed under.
  * @throws {Error} when the manifest is missing, invalid, declares neither
  *   `files` nor a `hostApp` bundle, or names a file absent from disk.
@@ -99,7 +99,7 @@ export function buildEmbeddedExtensionFromDir(dir: string, canonicalOrigin: stri
     path: bundlePathFor(dir, entry),
     content: readFileSync(resolve(dir, entry), "utf8"),
   }));
-  files.push({ path: MINDCRAFT_JSON_PATH, content: manifestText });
+  files.push({ path: WENDOO_JSON_PATH, content: manifestText });
 
   return { canonicalOrigin, files };
 }

@@ -12,12 +12,12 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
-import { List } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { ConstantPool } from "@mindcraft-lang/core/brain/compiler";
-import type { ITypeRegistry, ProgramTypeEntry, TypeId, UnionTypeDef, Value } from "@mindcraft-lang/core/runtime";
-import { CoreTypeIds, mkListValue, NativeType } from "@mindcraft-lang/core/runtime";
+import { List } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { ConstantPool } from "@wendoo-lang/core/brain/compiler";
+import type { ITypeRegistry, ProgramTypeEntry, TypeId, UnionTypeDef, Value } from "@wendoo-lang/core/runtime";
+import { CoreTypeIds, mkListValue, NativeType } from "@wendoo-lang/core/runtime";
 
 let services: BrainServices;
 let registry: ITypeRegistry;

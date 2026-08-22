@@ -8,18 +8,18 @@
 
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { type CompiledActionBundle, List } from "@mindcraft-lang/core";
-import { type BrainServices, type IBrainTileDef, type ITileCatalog, RuleSide } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { Expr, SensorExpr } from "@mindcraft-lang/core/brain/compiler";
+import { type CompiledActionBundle, List } from "@wendoo-lang/core";
+import { type BrainServices, type IBrainTileDef, type ITileCatalog, RuleSide } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { Expr, SensorExpr } from "@wendoo-lang/core/brain/compiler";
 import {
   type InsertionContext,
   parseTilesForSuggestions,
   suggestTiles,
   type TileSuggestionResult,
-} from "@mindcraft-lang/core/brain/language-service";
-import { TileCatalog } from "@mindcraft-lang/core/brain/tiles";
-import { mkModifierTileId, mkParameterTileId } from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/brain/language-service";
+import { TileCatalog } from "@wendoo-lang/core/brain/tiles";
+import { mkModifierTileId, mkParameterTileId } from "@wendoo-lang/core/runtime";
 import { buildAmbientDeclarations } from "../compiler/ambient.js";
 import { CompileDiagCode } from "../compiler/diag-codes.js";
 import type { ProjectCompileResult } from "../compiler/project.js";
@@ -91,7 +91,7 @@ function boundModifierIds(sensor: IBrainTileDef, modifier: IBrainTileDef): strin
 
 /** A sensor whose sole arg is a mutually-exclusive found/lost choice over the shared `modifier.cutebot-line` ids. */
 function sharedModifierSensor(name: string): string {
-  return `import { type Context, choice, modifier, optional, Sensor } from "mindcraft";
+  return `import { type Context, choice, modifier, optional, Sensor } from "wendoo";
 
 export default Sensor({
   name: ${JSON.stringify(name)},
@@ -152,7 +152,7 @@ describe("user-tile picker: shared modifiers", () => {
 
   test("a bare reference to an unregistered shared modifier is diagnosed", () => {
     const result = compileProject({
-      "dangling.ts": `import { type Context, modifier, optional, Sensor } from "mindcraft";
+      "dangling.ts": `import { type Context, modifier, optional, Sensor } from "wendoo";
 
 export default Sensor({
   name: "dangling",
@@ -179,7 +179,7 @@ describe("user-tile picker: private params and modifiers", () => {
 
   test("a named private param and a private modifier are both offered", () => {
     const result = compileProject({
-      "tile.ts": `import { type Context, modifier, optional, param, Sensor } from "mindcraft";
+      "tile.ts": `import { type Context, modifier, optional, param, Sensor } from "wendoo";
 
 export default Sensor({
   name: "private tile",
@@ -212,7 +212,7 @@ export default Sensor({
 
   test("an anonymous param still resolves to value suggestions", () => {
     const result = compileProject({
-      "anon.ts": `import { type Context, param, Sensor } from "mindcraft";
+      "anon.ts": `import { type Context, param, Sensor } from "wendoo";
 
 export default Sensor({
   name: "anon tile",
@@ -240,7 +240,7 @@ describe("user-tile picker: shared parameters", () => {
   });
 
   function sharedParamSensor(name: string, type: string): string {
-    return `import { type Context, param, Sensor } from "mindcraft";
+    return `import { type Context, param, Sensor } from "wendoo";
 
 export default Sensor({
   name: ${JSON.stringify(name)},
@@ -284,7 +284,7 @@ export default Sensor({
 
   test("a shared parameter with an unresolved type is diagnosed rather than silently dropped", () => {
     const result = compileProject({
-      "a.ts": `import { type Context, param, Sensor } from "mindcraft";
+      "a.ts": `import { type Context, param, Sensor } from "wendoo";
 
 export default Sensor({
   name: "bad shared param",

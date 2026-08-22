@@ -121,7 +121,7 @@ export function validateAst(sourceFile: ts.SourceFile): CompileDiagnostic[] {
         addDiag(
           ValidatorDiagCode.UnsupportedTypeReference,
           node,
-          `\`${node.text}\` is not supported in the Mindcraft Runtime`
+          `\`${node.text}\` is not supported in the Wendoo Runtime`
         );
       }
     }

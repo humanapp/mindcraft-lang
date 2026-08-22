@@ -12,12 +12,12 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
-import { type Dict, List } from "@mindcraft-lang/core";
-import type { BrainServices, IBrainRuleDef } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { compileBrain, runBrainLinkPipeline } from "@mindcraft-lang/core/brain/compiler";
-import { BrainDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import type { BrainLinkEnvironment } from "@mindcraft-lang/core/runtime";
+import { type Dict, List } from "@wendoo-lang/core";
+import type { BrainServices, IBrainRuleDef } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { compileBrain, runBrainLinkPipeline } from "@wendoo-lang/core/brain/compiler";
+import { BrainDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
+import type { BrainLinkEnvironment } from "@wendoo-lang/core/runtime";
 
 let services: BrainServices;
 

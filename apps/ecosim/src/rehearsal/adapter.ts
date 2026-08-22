@@ -1,7 +1,7 @@
-import type { TargetAdapter, TargetManifest } from "@mindcraft-lang/assistant-bridge";
-import type { RehearsalWorld, WorldDriver, WorldStaging } from "@mindcraft-lang/assistant-bridge/kit";
-import { createRehearsalAdapter, pairTileDocs } from "@mindcraft-lang/assistant-bridge/kit";
-import type { IBrainDef } from "@mindcraft-lang/core/app";
+import type { TargetAdapter, TargetManifest } from "@wendoo-lang/assistant-bridge";
+import type { RehearsalWorld, WorldDriver, WorldStaging } from "@wendoo-lang/assistant-bridge/kit";
+import { createRehearsalAdapter, pairTileDocs } from "@wendoo-lang/assistant-bridge/kit";
+import type { IBrainDef } from "@wendoo-lang/core/app";
 import type { Actor, Archetype } from "@/brain/actor";
 import { ARCHETYPE_NAMES } from "@/brain/archetypes";
 import { getSelf } from "@/brain/execution-context-types";

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { WorkspaceCompileDiagnostic } from "@mindcraft-lang/bridge-app";
+import type { WorkspaceCompileDiagnostic } from "@wendoo-lang/bridge-app";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { CompileDiagnosticsConsole } from "./CompileDiagnosticsConsole";

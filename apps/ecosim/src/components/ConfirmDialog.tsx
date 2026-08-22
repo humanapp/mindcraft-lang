@@ -1,4 +1,4 @@
-import { Button, Dialog, DialogContent, DialogHeader, DialogTitle } from "@mindcraft-lang/ui";
+import { Button, Dialog, DialogContent, DialogHeader, DialogTitle } from "@wendoo-lang/ui";
 import { type ReactNode, useState } from "react";
 
 interface ConfirmDialogProps {

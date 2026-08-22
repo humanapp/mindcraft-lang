@@ -8,8 +8,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { stream } from "@mindcraft-lang/core";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { stream } from "@wendoo-lang/core";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
 import {
   type BufferValue,
   bufferByteAt,
@@ -28,7 +28,7 @@ import {
   NativeType,
   type NumberPrecision,
   type Value,
-} from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
 
 const { byteArrayFromUint8Array } = stream;
 

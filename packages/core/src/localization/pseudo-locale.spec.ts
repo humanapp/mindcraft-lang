@@ -6,7 +6,7 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { createLocalizer, defaultPluralRule, parseTemplate, pseudoLocalize } from "@mindcraft-lang/core/localization";
+import { createLocalizer, defaultPluralRule, parseTemplate, pseudoLocalize } from "@wendoo-lang/core/localization";
 
 /** Render a pseudo-localized source through a qps catalog built from it. */
 function renderPseudo(source: string, params?: Record<string, string | number>): string {

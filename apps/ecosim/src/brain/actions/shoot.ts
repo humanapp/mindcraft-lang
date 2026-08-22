@@ -20,7 +20,7 @@ import {
   setSensorOutput,
   TRUE_VALUE,
   type Value,
-} from "@mindcraft-lang/core/app";
+} from "@wendoo-lang/core/app";
 import { EcosimHostActions } from "@/brain/abi-ids";
 import { getSelf } from "@/brain/execution-context-types";
 import { ICON_BASE } from "@/brain/icon-base";

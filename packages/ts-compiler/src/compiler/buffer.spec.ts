@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, runtime } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext, Scheduler } from "@mindcraft-lang/core/runtime";
+import { List, runtime } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { ExecutionContext, Scheduler } from "@wendoo-lang/core/runtime";
 import {
   type BooleanValue,
   HandleTable,
@@ -12,8 +12,8 @@ import {
   type NumberValue,
   type Value,
   VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { compileUserTile } from "./compile.js";
 
@@ -47,7 +47,7 @@ function mkScheduler(): Scheduler {
 
 function sensorReturningNumber(body: string): string {
   return `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "buffer-test",
@@ -83,7 +83,7 @@ function compileAndRunNumber(body: string): number {
 
 function sensorReturningBoolean(body: string): string {
   return `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "buffer-test",
@@ -255,9 +255,9 @@ describe("Buffer.isBuffer", () => {
     );
   });
 
-  test("a MindcraftValue list (AnyList) can hold a buffer and narrow it back", () => {
+  test("a WendooValue list (AnyList) can hold a buffer and narrow it back", () => {
     const result = compileAndRun(`
-import { Sensor, type Context, type AnyList } from "mindcraft";
+import { Sensor, type Context, type AnyList } from "wendoo";
 
 export default Sensor({
   name: "buffer-test",
@@ -272,7 +272,7 @@ export default Sensor({
     assert.equal((result as NumberValue).v, 2);
   });
 
-  test("a Buffer is assignable to a ctx.rule variable slot (MindcraftValue)", () => {
+  test("a Buffer is assignable to a ctx.rule variable slot (WendooValue)", () => {
     assert.equal(
       compileAndRunNumber(`
         ctx.rule.setVariable("payload", Buffer.from([1, 2, 3]));

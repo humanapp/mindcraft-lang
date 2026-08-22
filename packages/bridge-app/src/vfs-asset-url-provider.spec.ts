@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { resolveObjectURL } from "node:buffer";
 import { describe, it } from "node:test";
-import { createInMemoryProjectFileSystem } from "@mindcraft-lang/app-host";
+import { createInMemoryProjectFileSystem } from "@wendoo-lang/app-host";
 import { createVfsAssetUrlProvider } from "./vfs-asset-url-provider.js";
 
 const ICON_PATH = "tiles/icon.svg";

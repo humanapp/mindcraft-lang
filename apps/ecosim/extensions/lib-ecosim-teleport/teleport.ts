@@ -1,4 +1,4 @@
-import { type ActorRef, Actuator, type Context, choice, optional, param, type Vector2 } from "mindcraft";
+import { type ActorRef, Actuator, type Context, choice, optional, param, type Vector2 } from "wendoo";
 
 export default Actuator({
   name: "teleport",

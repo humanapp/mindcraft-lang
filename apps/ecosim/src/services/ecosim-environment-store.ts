@@ -11,7 +11,7 @@ import {
   type ProjectFileSystem,
   ProjectManager,
   type ProjectManifest,
-} from "@mindcraft-lang/app-host";
+} from "@wendoo-lang/app-host";
 import {
   type AppBridgeState,
   AppEnvironmentHost,
@@ -22,18 +22,18 @@ import {
   type UserTileMetadata,
   type VfsAssetUrlProvider,
   type WorkspaceCompileDiagnostic,
-} from "@mindcraft-lang/bridge-app";
+} from "@wendoo-lang/bridge-app";
 import {
   type ActionKind,
   type BrainDef,
   coreModule,
   createEntropySeededRng,
-  type MindcraftEnvironment,
   mkActionTileId,
-} from "@mindcraft-lang/core/app";
-import { createDefaultLocalizer } from "@mindcraft-lang/core/localization";
-import type { DocsTileEntry } from "@mindcraft-lang/docs";
-import { isCompilerControlledPath, type Mount } from "@mindcraft-lang/ts-compiler";
+  type WendooEnvironment,
+} from "@wendoo-lang/core/app";
+import { createDefaultLocalizer } from "@wendoo-lang/core/localization";
+import type { DocsTileEntry } from "@wendoo-lang/docs";
+import { isCompilerControlledPath, type Mount } from "@wendoo-lang/ts-compiler";
 import { createEcosimModule } from "@/brain";
 import type { Archetype } from "@/brain/actor";
 import { ARCHETYPES } from "@/brain/archetypes";
@@ -336,7 +336,7 @@ export class EcosimEnvironmentStore {
     return instance;
   }
 
-  get env(): MindcraftEnvironment {
+  get env(): WendooEnvironment {
     return this.host.env;
   }
 

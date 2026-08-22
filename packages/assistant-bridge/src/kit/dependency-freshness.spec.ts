@@ -154,12 +154,12 @@ async function groupedTree(shape: GroupedShape): Promise<string> {
   await writePackage(app, {
     name: "app",
     dependencies: { "example/dependency": "file:../dependency" },
-    ...(shape.needs ? { mindcraftBuild: { needs: shape.needs } } : {}),
+    ...(shape.needs ? { wendooBuild: { needs: shape.needs } } : {}),
   });
   await writePackage(dependency, {
     name: "example/dependency",
     scripts: { "build:base": "tsc", "build:variant": "tsc" },
-    mindcraftBuild: groupedDeclaration,
+    wendooBuild: groupedDeclaration,
   });
 
   for (const [path, seconds] of Object.entries(shape.sources ?? { "index.ts": beforeBuild })) {
@@ -191,12 +191,12 @@ async function groupedNeedThroughMiddleTree(): Promise<string> {
   await writePackage(middle, {
     name: "example/middle",
     dependencies: { "example/dependency": "file:../dependency" },
-    mindcraftBuild: { needs: [variantName] },
+    wendooBuild: { needs: [variantName] },
   });
   await writePackage(dependency, {
     name: "example/dependency",
     scripts: { "build:base": "tsc", "build:variant": "tsc" },
-    mindcraftBuild: groupedDeclaration,
+    wendooBuild: groupedDeclaration,
   });
 
   await writeAt(join(dependency, "src", "index.ts"), moduleBody, afterBuild);

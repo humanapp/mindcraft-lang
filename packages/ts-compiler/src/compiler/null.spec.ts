@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, runtime } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
+import { List, runtime } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { ExecutionContext } from "@wendoo-lang/core/runtime";
 import {
   type BooleanValue,
   ContextTypeIds,
@@ -31,8 +31,8 @@ import {
   type Value,
   ValueDict,
   VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
@@ -107,7 +107,7 @@ describe("null literal support", () => {
 
   test("null assigned to a variable compiles to NIL_VALUE", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "null-var",
@@ -139,7 +139,7 @@ export default Sensor({
 
   test("helper function returning null produces NIL_VALUE", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function maybeNull(): number | null {
   return null;
@@ -175,7 +175,7 @@ export default Sensor({
 
   test("null in callsite-persistent variable with comparison", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 let cached: number | null = null;
 
@@ -215,7 +215,7 @@ export default Sensor({
 
   test("number !== null returns true", () => {
     const source = `
-import { Sensor, param, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "not-null",
@@ -248,7 +248,7 @@ export default Sensor({
 
   test("null === null returns true", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "nil-eq",
@@ -278,7 +278,7 @@ export default Sensor({
 
   test("undefined compiles to NIL_VALUE", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "undef-var",
@@ -310,7 +310,7 @@ export default Sensor({
 
   test("undefined === null returns true (both are nil)", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "undef-null-eq",
@@ -340,7 +340,7 @@ export default Sensor({
 
   test("number !== undefined returns true", () => {
     const source = `
-import { Sensor, param, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "not-undef",
@@ -373,7 +373,7 @@ export default Sensor({
 
   test("true && false -> false", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "and-test",
@@ -402,7 +402,7 @@ export default Sensor({
 
   test("false && sideEffect() -> false (short-circuit, side effect not called)", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 let called = false;
 
@@ -444,7 +444,7 @@ export default Sensor({
 
   test("false || true -> true", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "or-test",
@@ -473,7 +473,7 @@ export default Sensor({
 
   test("true || sideEffect() -> true (short-circuit, side effect not called)", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 let called = false;
 
@@ -515,7 +515,7 @@ export default Sensor({
 
   test("!true -> false, !false -> true", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "not-test",
@@ -542,7 +542,7 @@ export default Sensor({
     }
 
     const source2 = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "not-test2",
@@ -570,7 +570,7 @@ export default Sensor({
 
   test("0 && 42 -> 0 (JS value-preserving semantics)", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "and-val",
@@ -599,7 +599,7 @@ export default Sensor({
 
   test('"a" + "b" -> "ab" (string concatenation)', () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "str-concat",
@@ -628,7 +628,7 @@ export default Sensor({
 
   test("template literal with number interpolation -> 'count: 42'", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "template-num",
@@ -658,7 +658,7 @@ export default Sensor({
 
   test("template literal with multiple spans -> correct concatenation", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "template-multi",
@@ -689,7 +689,7 @@ export default Sensor({
 
   test('empty template literal `` -> "" (no substitution template)', () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "empty-template",
@@ -718,7 +718,7 @@ export default Sensor({
 
   test("template literal with undetermined type produces diagnostic", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "template-any",
@@ -735,7 +735,7 @@ export default Sensor({
 
   test("template literal with null interpolation produces no-conversion diagnostic", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "template-null",
@@ -757,7 +757,7 @@ describe("nullable types", () => {
 
   test("tsTypeToTypeId returns nullable TypeId for number | null parameter", () => {
     const source = `
-import { Sensor, optional, param, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "nullable-num",
@@ -825,7 +825,7 @@ describe("nullable struct nil comparison", () => {
   test("nullable struct === null compiles and returns true when nil", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Vector2 } from "wendoo";
 
 export default Sensor({
   name: "struct-nil-eq",
@@ -859,7 +859,7 @@ export default Sensor({
   test("nullable struct !== null compiles and returns true when non-nil", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Vector2 } from "wendoo";
 
 export default Sensor({
   name: "struct-nil-neq",
@@ -893,7 +893,7 @@ export default Sensor({
   test("null === nullable struct compiles (nil on left side)", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Vector2 } from "wendoo";
 
 export default Sensor({
   name: "nil-lhs-eq",
@@ -927,7 +927,7 @@ export default Sensor({
   test("nullable struct !== null returns false when nil", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Vector2 } from "wendoo";
 
 export default Sensor({
   name: "struct-nil-neq-false",
@@ -981,7 +981,7 @@ describe("auto-instantiated list types", () => {
   test("Vector2[] compiles via auto-instantiation without pre-registered Vector2List", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Vector2 } from "wendoo";
 
 export default Sensor({
   name: "vec-list",

@@ -11,7 +11,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { Dict, List, UniqueSet } from "@mindcraft-lang/core";
+import { Dict, List, UniqueSet } from "@wendoo-lang/core";
 import {
   createProgramServices,
   createRuleVariableServices,
@@ -22,7 +22,7 @@ import {
   type ProgramTypeEntry,
   type RuleVariableStores,
   type Value,
-} from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
 
 function makeProgram(opts: {
   ruleFuncIds?: UniqueSet<number>;

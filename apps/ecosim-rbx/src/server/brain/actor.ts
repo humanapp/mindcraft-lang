@@ -5,9 +5,9 @@ import {
   type IBrainRuleDef,
   type IBrainTileSet,
   logger,
-  type MindcraftBrain,
   type Vector2,
-} from "@mindcraft-lang/core/app";
+  type WendooBrain,
+} from "@wendoo-lang/core/app";
 import type { CreatureSprite } from "../world/sprite";
 import type { CreatureVisuals } from "../world/visuals";
 import { ARCHETYPES } from "./archetypes";
@@ -188,7 +188,7 @@ export class Actor {
   actorId: number;
   archetype: Archetype;
   brainDef: IBrainDef;
-  brain: MindcraftBrain;
+  brain: WendooBrain;
   mover: Mover;
   /** Assigned by {@link Engine.spawn} immediately after construction. */
   sprite: CreatureSprite = undefined!;
@@ -259,7 +259,7 @@ export class Actor {
    * and invalidated by the environment; the per-tick rebuild revives it once
    * the action becomes available.
    */
-  private createBrain(): MindcraftBrain {
+  private createBrain(): WendooBrain {
     const env = this.engine.env;
     const brainOptions: CreateBrainOptions = {
       context: this,

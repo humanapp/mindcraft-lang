@@ -6,18 +6,18 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
-import { List } from "@mindcraft-lang/core";
-import { type BrainServices, type IBrainTileDef, mkOperatorTileId } from "@mindcraft-lang/core/brain";
-import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { parseRule, runBrainLinkPipeline, TypeDiagCode } from "@mindcraft-lang/core/brain/compiler";
-import { BrainDef } from "@mindcraft-lang/core/brain/model";
+import { List } from "@wendoo-lang/core";
+import { type BrainServices, type IBrainTileDef, mkOperatorTileId } from "@wendoo-lang/core/brain";
+import { __test__appendTile, __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { parseRule, runBrainLinkPipeline, TypeDiagCode } from "@wendoo-lang/core/brain/compiler";
+import { BrainDef } from "@wendoo-lang/core/brain/model";
 import {
   BrainTileAccessorDef,
   BrainTileActuatorDef,
   BrainTileLiteralDef,
   BrainTileParameterDef,
   BrainTileVariableDef,
-} from "@mindcraft-lang/core/brain/tiles";
+} from "@wendoo-lang/core/brain/tiles";
 import {
   bag,
   type Conversion,
@@ -46,8 +46,8 @@ import {
   type TypeId,
   type Value,
   VOID_VALUE,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 
 let nextTestFnId = 2000;
 

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, type ReadonlyList, runtime } from "@mindcraft-lang/core";
-import { type BrainServices, compiler } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
+import { List, type ReadonlyList, runtime } from "@wendoo-lang/core";
+import { type BrainServices, compiler } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { ExecutionContext } from "@wendoo-lang/core/runtime";
 import {
   type AsyncHandle,
   type BooleanValue,
@@ -34,8 +34,8 @@ import {
   type Value,
   ValueDict,
   VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
@@ -326,7 +326,7 @@ describe("struct literal compilation", () => {
   test("struct literal with type annotation compiles and executes", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Vector2 } from "wendoo";
 
 export default Sensor({
   name: "make-vec",
@@ -368,7 +368,7 @@ export default Sensor({
   test("struct literal as return value (contextual type from return annotation)", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Vector2 } from "wendoo";
 
 export default Sensor({
   name: "make-vec-direct",
@@ -407,7 +407,7 @@ export default Sensor({
   test("nested struct literal compiles and executes", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Entity, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Entity, type Vector2 } from "wendoo";
 
 export default Sensor({
   name: "make-entity",
@@ -450,7 +450,7 @@ export default Sensor({
   test("native-backed struct object literal produces compile error", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NativeObj } from "mindcraft";
+import { Sensor, type Context, type NativeObj } from "wendoo";
 
 export default Sensor({
   name: "bad-native",
@@ -471,7 +471,7 @@ export default Sensor({
   test("untyped object literal compiles as anonymous struct", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "untyped-obj",
@@ -555,7 +555,7 @@ describe("property access chains + host calls", () => {
   test("closed struct property access compiles to STRUCT_GET_FIELD", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Vector2 } from "wendoo";
 
 export default Sensor({
   name: "get-x",
@@ -595,7 +595,7 @@ export default Sensor({
   test("chained struct property access (entity.position.x)", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Entity, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Entity, type Vector2 } from "wendoo";
 
 export default Sensor({
   name: "get-entity-x",
@@ -632,7 +632,7 @@ export default Sensor({
   test("ctx.time native field read returns the context value at runtime", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "get-time",
@@ -668,7 +668,7 @@ export default Sensor({
   test("ctx.dt native field read returns the context value at runtime", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "get-dt",
@@ -704,7 +704,7 @@ export default Sensor({
   test("ctx.brain.getVariable compiles to struct method call", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "get-var",
@@ -754,7 +754,7 @@ export default Sensor({
   test("ctx.brain.setVariable compiles to struct method call", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "set-var",
@@ -776,7 +776,7 @@ export default Sensor({
   test("ctx.engine.queryNearby compiles to struct method call", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Vector2 } from "wendoo";
 
 export default Sensor({
   name: "query",
@@ -799,7 +799,7 @@ export default Sensor({
   test("unknown engine method produces compile error", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "bad-method",
@@ -820,7 +820,7 @@ export default Sensor({
   test("params.speed still resolves to LoadLocal (regression)", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, optional, param, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "speed-check",
@@ -860,7 +860,7 @@ export default Sensor({
   test("list.length still resolves to ListLen (regression)", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "list-len",
@@ -911,7 +911,7 @@ export default Sensor({
 
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, param, type Context, type NativeActor } from "mindcraft";
+import { Sensor, param, type Context, type NativeActor } from "wendoo";
 
 export default Sensor({
   name: "actor-health",
@@ -936,7 +936,7 @@ export default Sensor({
   test("struct field assignment has JavaScript reference semantics (STRUCT_SET_FIELD does not copy)", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 interface Vec2 { x: number; y: number; }
 interface Holder { v: Vec2; }
@@ -977,7 +977,7 @@ export default Sensor({
   test("unknown struct field produces compile error (caught by TS checker)", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Vector2 } from "wendoo";
 
 export default Sensor({
   name: "bad-field",
@@ -1002,7 +1002,7 @@ export default Sensor({
   test("ctx alias resolves ctx.time correctly", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "ctx-alias",
@@ -1039,7 +1039,7 @@ export default Sensor({
   test("ctx alias resolves ctx.brain.getVariable correctly", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "ctx-alias-brain",
@@ -1169,7 +1169,7 @@ describe("struct method calls", () => {
   test("struct method with one arg compiles to HostCall with argc 2", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, param, type Context, type Widget } from "mindcraft";
+import { Sensor, param, type Context, type Widget } from "wendoo";
 
 export default Sensor({
   name: "widget-get",
@@ -1193,7 +1193,7 @@ export default Sensor({
   test("struct method with no args compiles to HostCall with argc 1", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, param, type Context, type Widget } from "mindcraft";
+import { Sensor, param, type Context, type Widget } from "wendoo";
 
 export default Sensor({
   name: "widget-reset",
@@ -1218,7 +1218,7 @@ export default Sensor({
   test("struct method with multiple args compiles with correct argc", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, param, type Context, type Widget } from "mindcraft";
+import { Sensor, param, type Context, type Widget } from "wendoo";
 
 export default Sensor({
   name: "widget-add",
@@ -1242,7 +1242,7 @@ export default Sensor({
   test("unknown method name on struct produces compile diagnostic", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, param, type Context, type Widget } from "mindcraft";
+import { Sensor, param, type Context, type Widget } from "wendoo";
 
 export default Sensor({
   name: "widget-bad",
@@ -1269,7 +1269,7 @@ export default Sensor({
   test("end-to-end: struct method call executes and returns correct value", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, param, type Context, type Widget } from "mindcraft";
+import { Sensor, param, type Context, type Widget } from "wendoo";
 
 export default Sensor({
   name: "widget-e2e",
@@ -1312,7 +1312,7 @@ export default Sensor({
   test("end-to-end: struct method with multiple args returns correct value", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, param, type Context, type Widget } from "mindcraft";
+import { Sensor, param, type Context, type Widget } from "wendoo";
 
 export default Sensor({
   name: "widget-add-e2e",
@@ -1370,7 +1370,7 @@ export default Sensor({
   test("calling async host function emits HOST_CALL_ASYNC", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, param, type Context, type Widget } from "mindcraft";
+import { Sensor, param, type Context, type Widget } from "wendoo";
 
 export default Sensor({
   name: "widget-fetch",
@@ -1403,7 +1403,7 @@ export default Sensor({
   test("calling sync host function emits HOST_CALL (not HOST_CALL_ASYNC)", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, param, type Context, type Widget } from "mindcraft";
+import { Sensor, param, type Context, type Widget } from "wendoo";
 
 export default Sensor({
   name: "widget-get-sync",
@@ -1435,7 +1435,7 @@ export default Sensor({
   test(".pop() removes and returns last element", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-pop",
@@ -1470,7 +1470,7 @@ export default Sensor({
   test(".pop() on empty list returns nil", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-pop-empty",
@@ -1506,7 +1506,7 @@ export default Sensor({
   test(".shift() removes and returns first element", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-shift",
@@ -1541,7 +1541,7 @@ export default Sensor({
   test(".unshift() adds element at beginning", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-unshift",
@@ -1581,7 +1581,7 @@ export default Sensor({
   test(".splice(1, 2) removes 2 elements at index 1", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-splice",
@@ -1620,7 +1620,7 @@ export default Sensor({
   test(".sort((a, b) => a - b) sorts ascending", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-sort-asc",
@@ -1659,7 +1659,7 @@ export default Sensor({
   test(".sort((a, b) => b - a) sorts descending", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-sort-desc",
@@ -1698,7 +1698,7 @@ export default Sensor({
   test(".sort() on already-sorted list is unchanged", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-sort-sorted",
@@ -1737,7 +1737,7 @@ export default Sensor({
   test(".sort() on single-element list is unchanged", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-sort-single",
@@ -1774,7 +1774,7 @@ export default Sensor({
   test(".sort() on empty list is unchanged", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-sort-empty",
@@ -1810,7 +1810,7 @@ export default Sensor({
   test(".sort() without comparator emits diagnostic", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-sort-no-cmp",
@@ -1832,7 +1832,7 @@ export default Sensor({
   test(".sort() mutates the original array", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "test-sort-mutates",
@@ -1871,7 +1871,7 @@ export default Sensor({
 
   test("true ? 1 : 2 -> 1", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "ternary-true",
@@ -1900,7 +1900,7 @@ export default Sensor({
 
   test("false ? 1 : 2 -> 2", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "ternary-false",
@@ -1929,7 +1929,7 @@ export default Sensor({
 
   test("ternary with variable condition", () => {
     const source = `
-import { Sensor, param, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "ternary-var",
@@ -1973,7 +1973,7 @@ export default Sensor({
 
   test("nested ternary a ? (b ? 1 : 2) : 3", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "ternary-nested",
@@ -2004,7 +2004,7 @@ export default Sensor({
 
   test("null ?? 42 -> 42", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "nullish-null",
@@ -2034,7 +2034,7 @@ export default Sensor({
 
   test("5 ?? 42 -> 5", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "nullish-nonnull",
@@ -2064,7 +2064,7 @@ export default Sensor({
 
   test("undefined ?? 42 -> 42", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "nullish-undef",
@@ -2094,7 +2094,7 @@ export default Sensor({
 
   test("?? does not trigger on 0 (unlike ||)", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "nullish-zero",

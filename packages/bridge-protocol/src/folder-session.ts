@@ -20,7 +20,7 @@ export const EXTENSIONS_TREE_PATH = ".libraries";
 export const INSTALLED_EXTENSIONS_METADATA_PATH = ".libraries/installed.json";
 
 /** URL search parameter a host adds to the embedded app's document URL as the host-mode bootstrap flag. */
-export const FOLDER_HOST_MODE_URL_PARAM = "mindcraftHostMode";
+export const FOLDER_HOST_MODE_URL_PARAM = "wendooHostMode";
 
 /** Value of {@link FOLDER_HOST_MODE_URL_PARAM} selecting folder host mode. */
 export const FOLDER_HOST_MODE_FOLDER = "folder";
@@ -31,13 +31,13 @@ export const FOLDER_HOST_MODE_FOLDER = "folder";
  * {@link FOLDER_HOST_MODE_URL_PARAM}. Used by hosts whose app document has no
  * queryable URL (for example an iframe loaded via `srcdoc`).
  */
-export const FOLDER_HOST_MODE_GLOBAL = "__mindcraftHostMode";
+export const FOLDER_HOST_MODE_GLOBAL = "__wendooHostMode";
 
 /** Stable identifiers for folder-session errors reported by the host. */
 export const FolderSessionErrorCode = {
   /** The app's `folder:hello` declared a protocol version the host does not speak. */
   PROTOCOL_VERSION_MISMATCH: "FOLDER_SESSION_PROTOCOL_VERSION_MISMATCH",
-  /** The project folder carries no readable `mindcraft.json`. */
+  /** The project folder carries no readable `wendoo.json`. */
   PROJECT_MANIFEST_NOT_FOUND: "FOLDER_SESSION_PROJECT_MANIFEST_NOT_FOUND",
   /** A message payload failed validation. */
   INVALID_PAYLOAD: "FOLDER_SESSION_INVALID_PAYLOAD",
@@ -76,7 +76,7 @@ export interface FolderWelcomePayload {
   protocolVersion: number;
   /** Stable opaque id of the host-provided project. */
   projectId: string;
-  /** The project's `mindcraft.json` as read from disk. */
+  /** The project's `wendoo.json` as read from disk. */
   manifest: {
     /** Full JSON text of the manifest file. */
     content: string;
@@ -101,7 +101,7 @@ export interface FolderWelcomeMessage {
 
 /**
  * Requests the project's file snapshot from the host. The host replies with
- * {@link FolderFilesMessage} carrying the same `id`. The `mindcraft.json`
+ * {@link FolderFilesMessage} carrying the same `id`. The `wendoo.json`
  * manifest is not included; it is delivered by the handshake.
  */
 export interface FolderLoadFilesMessage {
@@ -129,12 +129,12 @@ export interface FolderChangeMessage {
 
 /** Payload of a {@link FolderManifestWriteMessage}. */
 export interface FolderManifestWritePayload {
-  /** Full JSON text to store as the project's `mindcraft.json`. */
+  /** Full JSON text to store as the project's `wendoo.json`. */
   content: string;
 }
 
 /**
- * Replaces the project's `mindcraft.json` on disk. The host replies with
+ * Replaces the project's `wendoo.json` on disk. The host replies with
  * {@link FolderAckMessage} carrying the same `id`, or {@link FolderErrorMessage}.
  */
 export interface FolderManifestWriteMessage {
@@ -194,7 +194,7 @@ export interface FolderAckMessage {
 /**
  * A project file change observed on disk outside the app (an external edit).
  * A `write` carries the file's new content and an etag minted from its disk
- * state; a change to `mindcraft.json` is delivered on this channel too.
+ * state; a change to `wendoo.json` is delivered on this channel too.
  */
 export interface FolderExternalChangeMessage {
   type: "folder:externalChange";

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, runtime } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
+import { List, runtime } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { ExecutionContext } from "@wendoo-lang/core/runtime";
 import {
   type BooleanValue,
   ContextTypeIds,
@@ -31,8 +31,8 @@ import {
   type Value,
   ValueDict,
   VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
@@ -139,7 +139,7 @@ describe("destructuring", () => {
   test("object destructuring: const { x, y } = { x: 1, y: 2 }", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Vector2 } from "wendoo";
 
 export default Sensor({
   name: "obj-destructure",
@@ -175,7 +175,7 @@ export default Sensor({
   test("array destructuring: const [a, b] = [10, 20]", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "arr-destructure",
@@ -221,7 +221,7 @@ export default Sensor({
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
 
     const source = `
-import { Sensor, type Context, type Vector2, type Entity } from "mindcraft";
+import { Sensor, type Context, type Vector2, type Entity } from "wendoo";
 
 export default Sensor({
   name: "nested-obj-destructure",
@@ -268,7 +268,7 @@ export default Sensor({
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
 
     const source = `
-import { Sensor, type Context, type Coord } from "mindcraft";
+import { Sensor, type Context, type Coord } from "wendoo";
 
 export default Sensor({
   name: "nested-arr-in-obj",
@@ -315,7 +315,7 @@ export default Sensor({
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
 
     const source = `
-import { Sensor, type Context, type PairHolder } from "mindcraft";
+import { Sensor, type Context, type PairHolder } from "wendoo";
 
 export default Sensor({
   name: "mixed-nesting",
@@ -362,7 +362,7 @@ export default Sensor({
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
 
     const source = `
-import { Sensor, type Context, type Vector2, type Entity, type Wrapper } from "mindcraft";
+import { Sensor, type Context, type Vector2, type Entity, type Wrapper } from "wendoo";
 
 export default Sensor({
   name: "deep-nesting",
@@ -398,7 +398,7 @@ export default Sensor({
   test("array rest pattern: const [first, ...rest] = arr", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "rest-destructure",
@@ -434,7 +434,7 @@ export default Sensor({
   test("array rest pattern: const [a, b, ...tail] = arr", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "rest-tail",
@@ -470,7 +470,7 @@ export default Sensor({
   test("array rest pattern: const [...all] = arr copies the array", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "rest-all",
@@ -506,7 +506,7 @@ export default Sensor({
   test("object rest pattern: const { x, ...rest } = obj extracts x", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Vector2 } from "wendoo";
 
 export default Sensor({
   name: "obj-rest",
@@ -542,7 +542,7 @@ export default Sensor({
   test("object rest pattern: rest contains remaining fields", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Vector2 } from "wendoo";
 
 export default Sensor({
   name: "obj-rest-remaining",
@@ -592,7 +592,7 @@ export default Sensor({
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
 
     const source = `
-import { Sensor, type Context, type Vector2, type Entity } from "mindcraft";
+import { Sensor, type Context, type Vector2, type Entity } from "wendoo";
 
 export default Sensor({
   name: "nested-rest-inner",
@@ -644,7 +644,7 @@ export default Sensor({
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
 
     const source = `
-import { Sensor, type Context, type Vector2, type Player } from "mindcraft";
+import { Sensor, type Context, type Vector2, type Player } from "wendoo";
 
 export default Sensor({
   name: "rest-outer-3-fields",
@@ -701,7 +701,7 @@ export default Sensor({
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
 
     const source = `
-import { Sensor, type Context, type Vector2, type Player } from "mindcraft";
+import { Sensor, type Context, type Vector2, type Player } from "wendoo";
 
 export default Sensor({
   name: "nested-plus-outer-rest",
@@ -737,7 +737,7 @@ export default Sensor({
   test("property access on object rest variable: rest.y after const { x, ...rest } = obj", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Vector2 } from "wendoo";
 
 export default Sensor({
   name: "rest-prop-access",
@@ -789,7 +789,7 @@ export default Sensor({
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
 
     const source = `
-import { Sensor, type Context, type Vector2, type Player } from "mindcraft";
+import { Sensor, type Context, type Vector2, type Player } from "wendoo";
 
 export default Sensor({
   name: "rest-prop-access-3-field",
@@ -825,7 +825,7 @@ export default Sensor({
   test("computed property name in destructuring: const { ['x']: val } = obj", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Vector2 } from "wendoo";
 
 export default Sensor({
   name: "computed-key-literal",
@@ -861,7 +861,7 @@ export default Sensor({
   test("computed property name with variable key: const key = 'y'; const { [key]: val } = obj", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Vector2 } from "wendoo";
 
 export default Sensor({
   name: "computed-key-variable",
@@ -898,7 +898,7 @@ export default Sensor({
   test("computed property name combined with rest pattern: const { ['x']: val, ...rest } = obj", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Vector2 } from "wendoo";
 
 export default Sensor({
   name: "computed-key-rest",
@@ -934,7 +934,7 @@ export default Sensor({
   test("object destructuring with default value uses default when field is present", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Vector2 } from "wendoo";
 
 export default Sensor({
   name: "default-destructure",
@@ -970,7 +970,7 @@ export default Sensor({
   test("object destructuring with rename: const { x: posX } = pos", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Vector2 } from "wendoo";
 
 export default Sensor({
   name: "rename-destructure",
@@ -1006,7 +1006,7 @@ export default Sensor({
   test("array destructuring with omitted elements: const [, b] = arr", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "omitted-destructure",
@@ -1043,7 +1043,7 @@ export default Sensor({
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
 
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Vector2 } from "wendoo";
 
 function sum({ x, y }: Vector2): number {
   return x + y;
@@ -1083,7 +1083,7 @@ export default Sensor({
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
 
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function sum([a, b]: number[]): number {
   return a + b;
@@ -1123,7 +1123,7 @@ export default Sensor({
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
 
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Vector2 } from "wendoo";
 
 function apply(fn: (p: Vector2) => number, p: Vector2): number {
   return fn(p);
@@ -1163,7 +1163,7 @@ export default Sensor({
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
 
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Vector2 } from "wendoo";
 
 function apply(fn: (p: Vector2) => number, p: Vector2): number {
   return fn(p);
@@ -1204,7 +1204,7 @@ export default Sensor({
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
 
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "onexec-destructure",
@@ -1225,7 +1225,7 @@ export default Sensor({
   test("statically-typed object rest lowers to id-based copies, not STRUCT_COPY_EXCEPT", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Vector2 } from "wendoo";
 
 export default Sensor({
   name: "static-rest-emission",
@@ -1259,7 +1259,7 @@ export default Sensor({
   test("computed-key rest keeps the name-keyed STRUCT_COPY_EXCEPT fallback", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Vector2 } from "wendoo";
 
 export default Sensor({
   name: "computed-rest-emission",

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
-import type { BrainServices, IBrainPageDef, IBrainRuleDef, IBrainTileDef } from "@mindcraft-lang/core/brain";
+import type { BrainServices, IBrainPageDef, IBrainRuleDef, IBrainTileDef } from "@wendoo-lang/core/brain";
 import {
   CoreCapabilityBits,
   CoreControlFlowId,
@@ -13,8 +13,8 @@ import {
   mkSensorTileId,
   mkVariableTileId,
   TilePlacement,
-} from "@mindcraft-lang/core/brain";
-import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+} from "@wendoo-lang/core/brain";
+import { __test__appendTile, __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
 import {
   flattenRuleTiles,
   paragraphText,
@@ -25,8 +25,8 @@ import {
   sentenceText,
   tileSentenceWord,
   whenTriggerWord,
-} from "@mindcraft-lang/core/brain/language-service";
-import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+} from "@wendoo-lang/core/brain/language-service";
+import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
 import {
   BrainTileActuatorDef,
   BrainTileLiteralDef,
@@ -36,9 +36,9 @@ import {
   BrainTileSensorDef,
   BrainTileVariableDef,
   getCatalogFallbackLabel,
-} from "@mindcraft-lang/core/brain/tiles";
-import type { LocaleCatalog, Localizer } from "@mindcraft-lang/core/localization";
-import { createDefaultLocalizer, createLocalizer, defaultPluralRule } from "@mindcraft-lang/core/localization";
+} from "@wendoo-lang/core/brain/tiles";
+import type { LocaleCatalog, Localizer } from "@wendoo-lang/core/localization";
+import { createDefaultLocalizer, createLocalizer, defaultPluralRule } from "@wendoo-lang/core/localization";
 import {
   type BrainActionCallSpec,
   bag,
@@ -51,8 +51,8 @@ import {
   optional,
   param,
   type TypeId,
-} from "@mindcraft-lang/core/runtime";
-import { BitSet } from "@mindcraft-lang/core/util";
+} from "@wendoo-lang/core/runtime";
+import { BitSet } from "@wendoo-lang/core/util";
 
 let services: BrainServices;
 let localizer: Localizer;

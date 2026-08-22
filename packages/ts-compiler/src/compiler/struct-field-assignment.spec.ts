@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, runtime } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext, Scheduler } from "@mindcraft-lang/core/runtime";
+import { List, runtime } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { ExecutionContext, Scheduler } from "@wendoo-lang/core/runtime";
 import {
   HandleTable,
   isStructValue,
@@ -19,8 +19,8 @@ import {
   type Value,
   ValueDict,
   VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";
@@ -104,7 +104,7 @@ describe("struct field assignment", () => {
   test("simple field assignment on a plain struct", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Vector2 } from "wendoo";
 
 export default Sensor({
   name: "set-field",
@@ -138,7 +138,7 @@ export default Sensor({
   test("field assignment on a nested struct field", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Entity, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Entity, type Vector2 } from "wendoo";
 
 export default Sensor({
   name: "set-nested",
@@ -172,7 +172,7 @@ export default Sensor({
   test("struct field assignment to another struct value", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Entity, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Entity, type Vector2 } from "wendoo";
 
 export default Sensor({
   name: "set-struct-field",
@@ -248,7 +248,7 @@ describe("struct field assignment with fieldSetter", () => {
     setterCalls = [];
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, param, type Context, type NativeWidget } from "mindcraft";
+import { Sensor, param, type Context, type NativeWidget } from "wendoo";
 
 export default Sensor({
   name: "native-set",
@@ -311,7 +311,7 @@ describe("struct field assignment diagnostics", () => {
   test("assigning to a readOnly field produces a diagnostic", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, param, type Context, type Sensor_ReadOnly } from "mindcraft";
+import { Sensor, param, type Context, type Sensor_ReadOnly } from "wendoo";
 
 export default Sensor({
   name: "ro-assign",
@@ -341,7 +341,7 @@ export default Sensor({
   test("assigning to a writable field on a struct with readOnly fields compiles without error", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, param, type Context, type Sensor_ReadOnly } from "mindcraft";
+import { Sensor, param, type Context, type Sensor_ReadOnly } from "wendoo";
 
 export default Sensor({
   name: "mutable-assign",
@@ -386,7 +386,7 @@ describe("struct field compound assignment", () => {
   test("compound += on a struct field", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Vector2 } from "wendoo";
 
 export default Sensor({
   name: "compound-field",
@@ -420,7 +420,7 @@ export default Sensor({
   test("compound -= on a struct field", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Vector2 } from "wendoo";
 
 export default Sensor({
   name: "compound-sub",
@@ -454,7 +454,7 @@ export default Sensor({
   test("compound *= on a struct field", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Vector2 } from "wendoo";
 
 export default Sensor({
   name: "compound-mul",
@@ -551,7 +551,7 @@ describe("struct field assignment integration", () => {
 
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, param, type Context, type Unit, type Vector2 } from "mindcraft";
+import { Sensor, param, type Context, type Unit, type Vector2 } from "wendoo";
 
 export default Sensor({
   name: "integration",

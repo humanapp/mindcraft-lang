@@ -1,6 +1,6 @@
-import type { ActionKind, BrainActionCallSpec, MindcraftEnvironment } from "@mindcraft-lang/core/app";
-import { logger, mkActionTileId } from "@mindcraft-lang/core/app";
-import type { ActionKey } from "@mindcraft-lang/core/runtime";
+import type { ActionKind, BrainActionCallSpec, WendooEnvironment } from "@wendoo-lang/core/app";
+import { logger, mkActionTileId } from "@wendoo-lang/core/app";
+import type { ActionKey } from "@wendoo-lang/core/runtime";
 import type {
   CompileDiagnostic,
   ExtractedArgSpec,
@@ -8,7 +8,7 @@ import type {
   UserAuthoredProgram,
   UserTileDefinition,
   WorkspaceCompileResult,
-} from "@mindcraft-lang/ts-compiler";
+} from "@wendoo-lang/ts-compiler";
 
 /** Metadata describing a user-authored sensor or actuator tile. */
 export interface UserTileMetadata {
@@ -160,7 +160,7 @@ export function collectTileSourceCompileErrors(result: WorkspaceCompileResult): 
  * Returns `undefined` when the compile produced no bundle.
  */
 export function applyCompiledUserTiles(
-  env: MindcraftEnvironment,
+  env: WendooEnvironment,
   result: WorkspaceCompileResult
 ): UserTileApplyResult | undefined {
   const bundle = result.bundle;

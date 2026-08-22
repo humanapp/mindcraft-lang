@@ -9,9 +9,9 @@
 
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import type { IBrainPageDef, IBrainTileDef } from "@mindcraft-lang/core/app";
-import { coreModule, createMindcraftEnvironment, type MindcraftEnvironment } from "@mindcraft-lang/core/app";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
+import type { IBrainPageDef, IBrainTileDef } from "@wendoo-lang/core/app";
+import { coreModule, createWendooEnvironment, type WendooEnvironment } from "@wendoo-lang/core/app";
+import type { BrainServices } from "@wendoo-lang/core/brain";
 import {
   mkActuatorTileId,
   mkModifierTileId,
@@ -19,8 +19,8 @@ import {
   mkParameterTileId,
   mkSensorTileId,
   mkVariableTileId,
-} from "@mindcraft-lang/core/brain";
-import { __test__appendTile } from "@mindcraft-lang/core/brain/__test__";
+} from "@wendoo-lang/core/brain";
+import { __test__appendTile } from "@wendoo-lang/core/brain/__test__";
 import {
   paragraphText,
   projectPageParagraph,
@@ -28,23 +28,23 @@ import {
   segmentDisplayText,
   sentenceText,
   whenTriggerWord,
-} from "@mindcraft-lang/core/brain/language-service";
-import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { BrainTileLiteralDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
-import type { Localizer } from "@mindcraft-lang/core/localization";
-import { createDefaultLocalizer } from "@mindcraft-lang/core/localization";
-import { CoreHostActions, CoreOpId, CoreTypeIds } from "@mindcraft-lang/core/runtime";
-import { composePivotReading, composeSentenceReading } from "@mindcraft-lang/ui/brain-editor/sentence-composer";
+} from "@wendoo-lang/core/brain/language-service";
+import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
+import { BrainTileLiteralDef, BrainTileVariableDef } from "@wendoo-lang/core/brain/tiles";
+import type { Localizer } from "@wendoo-lang/core/localization";
+import { createDefaultLocalizer } from "@wendoo-lang/core/localization";
+import { CoreHostActions, CoreOpId, CoreTypeIds } from "@wendoo-lang/core/runtime";
+import { composePivotReading, composeSentenceReading } from "@wendoo-lang/ui/brain-editor/sentence-composer";
 import { EcosimHostActions } from "../abi-ids";
 import { createEcosimModule } from "../index";
 import { TileIds } from "../tileids";
 
-let environment: MindcraftEnvironment;
+let environment: WendooEnvironment;
 let services: BrainServices;
 let localizer: Localizer;
 
 before(() => {
-  environment = createMindcraftEnvironment({ modules: [coreModule(), createEcosimModule()] });
+  environment = createWendooEnvironment({ modules: [coreModule(), createEcosimModule()] });
   services = environment.brainServices;
   localizer = createDefaultLocalizer();
 });

@@ -1,8 +1,8 @@
-import { BrainDef, type MindcraftEnvironment } from "@mindcraft-lang/core/app";
+import { BrainDef, type WendooEnvironment } from "@wendoo-lang/core/app";
 
 function normalizeBrainDef(brainDef: unknown): BrainDef {
   if (!(brainDef instanceof BrainDef)) {
-    throw new Error("Expected BrainDef from mindcraft environment");
+    throw new Error("Expected BrainDef from wendoo environment");
   }
 
   if (brainDef.pages().size() === 0) {
@@ -13,7 +13,7 @@ function normalizeBrainDef(brainDef: unknown): BrainDef {
 }
 
 export function deserializeBrainFromArrayBuffer(
-  env: MindcraftEnvironment,
+  env: WendooEnvironment,
   buffer: ArrayBuffer,
   projectNamespace: string
 ): BrainDef | undefined {

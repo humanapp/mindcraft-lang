@@ -14,8 +14,8 @@ TypeScript source directly via Vite aliases and tsconfig path mappings.
 
 - **No path aliases** within this package -- use relative imports only
 - **No app-specific types** (Archetype, Actor, etc.)
-- Depends on `@mindcraft-lang/ui` for brain editor types and utilities
-- Depends on `@mindcraft-lang/core` for brain tile definitions and docs content
+- Depends on `@wendoo-lang/ui` for brain editor types and utilities
+- Depends on `@wendoo-lang/core` for brain tile definitions and docs content
 
 ## Package Layout
 
@@ -40,13 +40,13 @@ src/
   keyed by ID. Populated once at startup via `registry.register(entries)`.
 - **DocsSidebarContext**: React context with panel visibility, tab state, navigation,
   and `openDocsForTile` (redirects variable/literal tiles to concept pages).
-- **buildDocsRegistry**: Merges core docs (from `@mindcraft-lang/core/docs`) with optional
+- **buildDocsRegistry**: Merges core docs (from `@wendoo-lang/core/docs`) with optional
   app-specific entries. Apps supply `{ meta, content }` for tiles and patterns.
 - **DocsPage**: Full-page view with URL sync (`/docs/{tab}/{entryKey}`).
 - **Tile chrome**: `DocsRule.tsx` draws its own read-only tile and rule chrome, but
   from the same source as the editor -- the `--color-brain-*` tokens, which it picks
   up by inheritance from whichever host app renders it, and the shared derivation in
-  `@mindcraft-lang/ui/brain-editor/tile-visual-utils`. See the color token contract
+  `@wendoo-lang/ui/brain-editor/tile-visual-utils`. See the color token contract
   in `ui.instructions.md`.
 
 ## Tab Taxonomy -- Three Collections and the Keyboard Category
@@ -68,7 +68,7 @@ Four places carry the taxonomy and must stay in step:
   standalone route rather than a fallback to Tiles.
 
 The keyboard category's content comes from `kAcceleratorContributions` in
-`@mindcraft-lang/ui/brain-editor/accelerators`, not from the registry. A
+`@wendoo-lang/ui/brain-editor/accelerators`, not from the registry. A
 contribution carries structured keys -- `bindings`, each a chord of modifiers
 plus the keys any one of which completes it, or a named gesture -- so the page
 can draw one bordered chip per key. Modifiers are drawn as glyphs on macOS and
@@ -110,7 +110,7 @@ The host app wires these via `useDocsSidebar()` callbacks.
 
 `DocsSidebar` publishes its footprint through the inset seam `packages/ui`
 owns, `publishInset(kDocsPanelInsetVar, value)` from
-`@mindcraft-lang/ui/ui/surface-insets`: the share of the viewport width the
+`@wendoo-lang/ui/ui/surface-insets`: the share of the viewport width the
 open desktop panel covers, written as a CSS percentage, and `0%` whenever it
 covers nothing a desktop layout has to avoid -- closed, unmounted, or in the
 mobile full-screen shape. The seam writes the value onto the elements that read
@@ -174,16 +174,16 @@ for local variables/literals. Fence meta tokens: `noframe`, `do`.
 - **Core docs**: `packages/core/scripts/build-docs.js` reads the markdown under
   `packages/core/src/docs/content/{locale}/` and writes one module per locale straight into
   core's build output, at `dist/{node,esm}/docs/_generated/{locale}.js`, reached as
-  `@mindcraft-lang/core/docs/{locale}`. Nothing under core's `src/` imports it, so a docs
+  `@wendoo-lang/core/docs/{locale}`. Nothing under core's `src/` imports it, so a docs
   edit needs only `npm run build:docs` -- no compiler pass.
 - **App docs**: Loaded at build time via Vite `import.meta.glob` with `?raw`, passed to `buildDocsRegistry()`
 - **Manifests**: Map tile IDs to content keys, tags, and categories
 
 ## Consuming This Package
 
-1. Add to package.json: `"@mindcraft-lang/docs": "file:../../packages/docs"`
-2. Add Vite alias: `"@mindcraft-lang/docs": path.resolve(__dirname, "../../packages/docs/src")`
-3. Add tsconfig paths for `@mindcraft-lang/docs` and `@mindcraft-lang/docs/*`
+1. Add to package.json: `"@wendoo-lang/docs": "file:../../packages/docs"`
+2. Add Vite alias: `"@wendoo-lang/docs": path.resolve(__dirname, "../../packages/docs/src")`
+3. Add tsconfig paths for `@wendoo-lang/docs` and `@wendoo-lang/docs/*`
 4. Create manifest, write markdown content, build registry with `buildDocsRegistry()`
 5. Wrap app in `<DocsSidebarProvider>`, render `<DocsSidebar />`
 6. Optionally wire `useDocsSidebar()` into `BrainEditorConfig` and add `/docs` route

@@ -8,7 +8,7 @@ import {
   DialogTitle,
   Input,
   Switch,
-} from "@mindcraft-lang/ui";
+} from "@wendoo-lang/ui";
 import { useEffect, useState } from "react";
 import { useEcosimEnvironment } from "@/contexts/ecosim-environment";
 import { type AppSettings, DEFAULT_APP_SETTINGS } from "@/services/app-settings";

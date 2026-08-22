@@ -8,7 +8,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { stream } from "@mindcraft-lang/core";
+import { stream } from "@wendoo-lang/core";
 
 const { MemoryStream, DataType, byteArrayFromUint8Array, byteArrayToUint8Array } = stream;
 

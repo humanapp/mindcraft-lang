@@ -1,10 +1,10 @@
 /**
- * Runtime settings for the @mindcraft-lang/ui package.
+ * Runtime settings for the @wendoo-lang/ui package.
  *
  * All flags default to off. Enable them at application bootstrap as needed,
  * e.g.:
  *
- *   import { enableClipboardLogging } from "@mindcraft-lang/ui";
+ *   import { enableClipboardLogging } from "@wendoo-lang/ui";
  *   enableClipboardLogging(true);
  */
 

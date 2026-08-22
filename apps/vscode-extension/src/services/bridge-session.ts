@@ -2,16 +2,16 @@ import * as vscode from "vscode";
 import { registerCommands } from "../commands";
 import { BuildMembershipCodeLensProvider } from "../providers/build-membership-codelens-provider";
 import { BuildMembershipDecorationProvider } from "../providers/build-membership-decoration-provider";
-import { MindcraftJsonCodeLensProvider } from "../providers/mindcraft-json-codelens-provider";
-import { setMindcraftEnabled } from "../state/context";
+import { WendooJsonCodeLensProvider } from "../providers/wendoo-json-codelens-provider";
+import { setWendooEnabled } from "../state/context";
 import { createStatusBarItem } from "../ui/statusBar";
-import { MindcraftSessionsProvider } from "../views/mindcraftSessionsProvider";
-import { MINDCRAFT_SCHEME } from "./mindcraft-fs-provider";
+import { WendooSessionsProvider } from "../views/wendooSessionsProvider";
 import { ProjectManager } from "./project-manager";
 import type { ProjectSession } from "./project-session";
+import { WENDOO_SCHEME } from "./wendoo-fs-provider";
 
 /**
- * Activate bridge mode: the virtual `mindcraft:` filesystem mirroring a
+ * Activate bridge mode: the virtual `wendoo:` filesystem mirroring a
  * remote app over the websocket relay, with its sessions view, status bar,
  * and commands.
  */
@@ -19,25 +19,25 @@ export function activateBridgeSession(context: vscode.ExtensionContext): Project
   const projectManager = new ProjectManager();
 
   context.subscriptions.push(
-    vscode.workspace.registerFileSystemProvider(MINDCRAFT_SCHEME, projectManager.fsProvider, {
+    vscode.workspace.registerFileSystemProvider(WENDOO_SCHEME, projectManager.fsProvider, {
       isCaseSensitive: true,
     }),
     vscode.window.registerFileDecorationProvider(projectManager.fsProvider),
     vscode.window.registerFileDecorationProvider(
-      new BuildMembershipDecorationProvider(MINDCRAFT_SCHEME, projectManager.buildMembership)
+      new BuildMembershipDecorationProvider(WENDOO_SCHEME, projectManager.buildMembership)
     ),
     vscode.languages.registerCodeLensProvider(
-      { scheme: MINDCRAFT_SCHEME, pattern: "**/mindcraft.json" },
-      new MindcraftJsonCodeLensProvider(projectManager.fsProvider)
+      { scheme: WENDOO_SCHEME, pattern: "**/wendoo.json" },
+      new WendooJsonCodeLensProvider(projectManager.fsProvider)
     ),
     vscode.languages.registerCodeLensProvider(
-      { scheme: MINDCRAFT_SCHEME },
+      { scheme: WENDOO_SCHEME },
       new BuildMembershipCodeLensProvider(projectManager.buildMembership)
     )
   );
 
-  const sessionsProvider = new MindcraftSessionsProvider(projectManager);
-  const treeView = vscode.window.createTreeView("mindcraft.sessions", {
+  const sessionsProvider = new WendooSessionsProvider(projectManager);
+  const treeView = vscode.window.createTreeView("wendoo.sessions", {
     treeDataProvider: sessionsProvider,
   });
 
@@ -47,8 +47,8 @@ export function activateBridgeSession(context: vscode.ExtensionContext): Project
   context.subscriptions.push(
     projectManager.onDidChangeAppBound(async (bound) => {
       if (bound && !treeView.visible) {
-        await setMindcraftEnabled(true);
-        vscode.commands.executeCommand("mindcraft.sessions.focus");
+        await setWendooEnabled(true);
+        vscode.commands.executeCommand("wendoo.sessions.focus");
       }
     })
   );

@@ -1,21 +1,21 @@
 {
-  "name": "@mindcraft-lang/service-api",
+  "name": "@wendoo-lang/service-api",
   "version": "0.2.7",
-  "description": "Request/response schemas, shared enums, error shapes, and serialization formats for the Mindcraft backend service API",
+  "description": "Request/response schemas, shared enums, error shapes, and serialization formats for the Wendoo backend service API",
   "license": "MIT",
   "type": "module",
   "author": "humanapp",
   "repository": {
     "type": "git",
-    "url": "https://github.com/humanapp/mindcraft-lang.git",
+    "url": "https://github.com/humanapp/wendoo-lang.git",
     "directory": "packages/service-api"
   },
   "bugs": {
-    "url": "https://github.com/humanapp/mindcraft-lang/issues"
+    "url": "https://github.com/humanapp/wendoo-lang/issues"
   },
-  "homepage": "https://github.com/humanapp/mindcraft-lang/tree/main/packages/service-api#readme",
+  "homepage": "https://github.com/humanapp/wendoo-lang/tree/main/packages/service-api#readme",
   "keywords": [
-    "mindcraft",
+    "wendoo",
     "visual-programming",
     "tile-based",
     "typescript",
@@ -44,7 +44,7 @@
       "import": "./dist/index.js"
     }
   },
-  "mindcraftBuild": {
+  "wendooBuild": {
     "script": "build:prod",
     "outputs": [
       "dist"
@@ -69,7 +69,7 @@
     "release:major": "node ../../scripts/release.js major"
   },
   "dependencies": {
-    "@mindcraft-lang/core": "file:../core",
+    "@wendoo-lang/core": "file:../core",
     "zod": "^4.3.6"
   },
   "devDependencies": {

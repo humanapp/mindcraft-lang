@@ -12,7 +12,7 @@ function embedded(coordinate: string, extensions?: Record<string, string>): Embe
     canonicalOrigin: coordinate,
     files: [
       {
-        path: "mindcraft.json",
+        path: "wendoo.json",
         content: JSON.stringify({
           name: coordinate,
           version: "1.0.0",

@@ -1,4 +1,4 @@
-import type { MindcraftModuleApi } from "@mindcraft-lang/core/app";
+import type { WendooModuleApi } from "@wendoo-lang/core/app";
 import { TileIds } from "../tileids";
 import { EcosimTypeIds } from "../type-system";
 import { registerLiteralTiles } from "./literals";
@@ -9,7 +9,7 @@ import { registerLiteralTiles } from "./literals";
  *
  * @param api - The module registration API.
  */
-export function registerTiles(api: MindcraftModuleApi) {
+export function registerTiles(api: WendooModuleApi) {
   api.registerParameters([{ id: TileIds.Parameter.AnonymousVector2, dataType: EcosimTypeIds.Vector2, hidden: true }]);
   registerLiteralTiles(api);
 }

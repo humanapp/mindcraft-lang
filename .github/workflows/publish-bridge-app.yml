@@ -1,4 +1,4 @@
-name: Publish @mindcraft-lang/bridge-app
+name: Publish @wendoo-lang/bridge-app
 
 on:
   push:

@@ -9,7 +9,7 @@
  * or tile may not reference an unpublished name-keyed type).
  */
 
-import type { BrainServices } from "@mindcraft-lang/core/brain";
+import type { BrainServices } from "@wendoo-lang/core/brain";
 import type {
   FunctionTypeDef,
   ListTypeDef,
@@ -19,8 +19,8 @@ import type {
   TypeDef,
   TypeId,
   UnionTypeDef,
-} from "@mindcraft-lang/core/runtime";
-import { NativeType } from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
+import { NativeType } from "@wendoo-lang/core/runtime";
 import ts from "typescript";
 import { collectParams } from "./arg-spec-utils.js";
 import { CompileDiagCode } from "./diag-codes.js";

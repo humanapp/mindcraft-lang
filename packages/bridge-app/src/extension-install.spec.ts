@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { ExtensionFetchResult } from "@mindcraft-lang/app-host";
-import { bytesToBase64, ExtensionFetchErrorCode } from "@mindcraft-lang/app-host";
-import type { WorkspaceDiagnosticEntry } from "@mindcraft-lang/ts-compiler";
+import type { ExtensionFetchResult } from "@wendoo-lang/app-host";
+import { bytesToBase64, ExtensionFetchErrorCode } from "@wendoo-lang/app-host";
+import type { WorkspaceDiagnosticEntry } from "@wendoo-lang/ts-compiler";
 import type { EmbeddedExtension } from "./embedded-extensions.js";
 import {
   collectExtensionFetchClosure,
@@ -109,7 +109,7 @@ describe("collectExtensionFetchClosure", () => {
         specifier: reference.split("@")[1] ?? "resolved-sha",
         manifest: { name: coordinate, version: "1.0.0", extensions: {} },
         files: [
-          { path: "mindcraft.json", content: encoder.encode(manifest) },
+          { path: "wendoo.json", content: encoder.encode(manifest) },
           { path: "index.ts", content: encoder.encode("export {};") },
         ],
       },
@@ -118,11 +118,11 @@ describe("collectExtensionFetchClosure", () => {
 
   it("fetches every reachable gh reference transitively, through embedded manifests too", async () => {
     const embedded: EmbeddedExtension = {
-      canonicalOrigin: "mindcraft-lang/stdlib",
+      canonicalOrigin: "wendoo-lang/stdlib",
       files: [
         { path: "index.ts", content: "export {};" },
         {
-          path: "mindcraft.json",
+          path: "wendoo.json",
           content: manifestText("stdlib", { "example-org/from-embedded": "gh:example-org/from-embedded@v1" }),
         },
       ],
@@ -130,7 +130,7 @@ describe("collectExtensionFetchClosure", () => {
     const fetches: string[] = [];
     const result = await collectExtensionFetchClosure({
       extensions: {
-        "mindcraft-lang/stdlib": "embedded:mindcraft-lang/stdlib",
+        "wendoo-lang/stdlib": "embedded:wendoo-lang/stdlib",
         "example-org/root": "gh:example-org/root@v1",
       },
       embedded: [embedded],
@@ -158,7 +158,7 @@ describe("collectExtensionFetchClosure", () => {
       "example-org/root": {
         reference: "gh:example-org/root@v1",
         specifier: "v1",
-        files: { "mindcraft.json": bytesToBase64(new TextEncoder().encode(manifestText("root"))) },
+        files: { "wendoo.json": bytesToBase64(new TextEncoder().encode(manifestText("root"))) },
       },
     };
     const fetches: string[] = [];
@@ -199,7 +199,7 @@ describe("collectExtensionFetchClosure", () => {
     const record = result.snapshotsByReference.get("gh:example-org/root@v1");
     assert.ok(record, "the walk produced a record for the reference");
     assert.notEqual(record, stored["example-org/root"], "the unusable stored record is replaced by the fresh fetch");
-    assert.ok(record.files["mindcraft.json"], "the replacement carries the fetched manifest");
+    assert.ok(record.files["wendoo.json"], "the replacement carries the fetched manifest");
   });
 
   it("dry mode reports missing content for a stored record whose files carry no parseable manifest", async () => {
@@ -222,7 +222,7 @@ describe("collectExtensionFetchClosure", () => {
       "example-org/root": {
         reference: "gh:example-org/root@v1",
         specifier: "v1",
-        files: { "mindcraft.json": bytesToBase64(new TextEncoder().encode(manifestText("root"))) },
+        files: { "wendoo.json": bytesToBase64(new TextEncoder().encode(manifestText("root"))) },
       },
     };
     assert.equal(

@@ -17,7 +17,7 @@ import { BrainPage } from "./page";
 import type { BrainServices } from "./services";
 
 /**
- * Live, running instance of a Mindcraft brain. Compiles an {@link IBrainDef} through the compile,
+ * Live, running instance of a Wendoo brain. Compiles an {@link IBrainDef} through the compile,
  * link, and treeshake pipeline, constructs a {@link BrainRuntime} from the resulting program, and
  * delegates all runtime operations (think, variables, page lifecycle) to it.
  */

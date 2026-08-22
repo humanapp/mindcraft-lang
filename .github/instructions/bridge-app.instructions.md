@@ -6,7 +6,7 @@ applyTo: "packages/bridge-app/**"
 
 # bridge-app -- Rules & Patterns
 
-App-role client for the Mindcraft bridge. Wraps `bridge-client` with app-specific
+App-role client for the Wendoo bridge. Wraps `bridge-client` with app-specific
 behavior: automatic join code management and the `"app"` WebSocket path. Apps (e.g.
 `apps/ecosim`) depend on this package rather than using `bridge-client` directly.
 
@@ -53,6 +53,6 @@ src/
 - Thin wrapper package. App-role logic only; generic client logic belongs in
   `bridge-client`. Message types and schemas belong in `bridge-protocol`.
 - All exports go through `src/index.ts`. Consumers import from
-  `@mindcraft-lang/bridge-app`.
+  `@wendoo-lang/bridge-app`.
 - Use `import type` for type-only imports.
 - All unsubscribe functions return `() => void`.

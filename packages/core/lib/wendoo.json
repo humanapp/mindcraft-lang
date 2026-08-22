@@ -1,0 +1,7 @@
+{
+  "name": "Wendoo Core Library",
+  "version": "0.2.1",
+  "description": "Core library shared by all Wendoo targets.",
+  "files": ["index.ts", "wendoo.core.d.ts"],
+  "ambient": ["wendoo.core.d.ts"]
+}

@@ -1,7 +1,7 @@
 import { coreConceptDocs } from "../../../packages/core/src/docs/manifest.ts";
 import { appPatternDocs } from "../src/docs/manifest.ts";
 
-const BASE_URL = "https://sim.mindcraft-lang.org";
+const BASE_URL = "https://sim.wendoo-lang.org";
 
 function entry(loc, changefreq, priority) {
   return `  <url>\n    <loc>${loc}</loc>\n    <changefreq>${changefreq}</changefreq>\n    <priority>${priority}</priority>\n  </url>`;

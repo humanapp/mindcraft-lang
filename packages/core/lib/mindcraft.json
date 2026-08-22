@@ -1,7 +1,0 @@
-{
-  "name": "Mindcraft Core Library",
-  "version": "0.2.1",
-  "description": "Core library shared by all Mindcraft targets.",
-  "files": ["index.ts", "mindcraft.core.d.ts"],
-  "ambient": ["mindcraft.core.d.ts"]
-}

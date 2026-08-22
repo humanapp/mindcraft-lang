@@ -6,7 +6,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@mindcraft-lang/ui";
+} from "@wendoo-lang/ui";
 import { useEffect, useState } from "react";
 import { WorkspacePinInput } from "./WorkspacePinInput";
 

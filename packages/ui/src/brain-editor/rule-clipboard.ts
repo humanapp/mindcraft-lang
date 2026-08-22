@@ -1,4 +1,4 @@
-import { List, logger, type ReadonlyList } from "@mindcraft-lang/core";
+import { List, logger, type ReadonlyList } from "@wendoo-lang/core";
 import {
   type BrainServices,
   getPageIdFromTileId,
@@ -6,9 +6,9 @@ import {
   type ITileCatalog,
   isPageTileId,
   mkPageTileId,
-} from "@mindcraft-lang/core/brain";
-import { type BrainDef, BrainRuleDef, type RuleJson } from "@mindcraft-lang/core/brain/model";
-import { BrainTileMissingDef, type CatalogTileJson, TileCatalog } from "@mindcraft-lang/core/brain/tiles";
+} from "@wendoo-lang/core/brain";
+import { type BrainDef, BrainRuleDef, type RuleJson } from "@wendoo-lang/core/brain/model";
+import { BrainTileMissingDef, type CatalogTileJson, TileCatalog } from "@wendoo-lang/core/brain/tiles";
 import { isClipboardLoggingEnabled } from "../settings";
 
 /**

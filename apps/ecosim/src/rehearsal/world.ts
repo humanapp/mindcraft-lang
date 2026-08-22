@@ -1,5 +1,5 @@
-import type { ScenarioInput, ScenarioInputKind } from "@mindcraft-lang/assistant-bridge";
-import type { IBrainDef, MindcraftEnvironment, Vector2 } from "@mindcraft-lang/core/app";
+import type { ScenarioInput, ScenarioInputKind } from "@wendoo-lang/assistant-bridge";
+import type { IBrainDef, Vector2, WendooEnvironment } from "@wendoo-lang/core/app";
 import MatterBodyModule from "phaser/src/physics/matter-js/lib/body/Body.js";
 import MatterCompositeModule from "phaser/src/physics/matter-js/lib/body/Composite.js";
 import MatterEngineModule from "phaser/src/physics/matter-js/lib/core/Engine.js";
@@ -391,7 +391,7 @@ class HeadlessScene {
 // -- World content --------------------------------------------------------------
 
 /** The brain the app ships for each archetype, deserialized through the app's own loader. */
-function loadShippedBrains(env: MindcraftEnvironment, shipped: ShippedBrainDefs): Record<Archetype, IBrainDef> {
+function loadShippedBrains(env: WendooEnvironment, shipped: ShippedBrainDefs): Record<Archetype, IBrainDef> {
   const brains: Partial<Record<Archetype, IBrainDef>> = {};
   for (const archetype of ARCHETYPE_NAMES) {
     const brain = deserializeBrainFromArrayBuffer(env, shippedBrainBytes(shipped, archetype), PROJECT_NAMESPACE);
@@ -406,7 +406,7 @@ function loadShippedBrains(env: MindcraftEnvironment, shipped: ShippedBrainDefs)
  * fresh-project population targets, and the per-archetype brains, with no
  * project override.
  */
-function headlessStore(env: MindcraftEnvironment, brains: Record<Archetype, IBrainDef>): EcosimEnvironmentStore {
+function headlessStore(env: WendooEnvironment, brains: Record<Archetype, IBrainDef>): EcosimEnvironmentStore {
   return {
     env,
     getDesiredCounts: () => defaultDesiredCounts(),
@@ -563,7 +563,7 @@ export function liveActors(engine: Engine): Actor[] {
 /** How one rehearsal world is staged. */
 export interface RehearsalWorldOptions {
   /** Environment the world's brains are built and run in. */
-  readonly environment: MindcraftEnvironment;
+  readonly environment: WendooEnvironment;
   /**
    * The run's seeded random stream. Every world-construction choice draws from
    * it -- spawn positions, spawn facing -- so the same stream reproduces the

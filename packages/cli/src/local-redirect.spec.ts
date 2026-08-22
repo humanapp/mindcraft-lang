@@ -9,7 +9,7 @@ import { findLocalCliMain, isLocalBuild, runLocalBuild, shouldRedirect } from ".
 const tempRoots: string[] = [];
 
 function tempRoot(): string {
-  const dir = mkdtempSync(path.join(tmpdir(), "mindcraft-cli-redirect-"));
+  const dir = mkdtempSync(path.join(tmpdir(), "wendoo-cli-redirect-"));
   tempRoots.push(dir);
   return dir;
 }
@@ -41,17 +41,17 @@ function deepStart(base: string): string {
 }
 
 describe("findLocalCliMain", () => {
-  it("finds the direct mindcraft-lang layout (packages/cli)", () => {
+  it("finds the direct wendoo-lang layout (packages/cli)", () => {
     const root = tempRoot();
     const cliDir = path.join(root, "packages", "cli");
-    makeCliCandidate(cliDir, "mindcraft-cli", true);
+    makeCliCandidate(cliDir, "wendoo-cli", true);
     assert.equal(findLocalCliMain(deepStart(cliDir)), path.join(cliDir, "dist", "main.js"));
   });
 
-  it("finds the mcu-embedded layout (external/mindcraft-lang/packages/cli)", () => {
+  it("finds the mcu-embedded layout (external/wendoo-lang/packages/cli)", () => {
     const root = tempRoot();
-    const cliDir = path.join(root, "external", "mindcraft-lang", "packages", "cli");
-    makeCliCandidate(cliDir, "mindcraft-cli", true);
+    const cliDir = path.join(root, "external", "wendoo-lang", "packages", "cli");
+    makeCliCandidate(cliDir, "wendoo-cli", true);
     assert.equal(findLocalCliMain(deepStart(root)), path.join(cliDir, "dist", "main.js"));
   });
 
@@ -63,7 +63,7 @@ describe("findLocalCliMain", () => {
 
   it("ignores a name-matching package that has no dist/main.js", () => {
     const root = tempRoot();
-    makeCliCandidate(path.join(root, "packages", "cli"), "mindcraft-cli", false);
+    makeCliCandidate(path.join(root, "packages", "cli"), "wendoo-cli", false);
     assert.equal(findLocalCliMain(deepStart(root)), undefined);
   });
 
@@ -85,7 +85,7 @@ describe("shouldRedirect", () => {
     writeFileSync(local, "");
     writeFileSync(running, "");
     assert.equal(
-      shouldRedirect({ localMain: local, runningMain: running, env: { MINDCRAFT_CLI_NO_REDIRECT: "1" } }),
+      shouldRedirect({ localMain: local, runningMain: running, env: { WENDOO_CLI_NO_REDIRECT: "1" } }),
       false
     );
   });
@@ -96,7 +96,7 @@ describe("shouldRedirect", () => {
     const running = path.join(root, "running.js");
     writeFileSync(local, "");
     writeFileSync(running, "");
-    assert.equal(shouldRedirect({ localMain: local, runningMain: running, env: { MINDCRAFT_CLI_LOCAL: "1" } }), false);
+    assert.equal(shouldRedirect({ localMain: local, runningMain: running, env: { WENDOO_CLI_LOCAL: "1" } }), false);
   });
 
   it("does not redirect when the local build is the running build (self, via realpath)", () => {
@@ -143,7 +143,7 @@ describe("runLocalBuild", () => {
       [
         'const fs = require("node:fs");',
         "const out = process.argv[2];",
-        "fs.writeFileSync(out, JSON.stringify({ argv: process.argv.slice(2), local: process.env.MINDCRAFT_CLI_LOCAL }));",
+        "fs.writeFileSync(out, JSON.stringify({ argv: process.argv.slice(2), local: process.env.WENDOO_CLI_LOCAL }));",
         "process.exit(3);",
       ].join("\n")
     );

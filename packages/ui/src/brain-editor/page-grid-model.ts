@@ -1,4 +1,4 @@
-import { RuleSide } from "@mindcraft-lang/core/brain";
+import { RuleSide } from "@wendoo-lang/core/brain";
 import type { CaretPosition } from "./caret-run";
 import { isUndoChord } from "./history-shortcut";
 

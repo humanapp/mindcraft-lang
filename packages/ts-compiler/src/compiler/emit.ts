@@ -1,11 +1,11 @@
-import { compiler } from "@mindcraft-lang/core/brain";
+import { compiler } from "@wendoo-lang/core/brain";
 import {
   type FunctionBytecode,
   type IFunctionRegistry,
   mkFunctionValue,
   NIL_VALUE,
   type TypeId,
-} from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
 import { EmitDiagCode } from "./diag-codes.js";
 import type { IrNode, IrSourceSpan } from "./ir.js";
 import type { LocalMetadata, ScopeMetadata } from "./scope.js";

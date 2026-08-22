@@ -3,9 +3,9 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, test } from "node:test";
-import { coreModule, createMindcraftEnvironment } from "@mindcraft-lang/core";
-import type { FileContent } from "@mindcraft-lang/service-api";
-import { fileContentToBytes } from "@mindcraft-lang/service-api";
+import { coreModule, createWendooEnvironment } from "@wendoo-lang/core";
+import type { FileContent } from "@wendoo-lang/service-api";
+import { fileContentToBytes } from "@wendoo-lang/service-api";
 import ts from "typescript";
 import type { DependencyMount, ProjectDependency } from "./compiler/extension-mounts.js";
 import { declarationMount } from "./compiler/mounts.js";
@@ -108,8 +108,8 @@ function projectDiagnostics(
 }
 
 const platformAmbient: AmbientFile = {
-  path: "mindcraft.microbit-v2.d.ts",
-  content: `declare module "mindcraft" {
+  path: "wendoo.microbit-v2.d.ts",
+  content: `declare module "wendoo" {
   export interface Image {
     readonly width: number;
   }
@@ -118,21 +118,21 @@ const platformAmbient: AmbientFile = {
 };
 
 const wodalMount: DependencyMount = {
-  namespace: "mindcraft-lang/codal",
+  namespace: "wendoo-lang/codal",
   files: new Map([
     [
       "/image.ts",
-      `import type { Image } from "mindcraft";\nexport function image(width: number): Image {\n  return { width };\n}\n`,
+      `import type { Image } from "wendoo";\nexport function image(width: number): Image {\n  return { width };\n}\n`,
     ],
     ["/index.ts", `export { image } from "./image";\n`],
   ]),
 };
 
-const wodalDependency: ProjectDependency = { coordinate: "mindcraft-lang/codal" };
+const wodalDependency: ProjectDependency = { coordinate: "wendoo-lang/codal" };
 
 /**
  * A tsconfig an extension could plausibly ship for its own authoring workflow,
- * hostile to a consumer: it relaxes strictness and remaps the `mindcraft`
+ * hostile to a consumer: it relaxes strictness and remaps the `wendoo`
  * module to a path that does not exist in the consumer's workspace.
  */
 const extensionCarriedTsconfig = JSON.stringify(
@@ -140,7 +140,7 @@ const extensionCarriedTsconfig = JSON.stringify(
     compilerOptions: {
       strict: false,
       baseUrl: ".",
-      paths: { mindcraft: ["./vendor/mindcraft"] },
+      paths: { wendoo: ["./vendor/wendoo"] },
     },
     include: ["**/*"],
   },
@@ -153,7 +153,7 @@ const tsconfigCarryingMount: DependencyMount = {
   files: new Map([
     [
       "/image.ts",
-      `import type { Image } from "mindcraft";\nexport function image(width: number): Image {\n  return { width };\n}\n`,
+      `import type { Image } from "wendoo";\nexport function image(width: number): Image {\n  return { width };\n}\n`,
     ],
     ["/index.ts", `export { image } from "./image";\n`],
     ["/tsconfig.json", extensionCarriedTsconfig],
@@ -164,7 +164,7 @@ const tsconfigCarryingDependency: ProjectDependency = { coordinate: "acme/vendor
 
 describe("generated workspace tsconfig editor resolution", () => {
   test("the materialized extension source and @lib user imports resolve types with zero diagnostics", () => {
-    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule()] });
     const compiler = createWorkspaceCompiler({
       projectNamespace: TEST_PROJECT_NAMESPACE,
       mounts: [declarationMount([platformAmbient])],
@@ -175,16 +175,16 @@ describe("generated workspace tsconfig editor resolution", () => {
 
     const controlled = compiler.getCompilerControlledFiles();
     assert.ok(
-      controlled.has(".libraries/mindcraft-lang/codal/image.ts"),
+      controlled.has(".libraries/wendoo-lang/codal/image.ts"),
       "the wodal dependency materializes image.ts under the installed-extensions tree"
     );
 
-    const userMain = `import type { Image } from "mindcraft";\nimport { image } from "@lib/mindcraft-lang/codal";\nexport const heart: Image = image(5);\n`;
+    const userMain = `import type { Image } from "wendoo";\nimport { image } from "@lib/wendoo-lang/codal";\nexport const heart: Image = image(5);\n`;
     const workspaceFiles = new Map(controlled);
     workspaceFiles.set("main.ts", userMain);
 
     const { config, byTarget } = editorDiagnostics(workspaceFiles, [
-      ".libraries/mindcraft-lang/codal/image.ts",
+      ".libraries/wendoo-lang/codal/image.ts",
       "main.ts",
     ]);
 
@@ -194,19 +194,19 @@ describe("generated workspace tsconfig editor resolution", () => {
       "the generated tsconfig.json produces no config-level diagnostics (parse, option, or global)"
     );
     assert.deepEqual(
-      byTarget.get(".libraries/mindcraft-lang/codal/image.ts"),
+      byTarget.get(".libraries/wendoo-lang/codal/image.ts"),
       [],
-      'the materialized image.ts resolves `import type { Image } from "mindcraft"`'
+      'the materialized image.ts resolves `import type { Image } from "wendoo"`'
     );
     assert.deepEqual(
       byTarget.get("main.ts"),
       [],
-      "user code resolves both the ambient `mindcraft` module and the `@lib/<owner>/<repo>` import"
+      "user code resolves both the ambient `wendoo` module and the `@lib/<owner>/<repo>` import"
     );
   });
 
   test("an extension-carried tsconfig.json shadows config discovery only inside its own read-only subtree", () => {
-    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule()] });
     const compiler = createWorkspaceCompiler({
       projectNamespace: TEST_PROJECT_NAMESPACE,
       mounts: [declarationMount([platformAmbient])],
@@ -222,7 +222,7 @@ describe("generated workspace tsconfig editor resolution", () => {
       "the extension's tsconfig.json materializes verbatim under its installed-extensions subtree"
     );
 
-    const userMain = `import type { Image } from "mindcraft";\nimport { image } from "@lib/acme/vendored";\nexport const heart: Image = image(5);\n`;
+    const userMain = `import type { Image } from "wendoo";\nimport { image } from "@lib/acme/vendored";\nexport const heart: Image = image(5);\n`;
     const workspaceFiles = new Map(controlled);
     workspaceFiles.set("main.ts", userMain);
 

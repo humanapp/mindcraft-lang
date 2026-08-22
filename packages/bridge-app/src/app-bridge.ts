@@ -1,6 +1,6 @@
-import type { ProjectFileChange, ProjectFileSnapshot, ProjectFileSystem } from "@mindcraft-lang/app-host";
-import type { ConnectionStatus } from "@mindcraft-lang/bridge-client";
-import type { AppClientMessage, CompileDiagnosticEntry } from "@mindcraft-lang/bridge-protocol";
+import type { ProjectFileChange, ProjectFileSnapshot, ProjectFileSystem } from "@wendoo-lang/app-host";
+import type { ConnectionStatus } from "@wendoo-lang/bridge-client";
+import type { AppClientMessage, CompileDiagnosticEntry } from "@wendoo-lang/bridge-protocol";
 import { BridgeProject } from "./bridge-project.js";
 import { toFileSystemNotification, toFileSystemSnapshot, toProjectFileChange } from "./project-file-bridge.js";
 
@@ -11,7 +11,7 @@ export type AppBridgeState = ConnectionStatus;
 export type DiagnosticEntry = CompileDiagnosticEntry;
 
 /**
- * App-side handle for a Mindcraft bridge session. Owns the lifecycle of the
+ * App-side handle for a Wendoo bridge session. Owns the lifecycle of the
  * underlying connection and forwards local project file edits to and from the
  * remote peer.
  */

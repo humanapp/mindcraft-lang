@@ -1,4 +1,4 @@
-name: Publish @mindcraft-lang/ts-compiler
+name: Publish @wendoo-lang/ts-compiler
 
 on:
   push:

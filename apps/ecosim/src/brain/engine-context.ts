@@ -5,14 +5,14 @@ import {
   extractNumberValue,
   extractStringValue,
   List,
-  type MindcraftModuleApi,
   mkCallDef,
   mkListValue,
   mkNativeStructValue,
   NIL_VALUE,
   type ReadonlyList,
   type Value,
-} from "@mindcraft-lang/core/app";
+  type WendooModuleApi,
+} from "@wendoo-lang/core/app";
 import { EcosimFuncId } from "./abi-ids";
 import type { Archetype } from "./actor";
 import { getSelf } from "./execution-context-types";
@@ -20,7 +20,7 @@ import { EcosimTypeIds } from "./type-system";
 
 const VALID_ARCHETYPES = new Set<string>(["carnivore", "herbivore", "plant"]);
 
-export function registerEngineContext(api: MindcraftModuleApi) {
+export function registerEngineContext(api: WendooModuleApi) {
   const { types, functions } = api.brainServices.runtime;
 
   const actorRefListTypeId = types.instantiate("List", List.from([EcosimTypeIds.ActorRef]));

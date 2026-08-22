@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { DiagCode } from "@mindcraft-lang/core/brain/compiler";
+import type { DiagCode } from "@wendoo-lang/core/brain/compiler";
 import {
   CompilationDiagCode,
   diagnosticSeverity,
   LinkDiagCode,
   ParseDiagCode,
   TypeDiagCode,
-} from "@mindcraft-lang/core/brain/compiler";
+} from "@wendoo-lang/core/brain/compiler";
 import type { ToolDiagnostic } from "./diagnostics.js";
 import {
   acceptedDiagCodes,

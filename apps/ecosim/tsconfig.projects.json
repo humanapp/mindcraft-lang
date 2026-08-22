@@ -34,11 +34,11 @@
     },
     {
       "project": "lib/tsconfig.ambient.json",
-      "include": ["lib/mindcraft.ecosim.d.ts"]
+      "include": ["lib/wendoo.ecosim.d.ts"]
     },
     {
       "project": "extensions/tsconfig.json",
-      "include": ["extensions/**/*.ts", "lib/mindcraft.ecosim.d.ts"]
+      "include": ["extensions/**/*.ts", "lib/wendoo.ecosim.d.ts"]
     }
   ]
 }

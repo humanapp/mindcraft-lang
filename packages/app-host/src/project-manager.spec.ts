@@ -5,7 +5,7 @@ import {
   createProjectCollectionPinVerifier,
   DEFAULT_PROJECT_COLLECTION_ID,
   DEFAULT_PROJECT_NAME,
-  diffMindcraftJsonToManifest,
+  diffWendooJsonToManifest,
   normalizeProjectCollectionPin,
   PROJECT_COLLECTION_NAME_MAX_LENGTH,
   type ProjectCollection,
@@ -24,8 +24,8 @@ import {
   RELOAD_UNLOCK_TTL_MS,
   serializeProjectContentManifest,
   verifyProjectCollectionPin,
-} from "@mindcraft-lang/app-host";
-import { logger } from "@mindcraft-lang/core";
+} from "@wendoo-lang/app-host";
+import { logger } from "@wendoo-lang/core";
 import { createProjectCollectionBroadcast } from "./project-collection-broadcast.js";
 import { assertRejectsWithCode } from "./test-support/error-assertions.js";
 import { MemoryProjectStore } from "./test-support/memory-project-store.js";
@@ -93,7 +93,7 @@ describe("ProjectManager", () => {
 
   describe("default extensions", () => {
     it("seeds the host default extensions into a newly created project's manifest", async () => {
-      const defaults = { "mindcraft-lang/codal": "embedded:mindcraft-lang/codal" };
+      const defaults = { "wendoo-lang/codal": "embedded:wendoo-lang/codal" };
       const withDefaults = new ProjectManager(memStore, { defaultExtensions: defaults });
       try {
         const manifest = await withDefaults.create("Seeded");
@@ -414,11 +414,11 @@ describe("ProjectManager", () => {
       assert.strictEqual(pm.activeProject?.manifest.description, "A cool project");
     });
 
-    it("applies a mindcraft.json version edit through to the store", async () => {
+    it("applies a wendoo.json version edit through to the store", async () => {
       await pm.create("Versioned");
       const active = pm.activeProject!.manifest;
       const content = serializeProjectContentManifest({ name: active.name, version: "2.3.4", extensions: {} });
-      const patch = diffMindcraftJsonToManifest(content, active);
+      const patch = diffWendooJsonToManifest(content, active);
       assert.ok(patch);
       await pm.updateActive(patch);
       assert.strictEqual(pm.activeProject?.manifest.version, "2.3.4");
@@ -426,12 +426,12 @@ describe("ProjectManager", () => {
       assert.strictEqual(stored.version, "2.3.4");
     });
 
-    it("does not downgrade the stored version when mindcraft.json omits it", async () => {
+    it("does not downgrade the stored version when wendoo.json omits it", async () => {
       await pm.create("Versioned");
       const active = pm.activeProject!.manifest;
       const originalVersion = active.version;
       const content = JSON.stringify({ name: active.name, description: active.description });
-      const patch = diffMindcraftJsonToManifest(content, active);
+      const patch = diffWendooJsonToManifest(content, active);
       if (patch) {
         await pm.updateActive(patch);
       }

@@ -12,9 +12,9 @@
 // span repositories. Both runtime and dev dependencies are followed.
 //
 // A local package that produces build output declares how it is built in a
-// `mindcraftBuild` object in its package.json:
+// `wendooBuild` object in its package.json:
 //
-//   "mindcraftBuild": {
+//   "wendooBuild": {
 //     "script": "build:prod",   // npm script the driver runs
 //     "outputs": ["dist"],      // paths the script must leave behind
 //     "postProcessed": false,   // true when more than a bare tsc emit
@@ -52,7 +52,7 @@ const { join, resolve, relative } = require("node:path");
 const { pathToFileURL } = require("node:url");
 
 /** package.json field a local package declares its build interface in. */
-const buildField = "mindcraftBuild";
+const buildField = "wendooBuild";
 
 /** Prefix of a dependency specifier naming a package by its location on disk. */
 const localSpecifier = "file:";

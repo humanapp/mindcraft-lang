@@ -5,25 +5,25 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 /** The `package.json` name a directory must declare to count as a local CLI checkout. */
-const LOCAL_CLI_PACKAGE_NAME = "mindcraft-cli";
+const LOCAL_CLI_PACKAGE_NAME = "wendoo-cli";
 
 /**
  * Subdirectories, relative to an ancestor directory, where a local
- * `mindcraft-cli` package may live: a direct mindcraft-lang checkout keeps it at
+ * `wendoo-cli` package may live: a direct wendoo-lang checkout keeps it at
  * `packages/cli`, and a repository embedding the reference checkout keeps it at
- * `external/mindcraft-lang/packages/cli`.
+ * `external/wendoo-lang/packages/cli`.
  */
 const CLI_SUBPATHS: readonly string[] = [
   path.join("packages", "cli"),
-  path.join("external", "mindcraft-lang", "packages", "cli"),
+  path.join("external", "wendoo-lang", "packages", "cli"),
 ];
 
 /** Environment variable set on a re-exec'd child to break the redirect loop. */
-const LOCAL_MARKER_ENV = "MINDCRAFT_CLI_LOCAL";
+const LOCAL_MARKER_ENV = "WENDOO_CLI_LOCAL";
 /** Environment variable a developer sets to disable the local-build redirect entirely. */
-const NO_REDIRECT_ENV = "MINDCRAFT_CLI_NO_REDIRECT";
+const NO_REDIRECT_ENV = "WENDOO_CLI_NO_REDIRECT";
 /** Environment variable that, when set, prints a one-line note naming the local build path. */
-const DEBUG_ENV = "MINDCRAFT_CLI_DEBUG";
+const DEBUG_ENV = "WENDOO_CLI_DEBUG";
 
 /** Inspection of one candidate `.../packages/cli` directory. */
 interface CliCandidate {
@@ -71,10 +71,10 @@ function* ancestorCliDirs(startDir: string): Generator<string> {
 }
 
 /**
- * Locate the built entry point of a local `mindcraft-cli` working copy by
+ * Locate the built entry point of a local `wendoo-cli` working copy by
  * walking up from `startDir`. At each ancestor directory it tests both known
  * layouts; a candidate qualifies when its `package.json` declares
- * `name === "mindcraft-cli"` and a `dist/main.js` exists beside it.
+ * `name === "wendoo-cli"` and a `dist/main.js` exists beside it.
  *
  * @param startDir - Directory to begin the upward walk from.
  * @returns Absolute path to the first qualifying candidate's `dist/main.js`, or
@@ -91,7 +91,7 @@ export function findLocalCliMain(startDir: string): string | undefined {
 }
 
 /**
- * Report whether a local `mindcraft-cli` checkout exists in the ancestry of
+ * Report whether a local `wendoo-cli` checkout exists in the ancestry of
  * `startDir` but has not been built (no `dist/main.js`).
  */
 function hasUnbuiltLocalCli(startDir: string): boolean {
@@ -177,14 +177,14 @@ export function runLocalBuild(localMain: string, args: readonly string[], baseEn
 }
 
 /**
- * When the CLI is invoked from within a `mindcraft-lang` checkout (or a repo
- * embedding it at `external/mindcraft-lang`), transparently re-execute the local
+ * When the CLI is invoked from within a `wendoo-lang` checkout (or a repo
+ * embedding it at `external/wendoo-lang`), transparently re-execute the local
  * working-copy build in place of the installed one, so a developer exercises
- * local code by calling `mindcraft` exactly as a user would. Discovery is
+ * local code by calling `wendoo` exactly as a user would. Discovery is
  * anchored at `process.cwd()`.
  *
  * This runs local repository code, like `npx` or a project-local `.bin`; the
- * `name === "mindcraft-cli"` check guards against accidental collision with an
+ * `name === "wendoo-cli"` check guards against accidental collision with an
  * unrelated monorepo that also has a `packages/cli`.
  *
  * @returns True when a local build was re-executed (in which case
@@ -198,13 +198,13 @@ export async function maybeRedirectToLocalBuild(): Promise<boolean> {
 
   if (localMain === undefined || !shouldRedirect({ localMain, runningMain, env: process.env })) {
     if (localMain === undefined && hasUnbuiltLocalCli(startDir)) {
-      process.stderr.write("mindcraft: local mindcraft-cli found but not built; run npm run build to use it\n");
+      process.stderr.write("wendoo: local wendoo-cli found but not built; run npm run build to use it\n");
     }
     return false;
   }
 
   if (process.env[DEBUG_ENV] !== undefined) {
-    process.stderr.write(`mindcraft: redirecting to local build at ${localMain}\n`);
+    process.stderr.write(`wendoo: redirecting to local build at ${localMain}\n`);
   }
   process.exitCode = await runLocalBuild(localMain, process.argv.slice(2), process.env);
   return true;

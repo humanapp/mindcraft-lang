@@ -1,10 +1,10 @@
-import type { FileContent } from "@mindcraft-lang/app-host";
+import type { FileContent } from "@wendoo-lang/app-host";
 import {
   fileContentFromBytes,
   fileContentFromWire,
   fileContentToBytes,
   fileContentToWire,
-} from "@mindcraft-lang/app-host";
+} from "@wendoo-lang/app-host";
 import type {
   FileContentPayload,
   FileSystemNotification,
@@ -12,16 +12,16 @@ import type {
   FolderCompilerFilesPayload,
   FolderHostMessage,
   FolderSessionErrorCode as FolderSessionErrorCodeType,
-} from "@mindcraft-lang/bridge-protocol";
+} from "@wendoo-lang/bridge-protocol";
 import {
   EXTENSIONS_TREE_PATH,
   FOLDER_SESSION_PROTOCOL_VERSION,
   FolderSessionErrorCode,
   filesystemNotificationSchema,
   MAX_FILE_CONTENT_BYTES,
-} from "@mindcraft-lang/bridge-protocol";
+} from "@wendoo-lang/bridge-protocol";
 import * as vscode from "vscode";
-import { MINDCRAFT_JSON } from "../mindcraft-json";
+import { WENDOO_JSON } from "../wendoo-json";
 import type { DiagnosticsManager } from "./diagnostics-manager";
 import type { ExternalDocumentAccess } from "./external-document";
 import { openExternalHtmlDocument } from "./external-document";
@@ -166,7 +166,7 @@ export class FolderStoreHost {
       );
       return;
     }
-    const manifestUri = vscode.Uri.joinPath(this.folder, MINDCRAFT_JSON);
+    const manifestUri = vscode.Uri.joinPath(this.folder, WENDOO_JSON);
     let content: string;
     let stat: vscode.FileStat;
     try {
@@ -176,7 +176,7 @@ export class FolderStoreHost {
       this.postError(
         id,
         FolderSessionErrorCode.PROJECT_MANIFEST_NOT_FOUND,
-        `${this.folder.toString()} carries no readable ${MINDCRAFT_JSON}`
+        `${this.folder.toString()} carries no readable ${WENDOO_JSON}`
       );
       return;
     }
@@ -254,7 +254,7 @@ export class FolderStoreHost {
     }
     for (const [name, type] of children) {
       const path = prefix.length > 0 ? `${prefix}/${name}` : name;
-      if (isExcludedPath(path) || path === MINDCRAFT_JSON || this.affordanceWriter.isAffordancePath(path)) {
+      if (isExcludedPath(path) || path === WENDOO_JSON || this.affordanceWriter.isAffordancePath(path)) {
         continue;
       }
       if (type === vscode.FileType.Directory) {
@@ -360,10 +360,10 @@ export class FolderStoreHost {
       this.postError(id, FolderSessionErrorCode.INVALID_PAYLOAD, "folder:manifestWrite payload failed validation");
       return;
     }
-    const uri = vscode.Uri.joinPath(this.folder, MINDCRAFT_JSON);
+    const uri = vscode.Uri.joinPath(this.folder, WENDOO_JSON);
     try {
       await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(content));
-      await this.recordSelfWrite(MINDCRAFT_JSON, uri);
+      await this.recordSelfWrite(WENDOO_JSON, uri);
     } catch (error) {
       this.postError(id, FolderSessionErrorCode.WRITE_FAILED, describeError(error));
       return;
@@ -485,7 +485,7 @@ export class FolderStoreHost {
     } catch (error) {
       this.postError(undefined, FolderSessionErrorCode.WRITE_FAILED, describeError(error));
       void vscode.window.showErrorMessage(
-        `Mindcraft could not update the project's generated files: ${describeError(error)}`
+        `Wendoo could not update the project's generated files: ${describeError(error)}`
       );
     }
   }
@@ -619,7 +619,7 @@ const removableVolumeFileAccess: RemovableVolumeFileAccess = {
 };
 
 /** Host-local scratch directory printable documents are written into, under the project folder. */
-const SCRATCH_DIRECTORY = ".mindcraft";
+const SCRATCH_DIRECTORY = ".wendoo";
 
 /** Name of the reused scratch file printable documents are written to under {@link SCRATCH_DIRECTORY}. */
 const EXTERNAL_DOCUMENT_FILENAME = "print.html";
@@ -630,7 +630,7 @@ const SCRATCH_GITIGNORE_ENTRY = `${SCRATCH_DIRECTORY}/`;
 /**
  * External-document access over the workbench file system and the host's
  * default external opener: writes the document to a reused file under the
- * project folder's `.mindcraft` scratch directory (a real `file:` path in the
+ * project folder's `.wendoo` scratch directory (a real `file:` path in the
  * desktop host), ensures that directory is gitignored, then opens the file.
  * The file is overwritten each call.
  */

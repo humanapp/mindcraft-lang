@@ -11,8 +11,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { stream } from "@mindcraft-lang/core";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { stream } from "@wendoo-lang/core";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
 import {
   BINARY_PROGRAM_FORMAT_VERSION,
   type BrainProgramInstructionJson,
@@ -27,14 +27,14 @@ import {
   linkedBrainProgramFromJson,
   linkedBrainProgramToBytes,
   linkedBrainProgramToJson,
-  MINDCRAFT_BINARY_PROGRAM_IMAGE_MAGIC,
   mkNativeStructValue,
   NativeType,
   type NumberPrecision,
   OPERAND_SCHEMA,
   Op,
   type OperandSpec,
-} from "@mindcraft-lang/core/runtime";
+  WENDOO_BINARY_PROGRAM_IMAGE_MAGIC,
+} from "@wendoo-lang/core/runtime";
 
 const { MemoryStream, byteArrayFromUint8Array, byteArrayToUint8Array } = stream;
 
@@ -514,7 +514,7 @@ describe("binary .mcprogram codec -- diagnostics", () => {
     });
     const u8 = new Uint8Array(byteArrayToUint8Array(bytes) as Uint8Array);
     // The format version is the byte immediately after the magic.
-    u8[MINDCRAFT_BINARY_PROGRAM_IMAGE_MAGIC.length] = 99;
+    u8[WENDOO_BINARY_PROGRAM_IMAGE_MAGIC.length] = 99;
     assert.throws(
       () => linkedBrainProgramFromBytes(byteArrayFromUint8Array(u8), { precision: "f32", typeRegistry }),
       /UNSUPPORTED_FORMAT_VERSION/
@@ -523,8 +523,8 @@ describe("binary .mcprogram codec -- diagnostics", () => {
 
   test("rejects a variable-length integer that overflows 32 bits", () => {
     const s = new MemoryStream();
-    for (let i = 0; i < MINDCRAFT_BINARY_PROGRAM_IMAGE_MAGIC.length; i++) {
-      s.writeRawU8(MINDCRAFT_BINARY_PROGRAM_IMAGE_MAGIC[i]);
+    for (let i = 0; i < WENDOO_BINARY_PROGRAM_IMAGE_MAGIC.length; i++) {
+      s.writeRawU8(WENDOO_BINARY_PROGRAM_IMAGE_MAGIC[i]);
     }
     s.writeRawU8(BINARY_PROGRAM_FORMAT_VERSION);
     // profileId encoded as six continuation-flagged bytes -> overflow on read.
@@ -636,7 +636,7 @@ describe("binary .mcprogram codec -- TYPS diagnostics", () => {
    */
   function seekToTypsEntries(u8: Uint8Array) {
     const s = new MemoryStream(byteArrayFromUint8Array(u8));
-    for (let i = 0; i < MINDCRAFT_BINARY_PROGRAM_IMAGE_MAGIC.length; i++) {
+    for (let i = 0; i < WENDOO_BINARY_PROGRAM_IMAGE_MAGIC.length; i++) {
       s.readRawU8();
     }
     s.readRawU8(); // format version
@@ -691,7 +691,7 @@ describe("binary .mcprogram codec -- TYPS diagnostics", () => {
   test("rejects an envelope version below the reader's format", () => {
     const u8 = encodeToU8([]);
     // The format version is the byte immediately after the magic.
-    u8[MINDCRAFT_BINARY_PROGRAM_IMAGE_MAGIC.length] = 1;
+    u8[WENDOO_BINARY_PROGRAM_IMAGE_MAGIC.length] = 1;
     assert.throws(() => decodeU8(u8), /UNSUPPORTED_FORMAT_VERSION/);
   });
 });

@@ -1,6 +1,6 @@
-import type { CompiledActionBundle, MindcraftEnvironment } from "@mindcraft-lang/core";
-import type { DiagnosticSeverity } from "@mindcraft-lang/core/brain";
-import type { FileContent } from "@mindcraft-lang/service-api";
+import type { CompiledActionBundle, WendooEnvironment } from "@wendoo-lang/core";
+import type { DiagnosticSeverity } from "@wendoo-lang/core/brain";
+import type { FileContent } from "@wendoo-lang/service-api";
 import type { ProjectCompileResult } from "./compiler/compile.js";
 import { type DependencyMount, extensionWorkspacePath, type ProjectDependency } from "./compiler/extension-mounts.js";
 import { declarationMounts, type Mount, mountedFiles, sourceMounts } from "./compiler/mounts.js";
@@ -101,7 +101,7 @@ export interface WorkspaceCompileResult {
 
 /** Options for {@link createWorkspaceCompiler}. */
 export interface CreateWorkspaceCompilerOptions {
-  environment: MindcraftEnvironment;
+  environment: WendooEnvironment;
   /** Namespace of the project being compiled (its store id, or an extension origin); prefixes every symbol key minted from the project's content. */
   projectNamespace: string;
   /**

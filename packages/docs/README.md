@@ -1,8 +1,8 @@
-[![Publish @mindcraft-lang/docs](https://github.com/humanapp/mindcraft-lang/actions/workflows/publish-docs.yml/badge.svg)](https://github.com/humanapp/mindcraft-lang/actions/workflows/publish-docs.yml)
+[![Publish @wendoo-lang/docs](https://github.com/humanapp/wendoo-lang/actions/workflows/publish-docs.yml/badge.svg)](https://github.com/humanapp/wendoo-lang/actions/workflows/publish-docs.yml)
 
-# @mindcraft-lang/docs
+# @wendoo-lang/docs
 
-Shared documentation sidebar and rendering components for **Mindcraft** web applications. This package provides a complete docs system -- sidebar, markdown rendering, brain-rule visualizations, and a standalone docs page -- designed to be consumed by any webapp in the monorepo.
+Shared documentation sidebar and rendering components for **Wendoo** web applications. This package provides a complete docs system -- sidebar, markdown rendering, brain-rule visualizations, and a standalone docs page -- designed to be consumed by any webapp in the monorepo.
 
 ## What's Included
 
@@ -17,14 +17,14 @@ Shared documentation sidebar and rendering components for **Mindcraft** web appl
 
 This is a **source-only package** -- there is no build step. Consuming apps resolve the source directly via Vite aliases and tsconfig path mappings.
 
-For step-by-step setup instructions in your own project, see the [Integration Guide](https://github.com/humanapp/mindcraft-lang/blob/main/INTEGRATION.md).
+For step-by-step setup instructions in your own project, see the [Integration Guide](https://github.com/humanapp/wendoo-lang/blob/main/INTEGRATION.md).
 
 ### Vite config
 
 ```js
 resolve: {
   alias: {
-    "@mindcraft-lang/docs": path.resolve(__dirname, "../../packages/docs/src"),
+    "@wendoo-lang/docs": path.resolve(__dirname, "../../packages/docs/src"),
   },
 },
 ```
@@ -35,8 +35,8 @@ resolve: {
 {
   "compilerOptions": {
     "paths": {
-      "@mindcraft-lang/docs": ["../../packages/docs/src/index.ts"],
-      "@mindcraft-lang/docs/*": ["../../packages/docs/src/*"]
+      "@wendoo-lang/docs": ["../../packages/docs/src/index.ts"],
+      "@wendoo-lang/docs/*": ["../../packages/docs/src/*"]
     }
   }
 }
@@ -45,9 +45,9 @@ resolve: {
 ### Imports
 
 ```typescript
-import { DocsSidebarProvider, DocsSidebar, useDocsSidebar } from "@mindcraft-lang/docs";
-import { DocsPage, DocsRegistry, buildDocsRegistry } from "@mindcraft-lang/docs";
-import type { AppTileDocMeta, AppPatternDocMeta } from "@mindcraft-lang/docs";
+import { DocsSidebarProvider, DocsSidebar, useDocsSidebar } from "@wendoo-lang/docs";
+import { DocsPage, DocsRegistry, buildDocsRegistry } from "@wendoo-lang/docs";
+import type { AppTileDocMeta, AppPatternDocMeta } from "@wendoo-lang/docs";
 ```
 
 ## Integration
@@ -55,7 +55,7 @@ import type { AppTileDocMeta, AppPatternDocMeta } from "@mindcraft-lang/docs";
 Wrap your app in `DocsSidebarProvider` with a populated `DocsRegistry`, then render `DocsSidebar` as a sibling overlay. Use `useDocsSidebar()` to open/close the panel or deep-link to specific tiles.
 
 ```tsx
-import { DocsSidebarProvider, DocsSidebar, buildDocsRegistry } from "@mindcraft-lang/docs";
+import { DocsSidebarProvider, DocsSidebar, buildDocsRegistry } from "@wendoo-lang/docs";
 
 const registry = buildDocsRegistry({
   appTiles: { meta: [...], content: new Map([...]) },
@@ -99,8 +99,8 @@ src/
 
 ## Dependencies
 
-- **@mindcraft-lang/core** -- brain tile definitions, docs manifests, compiler services
-- **@mindcraft-lang/ui** -- TileVisual, color utilities, glass effects, rule clipboard
+- **@wendoo-lang/core** -- brain tile definitions, docs manifests, compiler services
+- **@wendoo-lang/ui** -- TileVisual, color utilities, glass effects, rule clipboard
 - **lucide-react** -- icons
 - **react-markdown + remark-gfm** -- markdown rendering
 - **sonner** -- toast notifications

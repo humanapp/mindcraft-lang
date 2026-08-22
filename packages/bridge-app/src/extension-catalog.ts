@@ -4,13 +4,13 @@ import {
   type FileContent,
   fileContentText,
   LOWEST_CONTENT_VERSION,
-  MINDCRAFT_JSON_PATH,
   parseExtensionReference,
   parseProjectContentManifest,
   satisfiesRange,
-} from "@mindcraft-lang/app-host";
+  WENDOO_JSON_PATH,
+} from "@wendoo-lang/app-host";
 
-export { satisfiesRange } from "@mindcraft-lang/app-host";
+export { satisfiesRange } from "@wendoo-lang/app-host";
 
 import type { EmbeddedExtension, FetchedExtensionContentMap } from "./embedded-extensions.js";
 import { resolveProjectExtensions } from "./embedded-extensions.js";
@@ -104,7 +104,7 @@ export interface ExtensionActionResult {
   readonly extensions: Readonly<Record<string, string>>;
 }
 
-/** An extension's manifest identity, as read from its bundled `mindcraft.json`. */
+/** An extension's manifest identity, as read from its bundled `wendoo.json`. */
 interface EmbeddedManifest {
   name: string;
   version: string;
@@ -114,10 +114,10 @@ interface EmbeddedManifest {
   identity?: string;
 }
 
-/** Read an embedded extension's manifest identity from its bundled `mindcraft.json`. */
+/** Read an embedded extension's manifest identity from its bundled `wendoo.json`. */
 function readEmbeddedManifest(extension: EmbeddedExtension): EmbeddedManifest {
   const manifestFile = extension.files.find(
-    (file) => file.path === MINDCRAFT_JSON_PATH || file.path === `/${MINDCRAFT_JSON_PATH}`
+    (file) => file.path === WENDOO_JSON_PATH || file.path === `/${WENDOO_JSON_PATH}`
   );
   if (manifestFile === undefined) {
     return { name: extension.canonicalOrigin, version: LOWEST_CONTENT_VERSION };
@@ -162,7 +162,7 @@ function resolvedOrigins(
 
 /** Read a fetched extension's manifest identity from its snapshot content. */
 function readFetchedManifest(files: ReadonlyMap<string, FileContent>): EmbeddedManifest | undefined {
-  const entry = files.get(`/${MINDCRAFT_JSON_PATH}`) ?? files.get(MINDCRAFT_JSON_PATH);
+  const entry = files.get(`/${WENDOO_JSON_PATH}`) ?? files.get(WENDOO_JSON_PATH);
   const manifestContent = entry === undefined ? undefined : fileContentText(entry);
   if (manifestContent === undefined) {
     return undefined;

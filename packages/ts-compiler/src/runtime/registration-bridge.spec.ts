@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { mkActuatorTileId, mkParameterTileId, mkSensorTileId } from "@mindcraft-lang/core/runtime";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { mkActuatorTileId, mkParameterTileId, mkSensorTileId } from "@wendoo-lang/core/runtime";
 import { compileUserTile } from "../compiler/compile.js";
 import type { ExtractedParam } from "../compiler/types.js";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
@@ -24,7 +24,7 @@ describe("registration-bridge", () => {
 
   test("registers a bytecode-backed sensor action without touching FunctionRegistry", () => {
     const program = compileProgram(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "phase6-reg-sensor",
@@ -53,7 +53,7 @@ export default Sensor({
 
   test("registers actuator metadata plus named and anonymous parameter tiles", () => {
     const program = compileProgram(`
-import { Actuator, param, type Context } from "mindcraft";
+import { Actuator, param, type Context } from "wendoo";
 
 export default Actuator({
   id: "regactuator",
@@ -79,7 +79,7 @@ export default Actuator({
 
   test("throws a plain error when a parameter type cannot be resolved", () => {
     const program = compileProgram(`
-import { Actuator, param, type Context } from "mindcraft";
+import { Actuator, param, type Context } from "wendoo";
 
 export default Actuator({
   id: "regunknownparam",
@@ -102,7 +102,7 @@ export default Actuator({
 
   test("preserves artifact-local activation ids for direct core linking", () => {
     const program = compileProgram(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 let counter = 0;
 

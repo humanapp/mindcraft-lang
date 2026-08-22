@@ -1,20 +1,18 @@
 import type {
-  MindcraftProjectDocument,
-  MindcraftProjectDocumentValidationCode,
-  MindcraftProjectDocumentValidationError,
-  MindcraftProjectExtensions,
-  MindcraftProjectFileContent,
-} from "@mindcraft-lang/service-api";
+  WendooProjectDocument,
+  WendooProjectDocumentValidationCode,
+  WendooProjectDocumentValidationError,
+  WendooProjectExtensions,
+  WendooProjectFileContent,
+} from "@wendoo-lang/service-api";
 import {
   fileContentFromWire,
   fileContentToWire,
   isBinaryFileContent,
-  MINDCRAFT_PROJECT_FORMAT,
-  parseMindcraftProjectDocument,
-} from "@mindcraft-lang/service-api";
+  parseWendooProjectDocument,
+  WENDOO_PROJECT_FORMAT,
+} from "@wendoo-lang/service-api";
 import { AppHostErrorCode, appHostError } from "./app-host-error.js";
-import { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
-import { contentManifestFromManifest } from "./mindcraft-json-sync.js";
 import type { ProjectContentManifest, ProjectContentManifestErrorCode } from "./project-content-manifest.js";
 import { projectContentManifestToJson, validateProjectContentManifest } from "./project-content-manifest.js";
 import type { ProjectFileSystemEntry } from "./project-file-snapshot.js";
@@ -22,8 +20,10 @@ import type { ProjectFileSystem } from "./project-file-system.js";
 import type { ProjectManager } from "./project-manager.js";
 import { DEFAULT_PROJECT_NAME } from "./project-manager.js";
 import type { ProjectManifest } from "./project-manifest.js";
+import { WENDOO_JSON_PATH } from "./wendoo-json.js";
+import { contentManifestFromManifest } from "./wendoo-json-sync.js";
 
-export type { MindcraftProjectDocument, MindcraftProjectExtensions } from "@mindcraft-lang/service-api";
+export type { WendooProjectDocument, WendooProjectExtensions } from "@wendoo-lang/service-api";
 
 /** App-data key holding the project's serialized brains, keyed by brain key. */
 const BRAINS_APP_DATA_KEY = "brains";
@@ -47,7 +47,7 @@ export type ImportDiagnosticCode = (typeof ImportDiagnosticCode)[keyof typeof Im
 export interface ImportDiagnostic {
   severity: "error" | "warning";
   /** Stable identifier for app-host import diagnostics. */
-  code?: ImportDiagnosticCode | MindcraftProjectDocumentValidationCode | ProjectContentManifestErrorCode;
+  code?: ImportDiagnosticCode | WendooProjectDocumentValidationCode | ProjectContentManifestErrorCode;
   message: string;
 }
 
@@ -87,9 +87,7 @@ export interface ExportAppChunk {
 }
 
 /** Treats an empty extensions map as absent. */
-function normalizeExtensions(
-  extensions: MindcraftProjectExtensions | undefined
-): MindcraftProjectExtensions | undefined {
+function normalizeExtensions(extensions: WendooProjectExtensions | undefined): WendooProjectExtensions | undefined {
   return extensions && Object.keys(extensions).length > 0 ? extensions : undefined;
 }
 
@@ -113,7 +111,7 @@ async function loadAppDataRecord(
 }
 
 /**
- * Build a shared `.mindcraft` project document from a project snapshot: the
+ * Build a shared `.wendoo` project document from a project snapshot: the
  * project's content manifest embedded verbatim (carrying its brains and
  * per-app session chunks) plus the contents of its files.
  *
@@ -130,13 +128,13 @@ export async function buildProjectExportDocument(
   options?: {
     appChunk?: ExportAppChunk;
   }
-): Promise<MindcraftProjectDocument> {
+): Promise<WendooProjectDocument> {
   const snapshot = filesystem.exportSnapshot();
-  const contents: Record<string, MindcraftProjectFileContent> = {};
+  const contents: Record<string, WendooProjectFileContent> = {};
   for (const [path, entry] of snapshot) {
     if (entry.kind !== "file") continue;
     if (entry.isReadonly) continue;
-    if (path === MINDCRAFT_JSON_PATH) continue;
+    if (path === WENDOO_JSON_PATH) continue;
     contents[path] = isBinaryFileContent(entry.content) ? fileContentToWire(entry.content) : entry.content;
   }
 
@@ -156,14 +154,14 @@ export async function buildProjectExportDocument(
   };
 
   return {
-    format: MINDCRAFT_PROJECT_FORMAT,
+    format: WENDOO_PROJECT_FORMAT,
     manifest: projectContentManifestToJson(contentManifest),
     contents,
   };
 }
 
 /**
- * Build a shared `.mindcraft` project document for the active project managed
+ * Build a shared `.wendoo` project document for the active project managed
  * by `projectManager`.
  */
 export async function buildActiveProjectExportDocument(
@@ -171,7 +169,7 @@ export async function buildActiveProjectExportDocument(
   options?: {
     appChunk?: ExportAppChunk;
   }
-): Promise<MindcraftProjectDocument> {
+): Promise<WendooProjectDocument> {
   const active = projectManager.activeProject;
   if (!active) {
     throw appHostError(AppHostErrorCode.NO_ACTIVE_PROJECT, "No active project");
@@ -193,7 +191,7 @@ function errorResult(code: ImportDiagnosticCode, message: string): ImportResult 
 
 function validationErrorResult(
   errors: readonly (
-    | MindcraftProjectDocumentValidationError
+    | WendooProjectDocumentValidationError
     | { code: ProjectContentManifestErrorCode; path: string; message: string }
   )[]
 ): ImportResult {
@@ -213,11 +211,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function buildSnapshotFromContents(
-  contents: Readonly<Record<string, MindcraftProjectFileContent>>
+  contents: Readonly<Record<string, WendooProjectFileContent>>
 ): Map<string, ProjectFileSystemEntry> {
   const snapshot = new Map<string, ProjectFileSystemEntry>();
   for (const [path, content] of Object.entries(contents)) {
-    if (path === MINDCRAFT_JSON_PATH) continue;
+    if (path === WENDOO_JSON_PATH) continue;
     snapshot.set(path, {
       kind: "file",
       content: typeof content === "string" ? content : fileContentFromWire(content),
@@ -238,7 +236,7 @@ function mapAppChunkDiagnostics(diagnostics: readonly ImportDiagnostic[]): Impor
 }
 
 /**
- * Import a project from a `.mindcraft` document: the embedded content manifest
+ * Import a project from a `.wendoo` document: the embedded content manifest
  * is validated and extracted, its brains and app chunks are seeded into the
  * new project's app data, and the document's contents become the project's
  * files. The new project gets a freshly minted store id.
@@ -269,7 +267,7 @@ export async function importProjectDocument(
       );
     }
 
-    const parsed = parseMindcraftProjectDocument(await file.text());
+    const parsed = parseWendooProjectDocument(await file.text());
     if (!parsed.ok) {
       return validationErrorResult(parsed.errors);
     }

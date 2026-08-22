@@ -1,6 +1,6 @@
 # Publishing Guide
 
-This document describes how to publish `@mindcraft-lang/*` packages to npm.
+This document describes how to publish `@wendoo-lang/*` packages to npm.
 
 ## Package Dependency Order
 
@@ -18,7 +18,7 @@ ui                -> core
 app-host          -> core, service-api
 docs              -> core, ui
 bridge-app        -> app-host, bridge-client, bridge-protocol, core, ts-compiler
-mindcraft-cli     -> app-host, service-api
+wendoo-cli     -> app-host, service-api
 ```
 
 Private apps (not published to npm):
@@ -60,7 +60,7 @@ which runs lint/build/tests and then publishes or deploys.
 In source, `package.json` files use `file:` paths for sibling packages:
 
 ```json
-"@mindcraft-lang/core": "file:../core"
+"@wendoo-lang/core": "file:../core"
 ```
 
 This ensures `npm install` on a fresh clone always creates the correct local symlinks,

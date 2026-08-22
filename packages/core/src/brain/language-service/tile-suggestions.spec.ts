@@ -1,4 +1,4 @@
-import { CoreHostActions } from "@mindcraft-lang/core/runtime";
+import { CoreHostActions } from "@wendoo-lang/core/runtime";
 /**
  * Tile suggestion language service tests.
  *
@@ -9,7 +9,7 @@ import { CoreHostActions } from "@mindcraft-lang/core/runtime";
 
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, type ReadonlyList, UniqueSet } from "@mindcraft-lang/core";
+import { List, type ReadonlyList, UniqueSet } from "@wendoo-lang/core";
 import {
   type BrainServices,
   CoreCapabilityBits,
@@ -22,8 +22,8 @@ import {
   RuleSide,
   type SlotExpr,
   TilePlacement,
-} from "@mindcraft-lang/core/brain";
-import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+} from "@wendoo-lang/core/brain";
+import { __test__appendTile, __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
 import type {
   ActuatorExpr,
   BinaryOpExpr,
@@ -34,7 +34,7 @@ import type {
   SensorExpr,
   UnaryOpExpr,
   VariableExpr,
-} from "@mindcraft-lang/core/brain/compiler";
+} from "@wendoo-lang/core/brain/compiler";
 import {
   buildInsertionContext,
   collectRuleHierarchyCapabilities,
@@ -47,8 +47,8 @@ import {
   suggestTiles,
   TileCompatibility,
   type TileSuggestionResult,
-} from "@mindcraft-lang/core/brain/language-service";
-import { BrainDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+} from "@wendoo-lang/core/brain/language-service";
+import { BrainDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
 import {
   BrainTileAccessorDef,
   BrainTileActuatorDef,
@@ -60,8 +60,8 @@ import {
   BrainTileParameterDef,
   BrainTileSensorDef,
   BrainTileVariableDef,
-} from "@mindcraft-lang/core/brain/tiles";
-import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/brain/tiles";
+import type { ExecutionContext } from "@wendoo-lang/core/runtime";
 import {
   bag,
   CoreOpId,
@@ -85,8 +85,8 @@ import {
   TRUE_VALUE,
   type Value,
   VOID_VALUE,
-} from "@mindcraft-lang/core/runtime";
-import { BitSet } from "@mindcraft-lang/core/util";
+} from "@wendoo-lang/core/runtime";
+import { BitSet } from "@wendoo-lang/core/util";
 
 // ---- Initialize ----
 

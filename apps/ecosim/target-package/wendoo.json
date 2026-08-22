@@ -1,10 +1,10 @@
 {
   "name": "Ecosystem Simulator",
   "version": "0.1.4",
-  "identity": "mindcraft-lang/trg-ecosim",
-  "description": "Program the brains of carnivores, herbivores, and plants in a live 2D ecosystem with Mindcraft.",
+  "identity": "wendoo-lang/trg-ecosim",
+  "description": "Program the brains of carnivores, herbivores, and plants in a live 2D ecosystem with Wendoo.",
   "targets": {
-    "mindcraft-lang/lib-ecosim": {
+    "wendoo-lang/lib-ecosim": {
       "packageVersion": "^0.1.0"
     }
   },

@@ -8,22 +8,22 @@ import type {
   ExtensionPublishSource,
   PublishFile,
   PublishVersionBump,
-} from "@mindcraft-lang/app-host";
+} from "@wendoo-lang/app-host";
 import {
   createJsDelivrExtensionTransport,
   deriveCoordinateFromRemoteUrl,
   ExtensionPublishErrorCode,
   githubRemoteUrlForCoordinate,
-  MINDCRAFT_JSON_PATH,
   parseProjectContentManifest,
   publishExtensionVersion,
   serializeProjectContentManifest,
-} from "@mindcraft-lang/app-host";
+  WENDOO_JSON_PATH,
+} from "@wendoo-lang/app-host";
 import { GitCommandError, git, tryGit } from "./git.js";
 
-const PUBLISH_USAGE = `usage: mindcraft publish [patch|minor|major] [--dir <path>] [--remote <url>] [--allow-unstable-refs]
+const PUBLISH_USAGE = `usage: wendoo publish [patch|minor|major] [--dir <path>] [--remote <url>] [--allow-unstable-refs]
 
-Publishes a version of the Mindcraft project in --dir (default: the current
+Publishes a version of the Wendoo project in --dir (default: the current
 directory). Run from inside an already-published project's folder, no flags are
 needed: the current directory supplies --dir, and the project's git checkout
 supplies the remote. With a version bump, the manifest version is incremented;
@@ -43,9 +43,9 @@ manifest's recorded identity, https://github.com/<owner>/<repo>.git. A first
 publish, whose manifest records no identity yet, targets origin.
 
 With --remote, or when the remote is derived from the identity, the project's
-published tree (mindcraft.json plus its manifest-listed files) is committed to
+published tree (wendoo.json plus its manifest-listed files) is committed to
 that remote's default branch and tagged v<version>, and the published version
-and identity are written back to the project directory's mindcraft.json.
+and identity are written back to the project directory's wendoo.json.
 
   --dir <path>     project directory (default: current directory)
   --remote <url>   git remote to publish the project tree to; without it a
@@ -170,7 +170,7 @@ function isFileNotFound(error: unknown): boolean {
 }
 
 /**
- * Read the `<owner>/<repo>` identity recorded in the project's `mindcraft.json`.
+ * Read the `<owner>/<repo>` identity recorded in the project's `wendoo.json`.
  * Returns `undefined` when the directory has no manifest, its manifest does not
  * parse, or it records no identity; a missing or invalid manifest is reported
  * by the publish itself.
@@ -178,7 +178,7 @@ function isFileNotFound(error: unknown): boolean {
 async function readRecordedIdentity(dir: string): Promise<string | undefined> {
   let manifestText: string;
   try {
-    manifestText = await readFile(path.join(dir, MINDCRAFT_JSON_PATH), "utf8");
+    manifestText = await readFile(path.join(dir, WENDOO_JSON_PATH), "utf8");
   } catch (error) {
     if (isFileNotFound(error)) return undefined;
     throw error;
@@ -189,7 +189,7 @@ async function readRecordedIdentity(dir: string): Promise<string | undefined> {
 
 /**
  * A publish content source over a project directory: the manifest is
- * `<dir>/mindcraft.json`, and listed files resolve relative to `dir`. Paths
+ * `<dir>/wendoo.json`, and listed files resolve relative to `dir`. Paths
  * that resolve outside `dir` read as absent.
  */
 function directoryContentSource(dir: string): ExtensionPublishSource {
@@ -197,7 +197,7 @@ function directoryContentSource(dir: string): ExtensionPublishSource {
   return {
     readManifest: async () => {
       try {
-        return await readFile(path.join(root, MINDCRAFT_JSON_PATH), "utf8");
+        return await readFile(path.join(root, WENDOO_JSON_PATH), "utf8");
       } catch (error) {
         if (isFileNotFound(error)) return undefined;
         throw error;
@@ -249,7 +249,7 @@ function checkoutPublishBackend(dir: string): ExtensionPublishBackend {
       }
       return (await git(dir, "ls-remote", "--tags", "origin")).trim() !== "";
     },
-    readHeadManifest: () => tryGit(dir, "show", `HEAD:${MINDCRAFT_JSON_PATH}`),
+    readHeadManifest: () => tryGit(dir, "show", `HEAD:${WENDOO_JSON_PATH}`),
     apply: async ({ tag, files }) => {
       await writePublishFiles(dir, files);
       await git(dir, "add", "--", ...files.map((file) => file.path));
@@ -266,12 +266,12 @@ function checkoutPublishBackend(dir: string): ExtensionPublishBackend {
 
 /**
  * A dependency pin probe over the public content CDN: a pin is published
- * exactly when the CDN serves the repository's `mindcraft.json` at it.
+ * exactly when the CDN serves the repository's `wendoo.json` at it.
  */
 function cdnPinProbe(): DependencyPinProbe {
   const transport = createJsDelivrExtensionTransport();
   return async (owner, repo, pin) => {
-    const result = await transport.fetchFile(owner, repo, pin, MINDCRAFT_JSON_PATH);
+    const result = await transport.fetchFile(owner, repo, pin, WENDOO_JSON_PATH);
     return result.ok;
   };
 }
@@ -300,7 +300,7 @@ async function publishInCheckout(options: PublishArguments): Promise<ExtensionPu
  * stamped identity coordinate derives from the `remote` URL.
  */
 async function publishToRemote(options: PublishArguments, remote: string): Promise<ExtensionPublishResult> {
-  const scratch = await mkdtemp(path.join(tmpdir(), "mindcraft-publish-"));
+  const scratch = await mkdtemp(path.join(tmpdir(), "wendoo-publish-"));
   try {
     const clone = path.join(scratch, "repo");
     await git(scratch, "clone", "--quiet", remote, clone);
@@ -312,7 +312,7 @@ async function publishToRemote(options: PublishArguments, remote: string): Promi
       hasAnyTags: async () => (await git(clone, "tag", "--list")).trim() !== "",
       readHeadManifest: async () => {
         try {
-          return await readFile(path.join(clone, MINDCRAFT_JSON_PATH), "utf8");
+          return await readFile(path.join(clone, WENDOO_JSON_PATH), "utf8");
         } catch (error) {
           if (isFileNotFound(error)) return undefined;
           throw error;
@@ -346,12 +346,12 @@ async function publishToRemote(options: PublishArguments, remote: string): Promi
 
 /**
  * Write a successful publish's version and stamped identity into the source
- * directory's `mindcraft.json` through the manifest serializer, leaving every
+ * directory's `wendoo.json` through the manifest serializer, leaving every
  * other field as parsed. Throws when the manifest cannot be read, parsed, or
  * written.
  */
 async function writeBackPublishedManifest(dir: string, version: string, identity: string): Promise<void> {
-  const manifestPath = path.join(dir, MINDCRAFT_JSON_PATH);
+  const manifestPath = path.join(dir, WENDOO_JSON_PATH);
   const parsed = parseProjectContentManifest(await readFile(manifestPath, "utf8"));
   if (!parsed.ok) {
     throw new Error(`${manifestPath} is no longer a valid content manifest`);
@@ -360,13 +360,13 @@ async function writeBackPublishedManifest(dir: string, version: string, identity
 }
 
 /**
- * Run `mindcraft publish` with the arguments following the subcommand name.
+ * Run `wendoo publish` with the arguments following the subcommand name.
  * Returns the process exit code.
  */
 export async function runPublishCommand(args: readonly string[]): Promise<number> {
   const parsed = parsePublishArguments(args);
   if (typeof parsed === "string") {
-    process.stderr.write(`mindcraft publish: ${parsed}\n${PUBLISH_USAGE}`);
+    process.stderr.write(`wendoo publish: ${parsed}\n${PUBLISH_USAGE}`);
     return 1;
   }
 
@@ -384,7 +384,7 @@ export async function runPublishCommand(args: readonly string[]): Promise<number
     const result =
       target.mode === "constructed" ? await publishToRemote(parsed, target.remote) : await publishInCheckout(parsed);
     if (!result.ok) {
-      process.stderr.write(`mindcraft publish: ${result.error.code}: ${result.error.message}\n`);
+      process.stderr.write(`wendoo publish: ${result.error.code}: ${result.error.message}\n`);
       if (result.error.code === ExtensionPublishErrorCode.UNSTABLE_DEPENDENCIES_UNCONFIRMED) {
         process.stderr.write("Pass --allow-unstable-refs to publish anyway.\n");
       }
@@ -399,8 +399,8 @@ export async function runPublishCommand(args: readonly string[]): Promise<number
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         process.stderr.write(
-          `mindcraft publish: ${PublishCommandErrorCode.WRITE_BACK_FAILED}: version ${result.version} was ` +
-            `published (tag ${result.tag}), but writing it back to ${path.join(parsed.dir, MINDCRAFT_JSON_PATH)} ` +
+          `wendoo publish: ${PublishCommandErrorCode.WRITE_BACK_FAILED}: version ${result.version} was ` +
+            `published (tag ${result.tag}), but writing it back to ${path.join(parsed.dir, WENDOO_JSON_PATH)} ` +
             `failed: ${message}\n`
         );
         return 1;
@@ -410,7 +410,7 @@ export async function runPublishCommand(args: readonly string[]): Promise<number
     return 0;
   } catch (error) {
     if (error instanceof GitCommandError) {
-      process.stderr.write(`mindcraft publish: ${error.message}\n`);
+      process.stderr.write(`wendoo publish: ${error.message}\n`);
       return 1;
     }
     throw error;

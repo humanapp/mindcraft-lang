@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { CoreVariableFactoryId, mkVariableFactoryTileId } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { getCatalogFallbackLabel } from "@mindcraft-lang/core/brain/tiles";
-import { CoreTypeNames } from "@mindcraft-lang/core/runtime";
+import { CoreVariableFactoryId, mkVariableFactoryTileId } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { getCatalogFallbackLabel } from "@wendoo-lang/core/brain/tiles";
+import { CoreTypeNames } from "@wendoo-lang/core/runtime";
 
 describe("built-in variable factory tiles", () => {
   const cases: ReadonlyArray<[CoreVariableFactoryId, string]> = [

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, runtime } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext, Scheduler } from "@mindcraft-lang/core/runtime";
+import { List, runtime } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { ExecutionContext, Scheduler } from "@wendoo-lang/core/runtime";
 import {
   HandleTable,
   NativeType,
@@ -12,8 +12,8 @@ import {
   type StringValue,
   type Value,
   VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";
@@ -87,7 +87,7 @@ describe("Object literal - spread (struct)", () => {
 
   test("spread copies all fields", () => {
     const v = compileAndRunNumber(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 interface Point { x: number; y: number; }
 export default Sensor({
   name: "test",
@@ -103,7 +103,7 @@ export default Sensor({
 
   test("spread with override", () => {
     const v = compileAndRunNumber(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 interface Point { x: number; y: number; }
 export default Sensor({
   name: "test",
@@ -119,7 +119,7 @@ export default Sensor({
 
   test("spread from superset type", () => {
     const v = compileAndRunNumber(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 interface Point { x: number; y: number; }
 interface Point3D { x: number; y: number; z: number; }
 export default Sensor({
@@ -136,7 +136,7 @@ export default Sensor({
 
   test("spread with shorthand override", () => {
     const v = compileAndRunNumber(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 interface Point { x: number; y: number; }
 export default Sensor({
   name: "test",
@@ -153,7 +153,7 @@ export default Sensor({
 
   test("multiple spreads", () => {
     const v = compileAndRunNumber(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 interface Pair { a: number; b: number; }
 export default Sensor({
   name: "test",
@@ -170,7 +170,7 @@ export default Sensor({
 
   test("spread from function return value", () => {
     const v = compileAndRunNumber(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 interface Point { x: number; y: number; }
 function makePoint(): Point {
   return { x: 5, y: 15 };
@@ -192,7 +192,7 @@ describe("Object literal - spread (map)", () => {
 
   test("spread struct into map", () => {
     const v = compileAndRunNumber(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 interface Scores { alice: number; bob: number; }
 export default Sensor({
   name: "test",
@@ -208,7 +208,7 @@ export default Sensor({
 
   test("spread struct into map with override", () => {
     const v = compileAndRunNumber(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 interface Scores { alice: number; bob: number; }
 export default Sensor({
   name: "test",

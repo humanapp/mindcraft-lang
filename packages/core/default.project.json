@@ -1,5 +1,5 @@
 {
-  "name": "mindcraft-lang-core",
+  "name": "wendoo-lang-core",
   "tree": {
     "$path": "dist/rbx"
   }

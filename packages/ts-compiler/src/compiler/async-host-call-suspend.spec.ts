@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, type ReadonlyList } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
-import { type AsyncHandle, ContextTypeIds, CoreTypeIds, type Value } from "@mindcraft-lang/core/runtime";
+import { List, type ReadonlyList } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { ExecutionContext } from "@wendoo-lang/core/runtime";
+import { type AsyncHandle, ContextTypeIds, CoreTypeIds, type Value } from "@wendoo-lang/core/runtime";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
@@ -67,7 +67,7 @@ describe("async host call in a non-suspendable context", () => {
 
   test("synchronous onExecute calling an async host fn is rejected at the call range", () => {
     const source = `
-import { Actuator, type Context } from "mindcraft";
+import { Actuator, type Context } from "wendoo";
 
 export default Actuator({
   name: "sync-scroll",
@@ -86,7 +86,7 @@ export default Actuator({
 
   test("async onExecute awaiting an async host fn is diagnostic-free", () => {
     const source = `
-import { Actuator, type Context } from "mindcraft";
+import { Actuator, type Context } from "wendoo";
 
 export default Actuator({
   name: "async-scroll",
@@ -101,7 +101,7 @@ export default Actuator({
 
   test("onPageEntered calling an async host fn is rejected", () => {
     const source = `
-import { Actuator, type Context } from "mindcraft";
+import { Actuator, type Context } from "wendoo";
 
 export default Actuator({
   name: "page-entered-scroll",
@@ -119,7 +119,7 @@ export default Actuator({
 
   test("onPageExited calling an async host fn is rejected", () => {
     const source = `
-import { Actuator, type Context } from "mindcraft";
+import { Actuator, type Context } from "wendoo";
 
 export default Actuator({
   name: "page-exited-scroll",
@@ -136,7 +136,7 @@ export default Actuator({
 
   test("`.then` on an async result is rejected even in an async body", () => {
     const source = `
-import { Actuator, type Context } from "mindcraft";
+import { Actuator, type Context } from "wendoo";
 
 export default Actuator({
   name: "then-scroll",
@@ -157,7 +157,7 @@ export default Actuator({
 
   test("`.catch` on an async result is rejected", () => {
     const source = `
-import { Actuator, type Context } from "mindcraft";
+import { Actuator, type Context } from "wendoo";
 
 export default Actuator({
   name: "catch-scroll",
@@ -173,7 +173,7 @@ export default Actuator({
 
   test("a discarded async call in an async body warns but still compiles", () => {
     const source = `
-import { Actuator, type Context } from "mindcraft";
+import { Actuator, type Context } from "wendoo";
 
 export default Actuator({
   name: "floating-scroll",
@@ -192,7 +192,7 @@ export default Actuator({
 
   test("awaiting the async call clears the discarded-result warning", () => {
     const source = `
-import { Actuator, type Context } from "mindcraft";
+import { Actuator, type Context } from "wendoo";
 
 export default Actuator({
   name: "awaited-scroll",
@@ -208,7 +208,7 @@ export default Actuator({
 
   test("a discarded async call in a synchronous body reports only the hard error", () => {
     const source = `
-import { Actuator, type Context } from "mindcraft";
+import { Actuator, type Context } from "wendoo";
 
 export default Actuator({
   name: "sync-floating-scroll",

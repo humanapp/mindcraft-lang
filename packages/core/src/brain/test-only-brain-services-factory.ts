@@ -8,9 +8,9 @@ import { createAppServices, createBrainServices } from "./services-factory";
 /**
  * TEST-ONLY. Creates a fresh BrainServices with all core components registered.
  *
- * Production code must use createMindcraftEnvironment() instead.
+ * Production code must use createWendooEnvironment() instead.
  * This exists solely so spec files can get a lightweight BrainServices
- * without standing up a full MindcraftEnvironment.
+ * without standing up a full WendooEnvironment.
  *
  * @param options - Optional app-tier overrides; `numerics` selects the
  *   profile numerics captured by the registered core components (defaults

@@ -1,6 +1,6 @@
-import type { FolderHostMessage } from "@mindcraft-lang/bridge-protocol";
+import type { FolderHostMessage } from "@wendoo-lang/bridge-protocol";
 import * as vscode from "vscode";
-import { MINDCRAFT_JSON } from "../mindcraft-json";
+import { WENDOO_JSON } from "../wendoo-json";
 import { buildAppHostHtml, buildAppLoadFailureHtml, buildAppLoadingHtml } from "./app-host-html";
 import { DiagnosticsManager } from "./diagnostics-manager";
 import { RestoreFailureReason as Reason, type RestoreFailureReason, resolveRestoreTarget } from "./folder-restore";
@@ -14,7 +14,7 @@ import type { ProjectSession } from "./project-session";
 import type { RemovableVolumeRoot } from "./removable-volume";
 
 /** Webview panel view type of the hosted app tab; also the key the panel serializer restores. */
-const FOLDER_APP_VIEW_TYPE = "mindcraft.folderApp";
+const FOLDER_APP_VIEW_TYPE = "wendoo.folderApp";
 
 let currentSession: FolderProjectSession | undefined;
 
@@ -137,14 +137,9 @@ export async function restoreFolderSessionIntoPanel(
 export async function restoreFolderSessionForTest(
   context: vscode.ExtensionContext
 ): Promise<{ readonly adopted: boolean; readonly reason?: RestoreFailureReason; readonly htmlLength: number }> {
-  const panel = vscode.window.createWebviewPanel(
-    FOLDER_APP_VIEW_TYPE,
-    "Mindcraft: restored",
-    vscode.ViewColumn.Beside,
-    {
-      enableScripts: true,
-    }
-  );
+  const panel = vscode.window.createWebviewPanel(FOLDER_APP_VIEW_TYPE, "Wendoo: restored", vscode.ViewColumn.Beside, {
+    enableScripts: true,
+  });
   const outcome = await restoreFolderSessionIntoPanel(context, panel);
   const htmlLength = panel.webview.html.length;
   return outcome.adopted ? { adopted: true, htmlLength } : { adopted: false, reason: outcome.reason, htmlLength };
@@ -154,14 +149,14 @@ export async function restoreFolderSessionForTest(
 function restoreFailureMessage(reason: RestoreFailureReason): string {
   switch (reason) {
     case Reason.NO_PROJECT_FOLDER:
-      return `Open a workspace folder containing ${MINDCRAFT_JSON} to restore the Mindcraft editor.`;
+      return `Open a workspace folder containing ${WENDOO_JSON} to restore the Wendoo editor.`;
     case Reason.NO_REGISTRY_MATCH:
       return (
-        `This project declares no known target in ${MINDCRAFT_JSON}. Create the project from a known target, ` +
-        'or set the "mindcraft.devTarget" setting to override the hosted app.'
+        `This project declares no known target in ${WENDOO_JSON}. Create the project from a known target, ` +
+        'or set the "wendoo.devTarget" setting to override the hosted app.'
       );
     case Reason.APP_ROOT_UNAVAILABLE:
-      return 'Could not load the project\'s target app. Try again when online, or check the "mindcraft.devTarget" setting if set.';
+      return 'Could not load the project\'s target app. Try again when online, or check the "wendoo.devTarget" setting if set.';
   }
 }
 
@@ -179,7 +174,7 @@ function hasFolderAppTab(): boolean {
  * activation. Opens nothing when a session already runs, when a folder-app tab
  * from the previous window is present (the panel serializer rebuilds the
  * session into it), when the workspace does not contain exactly one folder
- * with a `mindcraft.json` project, or when the project resolves no target.
+ * with a `wendoo.json` project, or when the project resolves no target.
  * An unresolved target is silent; a failure to load a resolved target's app
  * surfaces the same error message as an interactive open.
  */
@@ -296,7 +291,7 @@ class FolderProjectSession implements ProjectSession {
   openNewPanel(): void {
     const panel = vscode.window.createWebviewPanel(
       FOLDER_APP_VIEW_TYPE,
-      `Mindcraft: ${this.folderName}`,
+      `Wendoo: ${this.folderName}`,
       vscode.ViewColumn.Beside,
       {
         enableScripts: true,
@@ -340,7 +335,7 @@ class FolderProjectSession implements ProjectSession {
     } catch {
       if (!this.disposed && this.panel === panel) {
         webview.html = buildAppLoadFailureHtml(
-          `Cannot read the target app's index.html at ${indexUri.fsPath}. Check the "mindcraft.devTarget" setting.`
+          `Cannot read the target app's index.html at ${indexUri.fsPath}. Check the "wendoo.devTarget" setting.`
         );
       }
       return;

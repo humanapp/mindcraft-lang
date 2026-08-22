@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { List } from "@mindcraft-lang/core";
+import { List } from "@wendoo-lang/core";
 import {
   BYTECODE_VERSION,
   type ExecutionContext,
@@ -11,8 +11,8 @@ import {
   type Program,
   VM,
   VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 
 test("CALL transfers control to a callee and propagates its return value", () => {
   const program: Program = {

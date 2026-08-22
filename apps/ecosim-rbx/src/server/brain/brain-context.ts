@@ -3,7 +3,6 @@ import {
   type ExecutionContext,
   getRuleVariable,
   List,
-  type MindcraftModuleApi,
   mkCallDef,
   mkNativeStructValue,
   NIL_VALUE,
@@ -11,7 +10,8 @@ import {
   type StructValue,
   type Value,
   Vector2,
-} from "@mindcraft-lang/core/app";
+  type WendooModuleApi,
+} from "@wendoo-lang/core/app";
 import { EcosimFuncId } from "./abi-ids";
 import { getActor, getTargetActor } from "./execution-context-types";
 import { EcosimTypeIds, extractVector2, mkVector2Value } from "./type-system";
@@ -22,7 +22,7 @@ import { EcosimTypeIds, extractVector2, mkVector2Value } from "./type-system";
  *
  * @param api - The module registration API.
  */
-export function registerBrainContext(api: MindcraftModuleApi) {
+export function registerBrainContext(api: WendooModuleApi) {
   const { types, functions } = api.brainServices.runtime;
 
   const nullableActorRefTypeId = types.addNullableType(EcosimTypeIds.ActorRef);

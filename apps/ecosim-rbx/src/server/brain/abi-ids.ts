@@ -1,4 +1,4 @@
-import type { HostActionIds } from "@mindcraft-lang/core/app";
+import type { HostActionIds } from "@wendoo-lang/core/app";
 
 /**
  * Stable numeric ids for the sim module's host functions and host actions.

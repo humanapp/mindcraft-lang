@@ -1,7 +1,7 @@
 /**
  * Denormalized copy of the producing app's identity for a shared project,
  * letting listings and previews be served without fetching the full
- * `.mindcraft` payload from blob storage.
+ * `.wendoo` payload from blob storage.
  */
 export interface SharedProjectHostInfo {
   /** Application identifier of the host that produced the latest revision. */
@@ -17,7 +17,7 @@ export interface SharedProjectHostInfo {
  * append-only sequence of `SharedProjectRevision`s. It carries only the
  * pointer to the latest revision plus a small set of denormalized fields
  * (title, description, host) sourced from that revision's payload, so
- * listing endpoints can render entries without fetching the `.mindcraft`
+ * listing endpoints can render entries without fetching the `.wendoo`
  * blob.
  *
  * No user identifiers are present -- there are no accounts, and write access
@@ -46,7 +46,7 @@ export interface SharedProject {
 /**
  * Immutable snapshot of a shared project's content at a point in time.
  *
- * The `.mindcraft` payload itself is not embedded; instead, `payloadUrl`
+ * The `.wendoo` payload itself is not embedded; instead, `payloadUrl`
  * references the blob in object storage.
  * This keeps metadata small and lets revisions be listed cheaply.
  */
@@ -58,7 +58,7 @@ export interface SharedProjectRevision {
   /** ISO-8601 timestamp at which the revision was published. */
   createdAt: string;
   /**
-   * CDN URL of the `.mindcraft` payload for this revision. Suitable for
+   * CDN URL of the `.wendoo` payload for this revision. Suitable for
    * direct `fetch()` by the client.
    *
    * Backend note: persist the underlying storage key (not the rendered URL)

@@ -23,7 +23,7 @@
 
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, type ReadonlyList, UniqueSet } from "@mindcraft-lang/core";
+import { List, type ReadonlyList, UniqueSet } from "@wendoo-lang/core";
 import {
   type BrainServices,
   CoreControlFlowId,
@@ -35,9 +35,9 @@ import {
   mkOperatorTileId,
   RuleSide,
   TilePlacement,
-} from "@mindcraft-lang/core/brain";
-import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { Expr, ParseDiag } from "@mindcraft-lang/core/brain/compiler";
+} from "@wendoo-lang/core/brain";
+import { __test__appendTile, __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { Expr, ParseDiag } from "@wendoo-lang/core/brain/compiler";
 import {
   type BrainBuildDiagnostic,
   collectProvidedCapabilities,
@@ -46,7 +46,7 @@ import {
   parseRule,
   runBrainLinkPipeline,
   TypeDiagCode,
-} from "@mindcraft-lang/core/brain/compiler";
+} from "@wendoo-lang/core/brain/compiler";
 import {
   availableWhenResultType,
   countUnclosedParens,
@@ -54,8 +54,8 @@ import {
   type InsertionContext,
   parseTilesForSuggestions,
   suggestTiles,
-} from "@mindcraft-lang/core/brain/language-service";
-import { BrainDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+} from "@wendoo-lang/core/brain/language-service";
+import { BrainDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
 import {
   BrainTileAccessorDef,
   BrainTileActuatorDef,
@@ -66,7 +66,7 @@ import {
   BrainTileParameterDef,
   BrainTileSensorDef,
   BrainTileVariableDef,
-} from "@mindcraft-lang/core/brain/tiles";
+} from "@wendoo-lang/core/brain/tiles";
 import {
   bag,
   CoreHostActions,
@@ -86,8 +86,8 @@ import {
   TARGET_ACTION_ID_BASE,
   type TypeId,
   VOID_VALUE,
-} from "@mindcraft-lang/core/runtime";
-import { BitSet } from "@mindcraft-lang/core/util";
+} from "@wendoo-lang/core/runtime";
+import { BitSet } from "@wendoo-lang/core/util";
 
 // ---- Services and probe tiles ----
 

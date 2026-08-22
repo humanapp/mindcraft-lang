@@ -1,10 +1,10 @@
-import type { AcceleratorContribution, AcceleratorPlatform } from "@mindcraft-lang/ui/brain-editor/accelerators";
+import type { AcceleratorContribution, AcceleratorPlatform } from "@wendoo-lang/ui/brain-editor/accelerators";
 import {
   acceleratorChips,
   acceleratorPlatform,
   liveAcceleratorSection,
-} from "@mindcraft-lang/ui/brain-editor/accelerators";
-import type { EditorMode } from "@mindcraft-lang/ui/brain-editor/editor-mode";
+} from "@wendoo-lang/ui/brain-editor/accelerators";
+import type { EditorMode } from "@wendoo-lang/ui/brain-editor/editor-mode";
 import { useEffect, useMemo, useState } from "react";
 import { useDocsSidebar } from "./DocsSidebarContext";
 

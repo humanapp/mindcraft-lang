@@ -1,6 +1,6 @@
-import { cn } from "@mindcraft-lang/ui";
-import type { ActionArgTypeEntry } from "@mindcraft-lang/ui/brain-editor/action-arg-tiles";
-import { getActionArgEntries, resolveTypeDisplayName } from "@mindcraft-lang/ui/brain-editor/action-arg-tiles";
+import { cn } from "@wendoo-lang/ui";
+import type { ActionArgTypeEntry } from "@wendoo-lang/ui/brain-editor/action-arg-tiles";
+import { getActionArgEntries, resolveTypeDisplayName } from "@wendoo-lang/ui/brain-editor/action-arg-tiles";
 import { useMemo } from "react";
 import { InlineTileIcon } from "./DocsRule";
 import { useDocsResolveTileVisual, useDocsSidebar } from "./DocsSidebarContext";

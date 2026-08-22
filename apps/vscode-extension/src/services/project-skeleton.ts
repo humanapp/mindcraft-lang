@@ -24,11 +24,11 @@ export interface FolderTargetDescriptor {
 }
 
 /**
- * Read the `mindcraft.devTarget` setting. Returns `undefined` when the
+ * Read the `wendoo.devTarget` setting. Returns `undefined` when the
  * setting is absent or names neither an `appPath` nor an `appRef`.
  */
 export function readDevTargetDescriptor(): FolderTargetDescriptor | undefined {
-  const raw = vscode.workspace.getConfiguration("mindcraft").get<Record<string, unknown>>(DEV_TARGET_SETTING);
+  const raw = vscode.workspace.getConfiguration("wendoo").get<Record<string, unknown>>(DEV_TARGET_SETTING);
   if (!raw || typeof raw !== "object") {
     return undefined;
   }
@@ -48,7 +48,7 @@ export function readDevTargetDescriptor(): FolderTargetDescriptor | undefined {
 }
 
 /**
- * Build the `mindcraft.json` text of a fresh project skeleton: name, initial
+ * Build the `wendoo.json` text of a fresh project skeleton: name, initial
  * version, and the target descriptor's extension seed and compatibility
  * targets. The hosted app initializes the rest on its first boot.
  */

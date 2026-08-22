@@ -1,7 +1,7 @@
 {
-  "name": "mindcraft-cli",
+  "name": "wendoo-cli",
   "version": "0.1.5",
-  "description": "Command-line tools for Mindcraft projects",
+  "description": "Command-line tools for Wendoo projects",
   "license": "MIT",
   "author": "humanapp",
   "type": "module",
@@ -13,9 +13,9 @@
     "node": ">=18"
   },
   "bin": {
-    "mindcraft": "dist/main.js"
+    "wendoo": "dist/main.js"
   },
-  "mindcraftBuild": {
+  "wendooBuild": {
     "script": "build:prod",
     "outputs": [
       "dist"
@@ -47,7 +47,7 @@
     "typescript": "~5.9.3"
   },
   "dependencies": {
-    "@mindcraft-lang/app-host": "file:../app-host",
-    "@mindcraft-lang/service-api": "file:../service-api"
+    "@wendoo-lang/app-host": "file:../app-host",
+    "@wendoo-lang/service-api": "file:../service-api"
   }
 }

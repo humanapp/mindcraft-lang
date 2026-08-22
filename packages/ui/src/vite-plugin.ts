@@ -8,7 +8,7 @@ const fontFileName = "latinmodern-math.woff2";
 const fontPublicPath = `/assets/fonts/${fontFileName}`;
 
 /**
- * Vite plugin for @mindcraft-lang/ui.
+ * Vite plugin for @wendoo-lang/ui.
  *
  * Handles the Latin Modern Math font, which lives in the ui package but must
  * be served as a static asset by each consuming app:
@@ -25,7 +25,7 @@ const fontPublicPath = `/assets/fonts/${fontFileName}`;
 export function uiPlugin() {
   let resolvedBase = "/";
   return {
-    name: "mindcraft-ui",
+    name: "wendoo-ui",
 
     // biome-ignore lint/suspicious/noExplicitAny: Vite types not available in source-only package
     configResolved(config: any) {

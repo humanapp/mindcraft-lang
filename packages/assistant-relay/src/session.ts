@@ -19,7 +19,7 @@ export type RelaySessionId = string;
  * request or a description of the client.
  */
 export interface RelayToolManifest {
-  /** Target the client asks to author for, by the Mindcraft identity its target declares. */
+  /** Target the client asks to author for, by the Wendoo identity its target declares. */
   readonly target: string;
   /** Names of the bridge tools the client serves, in ascending order. */
   readonly tools: readonly string[];

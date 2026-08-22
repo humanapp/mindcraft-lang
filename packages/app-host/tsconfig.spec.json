@@ -6,7 +6,7 @@
     "rootDir": ".",
     "types": ["node"],
     "paths": {
-      "@mindcraft-lang/app-host": ["./src/index.ts"]
+      "@wendoo-lang/app-host": ["./src/index.ts"]
     }
   },
   "include": ["src/**/*.spec.ts", "src/test-support/**/*.ts"],

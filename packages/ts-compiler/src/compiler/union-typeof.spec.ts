@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, runtime } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
+import { List, runtime } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { ExecutionContext } from "@wendoo-lang/core/runtime";
 import {
   type BooleanValue,
   ContextTypeIds,
@@ -31,8 +31,8 @@ import {
   type Value,
   ValueDict,
   VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
@@ -118,7 +118,7 @@ describe("union types", () => {
   test("[1, 'hello'] compiles to a list with a union element type, not AnyList", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "union-list",
@@ -163,7 +163,7 @@ export default Sensor({
   test("operator resolution works through union expansion: (number | string) + number", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "union-op",
@@ -207,7 +207,7 @@ describe("typeof lowering", () => {
   test("typeof x === 'number' compiles and returns true for number", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, optional, param, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "typeof-number",
@@ -246,7 +246,7 @@ export default Sensor({
   test("typeof x !== 'string' produces negated result", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, optional, param, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "typeof-not-string",
@@ -285,7 +285,7 @@ export default Sensor({
   test("reversed form: 'boolean' === typeof x", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, optional, param, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "typeof-reversed",
@@ -324,7 +324,7 @@ export default Sensor({
   test("typeof x === 'undefined' for nil value", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "typeof-undefined",
@@ -360,7 +360,7 @@ export default Sensor({
   test("typeof x === 'object' produces a diagnostic", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "typeof-object",
@@ -382,7 +382,7 @@ export default Sensor({
   test("typeof in if-statement for runtime narrowing", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, optional, param, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "typeof-narrowing",

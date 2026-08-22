@@ -1,14 +1,14 @@
-import type { ReadonlyList } from "@mindcraft-lang/core";
-import { task, type thread } from "@mindcraft-lang/core";
-import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
-import type { BrainCommand, BrainCommandHistory, BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+import type { ReadonlyList } from "@wendoo-lang/core";
+import { task, type thread } from "@wendoo-lang/core";
+import type { IBrainTileDef } from "@wendoo-lang/core/brain";
+import type { BrainCommand, BrainCommandHistory, BrainPageDef, BrainRuleDef } from "@wendoo-lang/core/brain/model";
 import {
   AddRuleCommand,
   IndentRuleCommand,
   MoveRuleDownCommand,
   MoveRuleUpCommand,
   OutdentRuleCommand,
-} from "@mindcraft-lang/core/brain/model";
+} from "@wendoo-lang/core/brain/model";
 import { Plus } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { keyboardIsUnheld, kStripPopupAttribute } from "./BrainCandidateStrip";

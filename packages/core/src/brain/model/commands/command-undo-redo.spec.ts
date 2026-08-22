@@ -14,10 +14,10 @@
 
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List } from "@mindcraft-lang/core";
-import type { BrainServices, IBrainTileDef } from "@mindcraft-lang/core/brain";
-import { CoreVariableFactoryId, isPageTileId, mkVariableFactoryTileId, RuleSide } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { List } from "@wendoo-lang/core";
+import type { BrainServices, IBrainTileDef } from "@wendoo-lang/core/brain";
+import { CoreVariableFactoryId, isPageTileId, mkVariableFactoryTileId, RuleSide } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
 import {
   AddPageCommand,
   AddRuleCommand,
@@ -48,13 +48,13 @@ import {
   ReplaceTileCommand,
   type RuleJson,
   SetRuleCommentCommand,
-} from "@mindcraft-lang/core/brain/model";
+} from "@wendoo-lang/core/brain/model";
 import {
   type BrainTileFactoryDef,
   BrainTileLiteralDef,
   type BrainTileVariableDef,
-} from "@mindcraft-lang/core/brain/tiles";
-import { CoreHostActions, CoreTypeIds, mkActuatorTileId, mkSensorTileId } from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/brain/tiles";
+import { CoreHostActions, CoreTypeIds, mkActuatorTileId, mkSensorTileId } from "@wendoo-lang/core/runtime";
 
 let services: BrainServices;
 

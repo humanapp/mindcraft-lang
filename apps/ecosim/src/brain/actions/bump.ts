@@ -17,7 +17,7 @@ import {
   TRUE_VALUE,
   type Value,
   Vector2,
-} from "@mindcraft-lang/core/app";
+} from "@wendoo-lang/core/app";
 import { EcosimHostActions } from "@/brain/abi-ids";
 import { hasArg } from "@/brain/actions/utils";
 import type { Archetype } from "@/brain/actor";

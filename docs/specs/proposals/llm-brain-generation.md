@@ -3,7 +3,7 @@
 ## Overview
 
 Enable users to describe behavior in natural language and have an LLM generate valid
-brain code (tile sequences) for the Mindcraft system. The LLM receives a system prompt
+brain code (tile sequences) for the Wendoo system. The LLM receives a system prompt
 describing the tile language grammar and semantics, outputs BrainJson (the existing
 serialization format), which gets deserialized into a BrainDef via `fromJson()` and
 loaded into the editor.
@@ -151,7 +151,7 @@ The system prompt (~3000-5000 tokens) contains:
 
 | Section           | Content                                                                                                                         |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Role              | "You generate brain code for Mindcraft, a visual programming system"                                                            |
+| Role              | "You generate brain code for Wendoo, a visual programming system"                                                            |
 | Language overview | Pages, rules, WHEN/DO sides, nesting, execution model                                                                           |
 | Output schema     | BrainJson with catalog (literals/variables) + pages (rules with tile ID arrays)                                                 |
 | Tile reference    | All operators, sensors, actuators, modifiers, parameters, literals, variables -- with IDs, placement, types, and argument rules |
@@ -407,7 +407,7 @@ The LLM must produce tile sequences that satisfy these grammars. Invalid combina
 1. **App-composable prompts**: The prompt builder should be composable -- core tiles are
    universal, sim-specific tiles vary by app. Each app plugs in its own tile descriptions,
    matching the existing `suggestTiles(context, catalogs)` multi-catalog pattern. This
-   means the LLM integration is reusable across different Mindcraft apps.
+   means the LLM integration is reusable across different Wendoo apps.
 
 2. **Token budget growth**: If the tile catalog grows significantly, the system prompt
    may exceed efficient sizes. A two-phase approach could help: first classify which

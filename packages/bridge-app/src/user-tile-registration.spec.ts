@@ -3,12 +3,12 @@ import { describe, test } from "node:test";
 import {
   CoreTypeIds,
   coreModule,
-  createMindcraftEnvironment,
-  type MindcraftEnvironment,
+  createWendooEnvironment,
   mkSensorTileId,
-} from "@mindcraft-lang/core/app";
-import { BrainDef } from "@mindcraft-lang/core/brain/model";
-import type { BrainTileSensorDef } from "@mindcraft-lang/core/brain/tiles";
+  type WendooEnvironment,
+} from "@wendoo-lang/core/app";
+import { BrainDef } from "@wendoo-lang/core/brain/model";
+import type { BrainTileSensorDef } from "@wendoo-lang/core/brain/tiles";
 import {
   buildCompiledActionBundle,
   buildMultiRootActionBundle,
@@ -16,8 +16,8 @@ import {
   type ProjectCompileResult,
   UserTileProject,
   type WorkspaceCompileResult,
-} from "@mindcraft-lang/ts-compiler";
-import { TEST_PROJECT_NAMESPACE } from "@mindcraft-lang/ts-compiler/testing";
+} from "@wendoo-lang/ts-compiler";
+import { TEST_PROJECT_NAMESPACE } from "@wendoo-lang/ts-compiler/testing";
 import {
   applyCompiledUserTiles,
   collectMetadataFromCompile,
@@ -37,7 +37,7 @@ function resolveCoreTypeId(typeName: string): string | undefined {
   }
 }
 
-function compile(env: MindcraftEnvironment, files: Record<string, string>): WorkspaceCompileResult {
+function compile(env: WendooEnvironment, files: Record<string, string>): WorkspaceCompileResult {
   const project = new UserTileProject({ projectNamespace: TEST_PROJECT_NAMESPACE, services: env.brainServices });
   project.setFiles(new Map(Object.entries(files)));
   const projectResult = project.compileAll();
@@ -49,7 +49,7 @@ function compile(env: MindcraftEnvironment, files: Record<string, string>): Work
 }
 
 const INLINE_PRESENCE_SENSOR = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   id: "snstick",
@@ -63,7 +63,7 @@ export default Sensor({
 `;
 
 const CONVERSION = `
-import { Conversion, NumberType, StringType } from "mindcraft";
+import { Conversion, NumberType, StringType } from "wendoo";
 
 export default Conversion({
   id: "cvns",
@@ -78,7 +78,7 @@ export default Conversion({
 
 describe("collectMetadataFromCompile", () => {
   test("a Conversion compiles to a program but contributes no tile metadata", () => {
-    const env = createMindcraftEnvironment({ modules: [coreModule()] });
+    const env = createWendooEnvironment({ modules: [coreModule()] });
     const result = compile(env, { "sensor.ts": INLINE_PRESENCE_SENSOR, "conv.ts": CONVERSION });
     assert.equal(
       result.projectResult.tsErrors.size,
@@ -92,7 +92,7 @@ describe("collectMetadataFromCompile", () => {
   });
 
   test("inline and presenceGated flow onto the tile metadata", () => {
-    const env = createMindcraftEnvironment({ modules: [coreModule()] });
+    const env = createWendooEnvironment({ modules: [coreModule()] });
     const result = compile(env, { "sensor.ts": INLINE_PRESENCE_SENSOR });
     const metadata = collectMetadataFromCompile(result);
 
@@ -106,11 +106,11 @@ describe("collectMetadataFromCompile", () => {
   // surface contributes definition metadata; only a surface-unresolvable
   // definition is withheld.
   test("metadata matches the bundle: definitions contribute, surface-unresolvable files do not", () => {
-    const env = createMindcraftEnvironment({ modules: [coreModule()] });
+    const env = createWendooEnvironment({ modules: [coreModule()] });
     const result = compile(env, {
       "sensor.ts": INLINE_PRESENCE_SENSOR,
       "broken.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Position } from "@lib/acme/pos";
 
 export default Sensor({
@@ -123,7 +123,7 @@ export default Sensor({
 });
 `,
       "steer.ts": `
-import { Actuator, param, type Context } from "mindcraft";
+import { Actuator, param, type Context } from "wendoo";
 import { Position } from "@lib/acme/pos";
 
 export default Actuator({
@@ -164,7 +164,7 @@ export default Actuator({
 });
 
 const BROKEN_SENSOR = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Position } from "@lib/acme/pos";
 
 export default Sensor({
@@ -179,7 +179,7 @@ export default Sensor({
 
 describe("collectTileSourceCompileErrors", () => {
   test("a tile whose file fails to compile maps its key to the compiler's verbatim error diagnostics and source path", () => {
-    const env = createMindcraftEnvironment({ modules: [coreModule()] });
+    const env = createWendooEnvironment({ modules: [coreModule()] });
     const result = compile(env, { "sensor.ts": INLINE_PRESENCE_SENSOR, "broken.ts": BROKEN_SENSOR });
 
     const brokenResult = result.projectResult.results.get("broken.ts");
@@ -207,7 +207,7 @@ describe("collectTileSourceCompileErrors", () => {
   });
 
   test("a cleanly-compiling tile contributes no entry", () => {
-    const env = createMindcraftEnvironment({ modules: [coreModule()] });
+    const env = createWendooEnvironment({ modules: [coreModule()] });
     const result = compile(env, { "sensor.ts": INLINE_PRESENCE_SENSOR });
 
     const byKey = collectTileSourceCompileErrors(result);
@@ -218,7 +218,7 @@ describe("collectTileSourceCompileErrors", () => {
 
 const EXT_NAMESPACE = "acme/beeper";
 const EXT_SENSOR = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   id: "extBeep000000001",
@@ -229,7 +229,7 @@ export default Sensor({
 });
 `;
 const HOST_SENSOR = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   id: "hostThing0000001",
@@ -240,7 +240,7 @@ export default Sensor({
 });
 `;
 
-function compileWithExtension(env: MindcraftEnvironment): {
+function compileWithExtension(env: WendooEnvironment): {
   result: WorkspaceCompileResult;
   hostKey: string;
   extKey: string;
@@ -263,7 +263,7 @@ function compileWithExtension(env: MindcraftEnvironment): {
 
 describe("extension tiles across compilation roots", () => {
   test("collectMetadataFromCompile gathers extension tiles under their namespace", () => {
-    const env = createMindcraftEnvironment({ modules: [coreModule()] });
+    const env = createWendooEnvironment({ modules: [coreModule()] });
     const { result, hostKey, extKey } = compileWithExtension(env);
 
     const metadata = collectMetadataFromCompile(result);
@@ -273,7 +273,7 @@ describe("extension tiles across compilation roots", () => {
   });
 
   test("an extension tile is usable: a brain using it links cleanly against the combined bundle", () => {
-    const env = createMindcraftEnvironment({ modules: [coreModule()] });
+    const env = createWendooEnvironment({ modules: [coreModule()] });
     const { result, extKey } = compileWithExtension(env);
     assert.ok(result.bundle, "expected a combined bundle");
 

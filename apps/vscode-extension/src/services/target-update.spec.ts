@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { serializeProjectContentManifest } from "@mindcraft-lang/app-host";
+import { serializeProjectContentManifest } from "@wendoo-lang/app-host";
 import {
   applyTargetRangeToManifest,
   resolveTargetUpdateAction,

@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { describe, test } from "node:test";
-import type { AuthoringWorkspace, SimulationRun } from "@mindcraft-lang/assistant-bridge";
-import { createAuthoringWorkspace, proposeEdit } from "@mindcraft-lang/assistant-bridge";
-import { createRehearsalEnvironment, createSeededRng } from "@mindcraft-lang/assistant-bridge/kit";
-import { ruleIdAt } from "@mindcraft-lang/assistant-bridge/testing";
+import type { AuthoringWorkspace, SimulationRun } from "@wendoo-lang/assistant-bridge";
+import { createAuthoringWorkspace, proposeEdit } from "@wendoo-lang/assistant-bridge";
+import { createRehearsalEnvironment, createSeededRng } from "@wendoo-lang/assistant-bridge/kit";
+import { ruleIdAt } from "@wendoo-lang/assistant-bridge/testing";
 import type { Actor } from "@/brain/actor";
 import { createEcosimModule } from "@/brain/index";
 import { TileIds } from "@/brain/tileids";

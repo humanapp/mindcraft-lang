@@ -1,8 +1,8 @@
-import type { IBrainTileDef, LiteralDisplayFormat, RuleSide } from "@mindcraft-lang/core/brain";
-import type { BrainCommandHistory, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { RenameVariableCommand, ReplaceTileCommand } from "@mindcraft-lang/core/brain/model";
-import { BrainTileLiteralDef, type BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
-import { CoreTypeIds } from "@mindcraft-lang/core/runtime";
+import type { IBrainTileDef, LiteralDisplayFormat, RuleSide } from "@wendoo-lang/core/brain";
+import type { BrainCommandHistory, BrainRuleDef } from "@wendoo-lang/core/brain/model";
+import { RenameVariableCommand, ReplaceTileCommand } from "@wendoo-lang/core/brain/model";
+import { BrainTileLiteralDef, type BrainTileVariableDef } from "@wendoo-lang/core/brain/tiles";
+import { CoreTypeIds } from "@wendoo-lang/core/runtime";
 import { BookOpen, MoreHorizontal } from "lucide-react";
 import { type ReactNode, useRef, useState } from "react";
 import { toast } from "sonner";

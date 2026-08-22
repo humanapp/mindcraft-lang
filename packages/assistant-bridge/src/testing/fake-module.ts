@@ -3,11 +3,11 @@ import type {
   CreateHostActuatorOptions,
   CreateHostSensorOptions,
   ExecutionContext,
-  MindcraftModule,
-  MindcraftModuleApi,
   ReadonlyList,
   Value,
-} from "@mindcraft-lang/core/app";
+  WendooModule,
+  WendooModuleApi,
+} from "@wendoo-lang/core/app";
 import {
   bag,
   CoreParameterId,
@@ -26,8 +26,8 @@ import {
   TARGET_FUNC_ID_BASE,
   TRUE_VALUE,
   VOID_VALUE,
-} from "@mindcraft-lang/core/app";
-import type { HandleId } from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/app";
+import type { HandleId } from "@wendoo-lang/core/runtime";
 import type { OperationEndingReport } from "../kit/index.js";
 import { DispatchOutcome } from "../target/adapter.js";
 
@@ -214,10 +214,10 @@ const ringActuator = {
  * with their arguments, a declared output's value, a call whose lifecycle spans
  * thinks, and every operation ending a world publishes.
  */
-export function createFakeModule(): MindcraftModule {
+export function createFakeModule(): WendooModule {
   return {
-    id: "mindcraft.assistant-bridge.fake",
-    install(api: MindcraftModuleApi): void {
+    id: "wendoo.assistant-bridge.fake",
+    install(api: WendooModuleApi): void {
       api.registerHostSensor(createHostSensor(signalSensor));
       api.registerHostActuator(createHostActuator(emitActuator));
       api.registerHostActuator(createHostActuator(chimeActuator));

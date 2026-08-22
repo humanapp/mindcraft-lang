@@ -5,7 +5,7 @@
 //   than accumulating Matter forces; the returned force magnitude keeps the
 //   energy economy on ecosim's numbers.
 
-import type { Vector2 } from "@mindcraft-lang/core/app";
+import type { Vector2 } from "@wendoo-lang/core/app";
 import type { CreatureSprite } from "../world/sprite";
 import type { Actor } from "./actor";
 import type { PrecomputedObstacle } from "./vision";

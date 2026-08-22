@@ -2,7 +2,7 @@ import type { FolderTargetDescriptor } from "./project-skeleton";
 
 /** Stable identifiers for the reasons a folder session cannot be restored. */
 export const RestoreFailureReason = {
-  /** No workspace folder contains a `mindcraft.json` project to host. */
+  /** No workspace folder contains a `wendoo.json` project to host. */
   NO_PROJECT_FOLDER: "RESTORE_NO_PROJECT_FOLDER",
   /** Neither the devTarget override nor the project's declared targets resolve a hostable target. */
   NO_REGISTRY_MATCH: "RESTORE_NO_REGISTRY_MATCH",
@@ -23,7 +23,7 @@ export type RestoreTargetResolution<Folder, AppRoot> =
 
 /** Inputs {@link resolveRestoreTarget} composes into a restore outcome. */
 export interface RestoreTargetInputs<Folder, AppRoot> {
-  /** Workspace folders that contain a `mindcraft.json` project, in workspace order. */
+  /** Workspace folders that contain a `wendoo.json` project, in workspace order. */
   readonly projectFolders: readonly Folder[];
   /**
    * Resolve the target descriptor the folder opens with: the devTarget

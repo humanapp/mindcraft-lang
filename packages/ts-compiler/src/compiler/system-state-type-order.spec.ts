@@ -9,11 +9,11 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { type BrainServices, type IBrainTileDef, mkVariableTileId } from "@mindcraft-lang/core/brain";
-import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { BrainTileOperatorDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
-import { CoreTypeIds, extractNumberValue, type IBrain, NativeType, type Value } from "@mindcraft-lang/core/runtime";
+import { type BrainServices, type IBrainTileDef, mkVariableTileId } from "@wendoo-lang/core/brain";
+import { __test__appendTile, __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
+import { BrainTileOperatorDef, BrainTileVariableDef } from "@wendoo-lang/core/brain/tiles";
+import { CoreTypeIds, extractNumberValue, type IBrain, NativeType, type Value } from "@wendoo-lang/core/runtime";
 import { registerUserTile } from "../runtime/registration-bridge.js";
 import { buildUserTileMetadata } from "../runtime/user-tile-metadata.js";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
@@ -211,7 +211,7 @@ describe("System state field types: declaration-order independence", () => {
       const tile = compileTile(
         services,
         {
-          "tile.ts": `import { System, Sensor, type Context } from "mindcraft";\n\n${PT_CLASS}\n${PT_SYSTEM}`,
+          "tile.ts": `import { System, Sensor, type Context } from "wendoo";\n\n${PT_CLASS}\n${PT_SYSTEM}`,
         },
         "tile.ts"
       );
@@ -223,7 +223,7 @@ describe("System state field types: declaration-order independence", () => {
     test("class declared below the System is TypeScript's own use-before-declaration error", () => {
       const services = __test__createBrainServices();
       expectTsError(services, {
-        "tile.ts": `import { System, Sensor, type Context } from "mindcraft";\n\n${PT_SYSTEM}\n${PT_CLASS}`,
+        "tile.ts": `import { System, Sensor, type Context } from "wendoo";\n\n${PT_SYSTEM}\n${PT_CLASS}`,
       });
     });
 
@@ -233,7 +233,7 @@ describe("System state field types: declaration-order independence", () => {
         services,
         {
           "defs.ts": PT_CLASS,
-          "tile.ts": `import { System, Sensor, type Context } from "mindcraft";\nimport { Pt } from "./defs";\n\n${PT_SYSTEM}`,
+          "tile.ts": `import { System, Sensor, type Context } from "wendoo";\nimport { Pt } from "./defs";\n\n${PT_SYSTEM}`,
         },
         "tile.ts"
       );
@@ -247,11 +247,11 @@ describe("System state field types: declaration-order independence", () => {
       const tile = compileTile(
         services,
         {
-          "lib.ts": `import { System, type Context } from "mindcraft";\n\n${PT_CLASS}\nexport ${PT_SYSTEM.replace(
+          "lib.ts": `import { System, type Context } from "wendoo";\n\n${PT_CLASS}\nexport ${PT_SYSTEM.replace(
             /export default Sensor[\s\S]*$/,
             ""
           )}`,
-          "tile.ts": `import { Sensor, type Context } from "mindcraft";\nimport { Track } from "./lib";\n\nexport default Sensor({\n  name: "track read", inline: true,\n  onExecute(ctx: Context): number { return Track.pt.x; },\n});\n`,
+          "tile.ts": `import { Sensor, type Context } from "wendoo";\nimport { Track } from "./lib";\n\nexport default Sensor({\n  name: "track read", inline: true,\n  onExecute(ctx: Context): number { return Track.pt.x; },\n});\n`,
         },
         "tile.ts"
       );
@@ -267,7 +267,7 @@ describe("System state field types: declaration-order independence", () => {
       const tile = compileTile(
         services,
         {
-          "tile.ts": `import { System, Sensor, type Context } from "mindcraft";\n\n${CFG_INTERFACE}\n${CFG_SYSTEM}`,
+          "tile.ts": `import { System, Sensor, type Context } from "wendoo";\n\n${CFG_INTERFACE}\n${CFG_SYSTEM}`,
         },
         "tile.ts"
       );
@@ -285,7 +285,7 @@ describe("System state field types: declaration-order independence", () => {
       const tile = compileTile(
         services,
         {
-          "tile.ts": `import { System, Sensor, type Context } from "mindcraft";\n\n${CFG_SYSTEM}\n${CFG_INTERFACE}`,
+          "tile.ts": `import { System, Sensor, type Context } from "wendoo";\n\n${CFG_SYSTEM}\n${CFG_INTERFACE}`,
         },
         "tile.ts"
       );
@@ -304,7 +304,7 @@ describe("System state field types: declaration-order independence", () => {
         services,
         {
           "defs.ts": CFG_INTERFACE,
-          "tile.ts": `import { System, Sensor, type Context } from "mindcraft";\nimport type { Cfg } from "./defs";\n\n${CFG_SYSTEM}`,
+          "tile.ts": `import { System, Sensor, type Context } from "wendoo";\nimport type { Cfg } from "./defs";\n\n${CFG_SYSTEM}`,
         },
         "tile.ts"
       );
@@ -322,11 +322,11 @@ describe("System state field types: declaration-order independence", () => {
       const tile = compileTile(
         services,
         {
-          "lib.ts": `import { System, type Context } from "mindcraft";\n\n${CFG_INTERFACE}\nexport ${CFG_SYSTEM.replace(
+          "lib.ts": `import { System, type Context } from "wendoo";\n\n${CFG_INTERFACE}\nexport ${CFG_SYSTEM.replace(
             /export default Sensor[\s\S]*$/,
             ""
           )}`,
-          "tile.ts": `import { Sensor, type Context } from "mindcraft";\nimport { Tune } from "./lib";\n\nexport default Sensor({\n  name: "tune read", inline: true,\n  onExecute(ctx: Context): number { return Tune.cfg.speed; },\n});\n`,
+          "tile.ts": `import { Sensor, type Context } from "wendoo";\nimport { Tune } from "./lib";\n\nexport default Sensor({\n  name: "tune read", inline: true,\n  onExecute(ctx: Context): number { return Tune.cfg.speed; },\n});\n`,
         },
         "tile.ts"
       );
@@ -346,7 +346,7 @@ describe("System state field types: declaration-order independence", () => {
       const tile = compileTile(
         services,
         {
-          "tile.ts": `import { System, Sensor, type Context } from "mindcraft";\n\n${LIM_ALIAS}\n${LIM_SYSTEM}`,
+          "tile.ts": `import { System, Sensor, type Context } from "wendoo";\n\n${LIM_ALIAS}\n${LIM_SYSTEM}`,
         },
         "tile.ts"
       );
@@ -364,7 +364,7 @@ describe("System state field types: declaration-order independence", () => {
       const tile = compileTile(
         services,
         {
-          "tile.ts": `import { System, Sensor, type Context } from "mindcraft";\n\n${LIM_SYSTEM}\n${LIM_ALIAS}`,
+          "tile.ts": `import { System, Sensor, type Context } from "wendoo";\n\n${LIM_SYSTEM}\n${LIM_ALIAS}`,
         },
         "tile.ts"
       );
@@ -383,7 +383,7 @@ describe("System state field types: declaration-order independence", () => {
         services,
         {
           "defs.ts": LIM_ALIAS,
-          "tile.ts": `import { System, Sensor, type Context } from "mindcraft";\nimport type { Lim } from "./defs";\n\n${LIM_SYSTEM}`,
+          "tile.ts": `import { System, Sensor, type Context } from "wendoo";\nimport type { Lim } from "./defs";\n\n${LIM_SYSTEM}`,
         },
         "tile.ts"
       );
@@ -401,11 +401,11 @@ describe("System state field types: declaration-order independence", () => {
       const tile = compileTile(
         services,
         {
-          "lib.ts": `import { System, type Context } from "mindcraft";\n\n${LIM_ALIAS}\nexport ${LIM_SYSTEM.replace(
+          "lib.ts": `import { System, type Context } from "wendoo";\n\n${LIM_ALIAS}\nexport ${LIM_SYSTEM.replace(
             /export default Sensor[\s\S]*$/,
             ""
           )}`,
-          "tile.ts": `import { Sensor, type Context } from "mindcraft";\nimport { Fill } from "./lib";\n\nexport default Sensor({\n  name: "fill read", inline: true,\n  onExecute(ctx: Context): number { return Fill.lim.cap; },\n});\n`,
+          "tile.ts": `import { Sensor, type Context } from "wendoo";\nimport { Fill } from "./lib";\n\nexport default Sensor({\n  name: "fill read", inline: true,\n  onExecute(ctx: Context): number { return Fill.lim.cap; },\n});\n`,
         },
         "tile.ts"
       );
@@ -425,7 +425,7 @@ describe("System state field types: declaration-order independence", () => {
       const tile = compileTile(
         services,
         {
-          "tile.ts": `import { System, Sensor, type Context } from "mindcraft";\n\n${MODE_ENUM}\n${MODE_SYSTEM}`,
+          "tile.ts": `import { System, Sensor, type Context } from "wendoo";\n\n${MODE_ENUM}\n${MODE_SYSTEM}`,
         },
         "tile.ts"
       );
@@ -440,7 +440,7 @@ describe("System state field types: declaration-order independence", () => {
     test("enum declared below the System is TypeScript's own use-before-declaration error", () => {
       const services = __test__createBrainServices();
       expectTsError(services, {
-        "tile.ts": `import { System, Sensor, type Context } from "mindcraft";\n\n${MODE_SYSTEM}\n${MODE_ENUM}`,
+        "tile.ts": `import { System, Sensor, type Context } from "wendoo";\n\n${MODE_SYSTEM}\n${MODE_ENUM}`,
       });
     });
 
@@ -450,7 +450,7 @@ describe("System state field types: declaration-order independence", () => {
         services,
         {
           "defs.ts": MODE_ENUM,
-          "tile.ts": `import { System, Sensor, type Context } from "mindcraft";\nimport { Mode } from "./defs";\n\n${MODE_SYSTEM}`,
+          "tile.ts": `import { System, Sensor, type Context } from "wendoo";\nimport { Mode } from "./defs";\n\n${MODE_SYSTEM}`,
         },
         "tile.ts"
       );
@@ -467,11 +467,11 @@ describe("System state field types: declaration-order independence", () => {
       const tile = compileTile(
         services,
         {
-          "lib.ts": `import { System, type Context } from "mindcraft";\n\n${MODE_ENUM}\nexport ${MODE_SYSTEM.replace(
+          "lib.ts": `import { System, type Context } from "wendoo";\n\n${MODE_ENUM}\nexport ${MODE_SYSTEM.replace(
             /export default Sensor[\s\S]*$/,
             ""
           )}`,
-          "tile.ts": `import { Sensor, type Context } from "mindcraft";\nimport { Drive } from "./lib";\nimport { Mode } from "./lib";\n\nexport default Sensor({\n  name: "drive read", inline: true,\n  onExecute(ctx: Context): number { return Drive.mode === Mode.Go ? 7 : 1; },\n});\n`,
+          "tile.ts": `import { Sensor, type Context } from "wendoo";\nimport { Drive } from "./lib";\nimport { Mode } from "./lib";\n\nexport default Sensor({\n  name: "drive read", inline: true,\n  onExecute(ctx: Context): number { return Drive.mode === Mode.Go ? 7 : 1; },\n});\n`,
         },
         "tile.ts"
       );
@@ -490,7 +490,7 @@ describe("System state field types: declaration-order independence", () => {
       const tile = compileTile(
         services,
         {
-          "tile.ts": `import { NumberType, StructType, System, Sensor, type Context } from "mindcraft";\n\n${VEC_STRUCT}\n${VEC_SYSTEM}`,
+          "tile.ts": `import { NumberType, StructType, System, Sensor, type Context } from "wendoo";\n\n${VEC_STRUCT}\n${VEC_SYSTEM}`,
         },
         "tile.ts"
       );
@@ -505,7 +505,7 @@ describe("System state field types: declaration-order independence", () => {
     test("StructType declared below the System is TypeScript's own use-before-declaration error", () => {
       const services = __test__createBrainServices();
       expectTsError(services, {
-        "tile.ts": `import { NumberType, StructType, System, Sensor, type Context } from "mindcraft";\n\n${VEC_SYSTEM}\n${VEC_STRUCT}`,
+        "tile.ts": `import { NumberType, StructType, System, Sensor, type Context } from "wendoo";\n\n${VEC_SYSTEM}\n${VEC_STRUCT}`,
       });
     });
 
@@ -514,8 +514,8 @@ describe("System state field types: declaration-order independence", () => {
       const tile = compileTile(
         services,
         {
-          "defs.ts": `import { NumberType, StructType } from "mindcraft";\n\n${VEC_STRUCT}`,
-          "tile.ts": `import { System, Sensor, type Context } from "mindcraft";\nimport { Vec2 } from "./defs";\n\n${VEC_SYSTEM}`,
+          "defs.ts": `import { NumberType, StructType } from "wendoo";\n\n${VEC_STRUCT}`,
+          "tile.ts": `import { System, Sensor, type Context } from "wendoo";\nimport { Vec2 } from "./defs";\n\n${VEC_SYSTEM}`,
         },
         "tile.ts"
       );
@@ -532,11 +532,11 @@ describe("System state field types: declaration-order independence", () => {
       const tile = compileTile(
         services,
         {
-          "lib.ts": `import { NumberType, StructType, System, type Context } from "mindcraft";\n\n${VEC_STRUCT}\nexport ${VEC_SYSTEM.replace(
+          "lib.ts": `import { NumberType, StructType, System, type Context } from "wendoo";\n\n${VEC_STRUCT}\nexport ${VEC_SYSTEM.replace(
             /export default Sensor[\s\S]*$/,
             ""
           )}`,
-          "tile.ts": `import { Sensor, type Context } from "mindcraft";\nimport { Rove } from "./lib";\n\nexport default Sensor({\n  name: "rove read", inline: true,\n  onExecute(ctx: Context): number { return Rove.pos.x + Rove.pos.y; },\n});\n`,
+          "tile.ts": `import { Sensor, type Context } from "wendoo";\nimport { Rove } from "./lib";\n\nexport default Sensor({\n  name: "rove read", inline: true,\n  onExecute(ctx: Context): number { return Rove.pos.x + Rove.pos.y; },\n});\n`,
         },
         "tile.ts"
       );
@@ -555,7 +555,7 @@ describe("System state field types: declaration-order independence", () => {
       const tile = compileTile(
         services,
         {
-          "tile.ts": `import { System, Sensor, type Context } from "mindcraft";
+          "tile.ts": `import { System, Sensor, type Context } from "wendoo";
 
 class Chain {
   x: number;
@@ -602,7 +602,7 @@ export default Sensor({
       const tile = compileTile(
         services,
         {
-          "tile.ts": `import { System, Sensor, type Context } from "mindcraft";\n\n${PT_CLASS}\nconst Track = System({
+          "tile.ts": `import { System, Sensor, type Context } from "wendoo";\n\n${PT_CLASS}\nconst Track = System({
   name: "track",
   state: { pt: new Pt(3) },
   think(ctx: Context) { this.pt = new Pt(this.pt.x + 1); },
@@ -624,7 +624,7 @@ export default Sensor({
       const tile = compileTile(
         services,
         {
-          "tile.ts": `import { NumberType, StructType, System, Sensor, type StructOf, type Context } from "mindcraft";\n\n${VEC_STRUCT}\nconst Rove = System({
+          "tile.ts": `import { NumberType, StructType, System, Sensor, type StructOf, type Context } from "wendoo";\n\n${VEC_STRUCT}\nconst Rove = System({
   name: "rove",
   state: { pos: undefined as StructOf<typeof Vec2> | undefined },
   think(ctx: Context) { this.pos = Vec2({ x: 9, y: 1 }); },
@@ -652,7 +652,7 @@ export default Sensor({
       const tile = compileTile(
         services,
         {
-          "tile.ts": `import { System, Sensor, type Context } from "mindcraft";\n\n${MODE_ENUM}\nconst Drive = System({
+          "tile.ts": `import { System, Sensor, type Context } from "wendoo";\n\n${MODE_ENUM}\nconst Drive = System({
   name: "drive",
   state: { mode: Mode.Stop },
   think(ctx: Context) { this.mode = Mode.Go; },
@@ -679,7 +679,7 @@ export default Sensor({
       const tile = compileTile(
         services,
         {
-          "tile.ts": `import { System, Sensor, type Context } from "mindcraft";\n\n${MODE_ENUM}\nconst Drive = System({
+          "tile.ts": `import { System, Sensor, type Context } from "wendoo";\n\n${MODE_ENUM}\nconst Drive = System({
   name: "drive",
   state: { mode: undefined as Mode | undefined },
   think(ctx: Context) { this.mode = Mode.Go; },
@@ -707,7 +707,7 @@ export default Sensor({
       const tile = compileTile(
         services,
         {
-          "tile.ts": `import { System, Sensor, type Context } from "mindcraft";\n\n${CFG_INTERFACE}\nconst Tune = System({
+          "tile.ts": `import { System, Sensor, type Context } from "wendoo";\n\n${CFG_INTERFACE}\nconst Tune = System({
   name: "tune",
   state: { cfg: undefined as Cfg | undefined },
   think(ctx: Context) { this.cfg = { speed: 4 }; },
@@ -735,7 +735,7 @@ export default Sensor({
       const tile = compileTile(
         services,
         {
-          "tile.ts": `import { System, Sensor, type Context } from "mindcraft";\n\n${LIM_ALIAS}\nconst Fill = System({
+          "tile.ts": `import { System, Sensor, type Context } from "wendoo";\n\n${LIM_ALIAS}\nconst Fill = System({
   name: "fill",
   state: { lim: undefined as Lim | undefined },
   think(ctx: Context) { this.lim = { cap: 6 }; },
@@ -763,7 +763,7 @@ export default Sensor({
       const tile = compileTile(
         services,
         {
-          "tile.ts": `import { System, Sensor, type Context } from "mindcraft";\n\n${MODE_ENUM.replace(
+          "tile.ts": `import { System, Sensor, type Context } from "wendoo";\n\n${MODE_ENUM.replace(
             "export enum",
             "enum"
           )}\nconst Drive = System({
@@ -786,13 +786,13 @@ export default Sensor({
     test("an imported System constructing a non-exported class reports the carry diagnostic", () => {
       const services = __test__createBrainServices();
       const result = compileProject(services, {
-        "lib.ts": `import { System, type Context } from "mindcraft";\n\n${PT_CLASS.replace("export class", "class")}\nexport const Track = System({
+        "lib.ts": `import { System, type Context } from "wendoo";\n\n${PT_CLASS.replace("export class", "class")}\nexport const Track = System({
   name: "track",
   state: { pt: new Pt(3) },
   think(ctx: Context) { this.pt = new Pt(this.pt.x + 1); },
 });
 `,
-        "tile.ts": `import { Sensor, type Context } from "mindcraft";\nimport { Track } from "./lib";\n\nexport default Sensor({\n  name: "track read", inline: true,\n  onExecute(ctx: Context): number { return Track.pt.x; },\n});\n`,
+        "tile.ts": `import { Sensor, type Context } from "wendoo";\nimport { Track } from "./lib";\n\nexport default Sensor({\n  name: "track read", inline: true,\n  onExecute(ctx: Context): number { return Track.pt.x; },\n});\n`,
       });
       assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
       const entry = result.results.get("tile.ts");
@@ -805,11 +805,11 @@ export default Sensor({
       const tile = compileTile(
         services,
         {
-          "lib.ts": `import { NumberType, StructType, System, type Context } from "mindcraft";\n\n${VEC_STRUCT.replace(
+          "lib.ts": `import { NumberType, StructType, System, type Context } from "wendoo";\n\n${VEC_STRUCT.replace(
             "export const",
             "const"
           )}\nexport ${VEC_SYSTEM.replace(/export default Sensor[\s\S]*$/, "")}`,
-          "tile.ts": `import { Sensor, type Context } from "mindcraft";\nimport { Rove } from "./lib";\n\nexport default Sensor({\n  name: "rove read", inline: true,\n  onExecute(ctx: Context): number { return Rove.pos.x + Rove.pos.y; },\n});\n`,
+          "tile.ts": `import { Sensor, type Context } from "wendoo";\nimport { Rove } from "./lib";\n\nexport default Sensor({\n  name: "rove read", inline: true,\n  onExecute(ctx: Context): number { return Rove.pos.x + Rove.pos.y; },\n});\n`,
         },
         "tile.ts"
       );

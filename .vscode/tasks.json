@@ -2,7 +2,7 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
-			"label": "mindcraft-ext: build",
+			"label": "wendoo-ext: build",
 			"type": "shell",
 			"command": "npm run build",
 			"options": {
@@ -12,7 +12,7 @@
 			"problemMatcher": []
 		},
 		{
-			"label": "mindcraft-ext: dev",
+			"label": "wendoo-ext: dev",
 			"type": "shell",
 			"command": "npm run dev",
 			"options": {

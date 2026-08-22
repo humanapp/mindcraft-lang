@@ -10,9 +10,9 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { coreModule, createMindcraftEnvironment, type MindcraftEnvironment } from "@mindcraft-lang/core";
-import { BrainDef } from "@mindcraft-lang/core/brain/model";
-import { CoreTypeIds, mkActuatorTileId, mkParameterTileId } from "@mindcraft-lang/core/runtime";
+import { coreModule, createWendooEnvironment, type WendooEnvironment } from "@wendoo-lang/core";
+import { BrainDef } from "@wendoo-lang/core/brain/model";
+import { CoreTypeIds, mkActuatorTileId, mkParameterTileId } from "@wendoo-lang/core/runtime";
 import { buildCompiledActionBundle } from "../runtime/action-bundle.js";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { CompileDiagCode } from "./diag-codes.js";
@@ -36,7 +36,7 @@ const BEEP_TILE_ID = mkActuatorTileId(BEEP_KEY);
 const BEEP_PARAM_TILE_ID = mkParameterTileId(`${TEST_PROJECT_NAMESPACE}:user.acbeep0000000001.level`);
 
 /** The tile with a resolvable declared surface and a type error in its body. */
-const BEEP_TYPE_ERROR = `import { Actuator, param, type Context } from "mindcraft";
+const BEEP_TYPE_ERROR = `import { Actuator, param, type Context } from "wendoo";
 
 export default Actuator({
   id: "acbeep0000000001",
@@ -48,7 +48,7 @@ export default Actuator({
 });
 `;
 
-const BEEP_CLEAN = `import { Actuator, param, type Context } from "mindcraft";
+const BEEP_CLEAN = `import { Actuator, param, type Context } from "wendoo";
 
 export default Actuator({
   id: "acbeep0000000001",
@@ -59,13 +59,13 @@ export default Actuator({
 });
 `;
 
-function newProject(env: MindcraftEnvironment): UserTileProject {
+function newProject(env: WendooEnvironment): UserTileProject {
   return new UserTileProject({ projectNamespace: TEST_PROJECT_NAMESPACE, services: env.brainServices });
 }
 
 /** Deserialize a one-rule brain holding `tileId` in its do-slot and report the instance kind plus link outcome. */
 function placeAndLink(
-  env: MindcraftEnvironment,
+  env: WendooEnvironment,
   bundle: NonNullable<ReturnType<typeof buildCompiledActionBundle>>,
   tileId: string
 ): { instanceKind: string; linked: boolean; linkMentionsKey: boolean } {
@@ -87,7 +87,7 @@ function placeAndLink(
 
 describe("definition-presence contribution", () => {
   test("a type-error file contributes its tile definition; the brain typechecks and flash is link-gated", () => {
-    const env = createMindcraftEnvironment({ modules: [coreModule()] });
+    const env = createWendooEnvironment({ modules: [coreModule()] });
     const project = newProject(env);
     project.setFiles(new Map([["beep.ts", BEEP_TYPE_ERROR]]));
     const result = project.compileAll();
@@ -113,7 +113,7 @@ describe("definition-presence contribution", () => {
   });
 
   test("an unresolvable-import file contributes its definition alongside its diagnostics", () => {
-    const env = createMindcraftEnvironment({ modules: [coreModule()] });
+    const env = createWendooEnvironment({ modules: [coreModule()] });
     const project = newProject(env);
     project.setFiles(
       new Map([
@@ -128,7 +128,7 @@ export function toInfluence(position: Position): number {
         ],
         [
           "beep.ts",
-          `import { Actuator, param, type Context } from "mindcraft";
+          `import { Actuator, param, type Context } from "wendoo";
 import { toInfluence } from "./pos-util";
 
 export default Actuator({
@@ -157,13 +157,13 @@ export default Actuator({
   });
 
   test("a tile whose declared surface type is unresolvable is withheld with a precise diagnostic", () => {
-    const env = createMindcraftEnvironment({ modules: [coreModule()] });
+    const env = createWendooEnvironment({ modules: [coreModule()] });
     const project = newProject(env);
     project.setFiles(
       new Map([
         [
           "steer.ts",
-          `import { Actuator, param, type Context } from "mindcraft";
+          `import { Actuator, param, type Context } from "wendoo";
 import { Position } from "@lib/acme/pos";
 
 export default Actuator({
@@ -202,11 +202,11 @@ export default Actuator({
   });
 
   test("a syntactically broken file contributes nothing", () => {
-    const env = createMindcraftEnvironment({ modules: [coreModule()] });
+    const env = createWendooEnvironment({ modules: [coreModule()] });
     const project = newProject(env);
     project.setFiles(
       new Map([
-        ["garbage.ts", `import { Actuator } from "mindcraft";\nexport default Actuator({ name: `],
+        ["garbage.ts", `import { Actuator } from "wendoo";\nexport default Actuator({ name: `],
         ["beep.ts", BEEP_CLEAN],
       ])
     );
@@ -224,7 +224,7 @@ export default Actuator({
   });
 
   test("a broken recompile keeps the last successfully compiled program, and the brain still links", () => {
-    const env = createMindcraftEnvironment({ modules: [coreModule()] });
+    const env = createWendooEnvironment({ modules: [coreModule()] });
     const project = newProject(env);
     project.setFiles(new Map([["beep.ts", BEEP_CLEAN]]));
     const clean = project.compileAll();
@@ -248,9 +248,9 @@ export default Actuator({
   });
 
   test("a last-good program whose types no longer resolve is not offered, and the surface blocks with it", () => {
-    const env = createMindcraftEnvironment({ modules: [coreModule()] });
+    const env = createWendooEnvironment({ modules: [coreModule()] });
     const project = newProject(env);
-    const VEC_SENSOR_CLEAN = `import { Sensor, StructType, NumberType, type Context, type StructOf } from "mindcraft";
+    const VEC_SENSOR_CLEAN = `import { Sensor, StructType, NumberType, type Context, type StructOf } from "wendoo";
 
 export const Vec = StructType({
   name: "Vec",
@@ -286,7 +286,7 @@ export default Sensor({
   });
 
   test("a never-compiled tile heals: fixing the file moves it from definition to executable", () => {
-    const env = createMindcraftEnvironment({ modules: [coreModule()] });
+    const env = createWendooEnvironment({ modules: [coreModule()] });
     const project = newProject(env);
     project.setFiles(new Map([["beep.ts", BEEP_TYPE_ERROR]]));
     const broken = project.compileAll();
@@ -313,9 +313,9 @@ export default Sensor({
   });
 
   test("a broken conversion recompile keeps its last successfully compiled program", () => {
-    const env = createMindcraftEnvironment({ modules: [coreModule()] });
+    const env = createWendooEnvironment({ modules: [coreModule()] });
     const project = newProject(env);
-    const CONV_CLEAN = `import { BufferType, Conversion, NumberType } from "mindcraft";
+    const CONV_CLEAN = `import { BufferType, Conversion, NumberType } from "wendoo";
 
 export default Conversion({
   id: "convnumbuf000001",
@@ -349,13 +349,13 @@ export default Conversion({
   });
 
   test("definitions participate in the stable-id and shared-tile reconciles", () => {
-    const env = createMindcraftEnvironment({ modules: [coreModule()] });
+    const env = createWendooEnvironment({ modules: [coreModule()] });
     const project = newProject(env);
     project.setFiles(
       new Map([
         [
           "a.ts",
-          `import { Sensor, modifier, optional, type Context } from "mindcraft";
+          `import { Sensor, modifier, optional, type Context } from "wendoo";
 
 export default Sensor({
   id: "sharedid00000001",
@@ -369,7 +369,7 @@ export default Sensor({
         ],
         [
           "b.ts",
-          `import { Actuator, modifier, optional, type Context } from "mindcraft";
+          `import { Actuator, modifier, optional, type Context } from "wendoo";
 
 export default Actuator({
   id: "sharedid00000001",

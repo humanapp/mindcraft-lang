@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, runtime } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext, Scheduler } from "@mindcraft-lang/core/runtime";
+import { List, runtime } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { ExecutionContext, Scheduler } from "@wendoo-lang/core/runtime";
 import {
   CoreTypeIds,
   HandleTable,
@@ -15,8 +15,8 @@ import {
   type StructValue,
   type Value,
   VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";
@@ -96,7 +96,7 @@ describe("Explicit type arguments at call sites", () => {
 
   test("explicit type arg on identity function", () => {
     const v = compileAndRunNumber(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function identity<T>(value: T): T {
   return value;
@@ -114,7 +114,7 @@ export default Sensor({
 
   test("explicit type arg on generic list function", () => {
     const v = compileAndRunNumber(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function first<T>(items: T[]): T {
   return items[0];
@@ -136,7 +136,7 @@ describe("Utility types at concrete usage sites", () => {
 
   test("Partial of a concrete interface", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 interface Point {
   x: number;
@@ -161,7 +161,7 @@ export default Sensor({
 
   test("Required of a concrete interface", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 interface Config {
   width: number;
@@ -185,7 +185,7 @@ export default Sensor({
 
   test("Pick of a concrete interface", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 interface FullRecord {
   name: string;
@@ -214,7 +214,7 @@ describe("Generic interface - concrete instantiation", () => {
 
   test("generic interface used with concrete type creates struct", () => {
     const v = compileAndRunNumber(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 interface Container<T> {
   value: T;
@@ -233,7 +233,7 @@ export default Sensor({
 
   test("generic interface with string type argument", () => {
     const v = compileAndRunString(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 interface Wrapper<T> {
   inner: T;
@@ -252,7 +252,7 @@ export default Sensor({
 
   test("generic interface with two type parameters", () => {
     const v = compileAndRunNumber(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 interface Pair<A, B> {
   first: A;
@@ -272,7 +272,7 @@ export default Sensor({
 
   test("same generic interface with different type args produces distinct types", () => {
     const v = compileAndRunNumber(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 interface Box<T> {
   item: T;
@@ -292,7 +292,7 @@ export default Sensor({
 
   test("generic interface as function parameter type", () => {
     const v = compileAndRunNumber(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 interface Container<T> {
   value: T;
@@ -314,7 +314,7 @@ export default Sensor({
 
   test("generic interface as function return type", () => {
     const v = compileAndRunNumber(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 interface Container<T> {
   value: T;
@@ -341,7 +341,7 @@ describe("Generic type alias - concrete instantiation", () => {
 
   test("generic type alias used with concrete type", () => {
     const v = compileAndRunNumber(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 type Container<T> = {
   value: T;
@@ -360,7 +360,7 @@ export default Sensor({
 
   test("generic type alias with two type parameters", () => {
     const v = compileAndRunNumber(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 type Entry<K, V> = {
   key: K;
@@ -380,7 +380,7 @@ export default Sensor({
 
   test("generic type alias as function parameter", () => {
     const v = compileAndRunNumber(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 type Holder<T> = {
   data: T;
@@ -406,7 +406,7 @@ describe("Generic class - concrete instantiation", () => {
 
   test("generic class with concrete type argument", () => {
     const v = compileAndRunNumber(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Box<T> {
   value: T;
@@ -428,7 +428,7 @@ export default Sensor({
 
   test("generic class with method returning T", () => {
     const v = compileAndRunNumber(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Holder<T> {
   item: T;
@@ -453,7 +453,7 @@ export default Sensor({
 
   test("generic class with multiple type parameters", () => {
     const v = compileAndRunNumber(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Pair<A, B> {
   left: A;
@@ -481,7 +481,7 @@ describe("keyof on concrete types", () => {
 
   test("keyof used in type annotation compiles", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 interface Point {
   x: number;
@@ -509,7 +509,7 @@ describe("Concrete index access types", () => {
 
   test("index access on interface resolves to concrete type", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 interface Record {
   score: number;

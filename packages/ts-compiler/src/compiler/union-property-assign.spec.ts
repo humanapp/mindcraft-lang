@@ -1,18 +1,11 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, runtime } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext, Scheduler } from "@mindcraft-lang/core/runtime";
-import {
-  HandleTable,
-  NativeType,
-  NIL_VALUE,
-  type NumberValue,
-  type Value,
-  VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+import { List, runtime } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { ExecutionContext, Scheduler } from "@wendoo-lang/core/runtime";
+import { HandleTable, NativeType, NIL_VALUE, type NumberValue, type Value, VmStatus } from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";
@@ -86,7 +79,7 @@ describe("Union property assignment", () => {
 
   test("simple assignment on A | B", () => {
     const v = compileAndRunNumber(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 interface Cat { name: string; legs: number; }
 interface Dog { name: string; legs: number; }
 function getPet(): Cat | Dog {
@@ -107,7 +100,7 @@ export default Sensor({
 
   test("simple assignment on A | null", () => {
     const v = compileAndRunNumber(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 interface Point { x: number; y: number; }
 export default Sensor({
   name: "test",
@@ -123,7 +116,7 @@ export default Sensor({
 
   test("compound assignment += on union", () => {
     const v = compileAndRunNumber(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 interface Stats { hp: number; mp: number; }
 interface Buffs { hp: number; mp: number; }
 function getStats(): Stats | Buffs {
@@ -144,7 +137,7 @@ export default Sensor({
 
   test("assignment on union from function return", () => {
     const v = compileAndRunNumber(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 interface Cat { name: string; speed: number; }
 interface Dog { name: string; speed: number; }
 function getPet(): Cat | Dog {
@@ -165,7 +158,7 @@ export default Sensor({
 
   test("assignment to shared field on different struct shapes", () => {
     const v = compileAndRunNumber(`
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 interface Circle { radius: number; kind: string; }
 interface Square { side: number; kind: string; }
 function getShape(): Circle | Square {

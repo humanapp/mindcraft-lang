@@ -6,15 +6,15 @@ applyTo: "apps/vscode-extension/**"
 
 # VS Code Extension -- Rules & Patterns
 
-VS Code web extension that connects to the vscode-bridge, exposes a virtual `mindcraft://`
+VS Code web extension that connects to the vscode-bridge, exposes a virtual `wendoo://`
 filesystem, and displays TypeScript diagnostics from the remote compiler.
 
 ## Tech Stack
 
-`@mindcraft-lang/bridge-client` (Project, IFileSystem, FileSystemNotification),
-`@mindcraft-lang/bridge-protocol` (typed message unions), esbuild (bundler), Biome.
+`@wendoo-lang/bridge-client` (Project, IFileSystem, FileSystemNotification),
+`@wendoo-lang/bridge-protocol` (typed message unions), esbuild (bundler), Biome.
 
-**Not used here:** `bridge-app`, `@mindcraft-lang/core`, `@mindcraft-lang/ui`.
+**Not used here:** `bridge-app`, `@wendoo-lang/core`, `@wendoo-lang/ui`.
 
 ## Web Extension Constraint
 
@@ -39,11 +39,11 @@ src/
   commands/index.ts                  # all command registrations
   services/
     project-manager.ts               # central orchestrator
-    mindcraft-fs-provider.ts         # FileSystemProvider + FileDecorationProvider
+    wendoo-fs-provider.ts         # FileSystemProvider + FileDecorationProvider
     diagnostics-manager.ts           # DiagnosticCollection for compile errors
-  state/context.ts                   # mindcraft.enabled context key
+  state/context.ts                   # wendoo.enabled context key
   ui/statusBar.ts                    # status bar item
-  views/mindcraftSessionsProvider.ts # explorer tree view
+  views/wendooSessionsProvider.ts # explorer tree view
 ```
 
 ## Architecture
@@ -53,11 +53,11 @@ src/
 Central orchestrator (`src/services/project-manager.ts`). Owns the `Project` instance.
 
 - Creates `Project<ExtensionClientMessage, ExtensionServerMessage>` with `wsPath: "extension"`.
-- Reads `mindcraft.bridgeUrl` from VS Code configuration for the bridge hostname.
-- Saves/restores the HMAC binding token via `context.globalState` key `"mindcraft.bindingToken"`.
-- After a successful sync, adds `mindcraft://` to `workspace.workspaceFolders`
+- Reads `wendoo.bridgeUrl` from VS Code configuration for the bridge hostname.
+- Saves/restores the HMAC binding token via `context.globalState` key `"wendoo.bindingToken"`.
+- After a successful sync, adds `wendoo://` to `workspace.workspaceFolders`
   and calls `typescript.restartTsServer`.
-- `DiagnosticsManager` suppresses Mindcraft's relayed `MC5002`
+- `DiagnosticsManager` suppresses Wendoo's relayed `MC5002`
   TypeScript-checker diagnostics so the Problems panel shows the built-in
   TypeScript diagnostics once instead of duplicates.
 - **Pending changes:** file writes that fail (app offline) go into a deduplication queue.
@@ -65,12 +65,12 @@ Central orchestrator (`src/services/project-manager.ts`). Owns the `Project` ins
   - `write` / `delete` / `mkdir` / `rmdir` / `rename`: deduplicate by `action:path` (last wins)
   - `import`: always appended (no deduplication)
 
-### MindcraftFileSystemProvider
+### WendooFileSystemProvider
 
 - Read path uses `project.files.raw` (in-memory, no network traffic).
 - Write path uses `project.files.toRemote` (notifying FS that triggers bridge sync).
 - URI path convention: VS Code URIs have a leading `/`; strip it before passing to
-  `IFileSystem` methods (`mindcraft:///foo.ts` -> `"foo.ts"`).
+  `IFileSystem` methods (`wendoo:///foo.ts` -> `"foo.ts"`).
 - `ETAG_MISMATCH` on write: show user-facing error with a "Sync Now" action button.
 - Readonly files (per `stat.isReadonly`) get a dimmed `disabledForeground` decoration.
 
@@ -84,16 +84,16 @@ Central orchestrator (`src/services/project-manager.ts`). Owns the `Project` ins
 
 | Condition | Text |
 |---|---|
-| disconnected | `$(debug-disconnect) Mindcraft: Disconnected` |
-| connecting / reconnecting | `$(sync~spin) Mindcraft: Connecting...` |
-| connected + bound + clientConnected | `$(pass-filled) Mindcraft: Connected` |
-| connected + bound + client offline | `$(warning) Mindcraft: App Offline (N pending)` |
-| connected + not bound | `$(warning) Mindcraft: No App` |
+| disconnected | `$(debug-disconnect) Wendoo: Disconnected` |
+| connecting / reconnecting | `$(sync~spin) Wendoo: Connecting...` |
+| connected + bound + clientConnected | `$(pass-filled) Wendoo: Connected` |
+| connected + bound + client offline | `$(warning) Wendoo: App Offline (N pending)` |
+| connected + not bound | `$(warning) Wendoo: No App` |
 
 ### Context Key
 
-`setMindcraftEnabled()` in `state/context.ts` sets the `mindcraft.enabled` context key,
-which controls visibility of the `mindcraft.sessions` tree view.
+`setWendooEnabled()` in `state/context.ts` sets the `wendoo.enabled` context key,
+which controls visibility of the `wendoo.sessions` tree view.
 
 ## Adding a Command
 
@@ -103,4 +103,4 @@ which controls visibility of the `mindcraft.sessions` tree view.
 ## Adding a Message Handler
 
 Add a case to the `project.session.onMessage` handler in `ProjectManager`. Use the
-typed unions from `@mindcraft-lang/bridge-protocol`; do not invent ad-hoc message shapes.
+typed unions from `@wendoo-lang/bridge-protocol`; do not invent ad-hoc message shapes.

@@ -7,7 +7,7 @@
 
 Add a "program" compilation mode to `packages/ts-compiler` that compiles
 standalone TypeScript (no brain, no sensors, no actuators) to a generic
-Mindcraft bytecode artifact, and define the seam through which a separate
+Wendoo bytecode artifact, and define the seam through which a separate
 **platform app** wraps the compiler + VM, injects its own ambient API and
 host functions, and ships its own CLI.
 
@@ -225,8 +225,8 @@ import type { DebugMetadata } from "./debug.js";
 
 /** Standalone bytecode artifact produced by program-mode compilation. */
 export interface CompiledProgram extends Program {
-  /** Format discriminator. Must equal `"mindcraft.program"`. */
-  format: "mindcraft.program";
+  /** Format discriminator. Must equal `"wendoo.program"`. */
+  format: "wendoo.program";
   /** Schema version of the artifact envelope. Bumped on breaking changes. */
   formatVersion: 1;
   /** Compiler version that produced the artifact, from package.json. */
@@ -298,7 +298,7 @@ import type { TypeRegistry, FunctionRegistry, ConstantRegistry }
  *  /action registries). Program-mode platforms supply a PlatformServices
  *  directly. */
 export interface PlatformServices {
-  /** Stable identifier (e.g. "mindcraft.brain", "mindcraft.cli-node").
+  /** Stable identifier (e.g. "wendoo.brain", "wendoo.cli-node").
    *  Recorded on every artifact this platform compiles; verified at
    *  load time. */
   platformId: string;
@@ -400,9 +400,9 @@ The first platform app and the one this spec uses for validation.
 - `apps/cli-node/src/commands/{compile,run,check}.ts`
 
 **Default platform identity**
-- `platformId: "mindcraft.cli-node"`
+- `platformId: "wendoo.cli-node"`
 - `platformVersion: "1"` (matches major version of `apps/cli-node`)
-- `ambientModule: "mindcraft"`
+- `ambientModule: "wendoo"`
 
 **Default host functions**
 
@@ -440,7 +440,7 @@ mcraft-node check <entry> [--root <dir>] [--ambient <file>]
 #### `run`
 
 - `<bytecode>` -- `.mcb` file produced by any platform app whose
-  `platformId` matches `"mindcraft.cli-node"`.
+  `platformId` matches `"wendoo.cli-node"`.
 - `--max-ticks <n>` -- safety bound on VM steps. Default: unlimited.
 - `-- <program-args>...` -- exposed to the program via `env.args()`.
 - Exit codes: program exit code (default `0`), `1` runtime trap, `2`
@@ -639,11 +639,11 @@ test should change. `BrainServices`, `compileUserTile`, and
 ## Open Questions
 
 1. **Ambient module name across platforms.** Should every platform reuse
-   `"mindcraft"` (familiar to users, but ambiguous about which platform
+   `"wendoo"` (familiar to users, but ambiguous about which platform
    they're targeting), or should each platform declare its own
-   (`"mindcraft.cli-node"`, etc., explicit but verbose)? Default in this
+   (`"wendoo.cli-node"`, etc., explicit but verbose)? Default in this
    spec: per-platform via `PlatformServices.ambientModule`; the cli-node
-   reference uses `"mindcraft"`.
+   reference uses `"wendoo"`.
 2. **Platform compatibility check granularity.** `platformVersion` is a
    single string today. Switch to `{major, minor}` and refuse only on
    major mismatch, or keep string + exact match? Default: string +

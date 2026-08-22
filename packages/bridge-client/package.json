@@ -1,21 +1,21 @@
 {
-  "name": "@mindcraft-lang/bridge-client",
+  "name": "@wendoo-lang/bridge-client",
   "version": "0.2.6",
-  "description": "Client SDK for the Mindcraft Lang VSCode bridge",
+  "description": "Client SDK for the Wendoo Lang VSCode bridge",
   "license": "MIT",
   "type": "module",
   "author": "humanapp",
   "repository": {
     "type": "git",
-    "url": "https://github.com/humanapp/mindcraft-lang.git",
+    "url": "https://github.com/humanapp/wendoo-lang.git",
     "directory": "packages/bridge-client"
   },
   "bugs": {
-    "url": "https://github.com/humanapp/mindcraft-lang/issues"
+    "url": "https://github.com/humanapp/wendoo-lang/issues"
   },
-  "homepage": "https://github.com/humanapp/mindcraft-lang/tree/main/packages/bridge-client#readme",
+  "homepage": "https://github.com/humanapp/wendoo-lang/tree/main/packages/bridge-client#readme",
   "keywords": [
-    "mindcraft",
+    "wendoo",
     "visual-programming",
     "tile-based",
     "typescript",
@@ -48,7 +48,7 @@
       "import": "./dist/index.js"
     }
   },
-  "mindcraftBuild": {
+  "wendooBuild": {
     "script": "build:prod",
     "outputs": [
       "dist"
@@ -74,9 +74,9 @@
     "release:major": "node ../../scripts/release.js major"
   },
   "dependencies": {
-    "@mindcraft-lang/bridge-protocol": "file:../bridge-protocol",
-    "@mindcraft-lang/core": "file:../core",
-    "@mindcraft-lang/service-api": "file:../service-api",
+    "@wendoo-lang/bridge-protocol": "file:../bridge-protocol",
+    "@wendoo-lang/core": "file:../core",
+    "@wendoo-lang/service-api": "file:../service-api",
     "zod": "^4.3.6"
   },
   "devDependencies": {

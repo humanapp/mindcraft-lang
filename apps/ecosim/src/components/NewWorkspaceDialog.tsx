@@ -7,7 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
   Input,
-} from "@mindcraft-lang/ui";
+} from "@wendoo-lang/ui";
 import { useEffect, useRef, useState } from "react";
 
 interface NewWorkspaceDialogProps {

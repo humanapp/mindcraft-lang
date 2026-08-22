@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, type ReadonlyList, runtime } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
+import { List, type ReadonlyList, runtime } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { ExecutionContext } from "@wendoo-lang/core/runtime";
 import {
   type AsyncHandle,
   type BooleanValue,
@@ -32,8 +32,8 @@ import {
   type Value,
   ValueDict,
   VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
@@ -174,7 +174,7 @@ describe("await expression", () => {
   test("single await: fiber suspends, resolves, and returns value", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, param, type Context, type Widget } from "mindcraft";
+import { Sensor, param, type Context, type Widget } from "wendoo";
 
 export default Sensor({
   name: "fetch-await",
@@ -225,7 +225,7 @@ export default Sensor({
   test("two consecutive awaits: fiber suspends twice and produces correct result", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, param, type Context, type Widget } from "mindcraft";
+import { Sensor, param, type Context, type Widget } from "wendoo";
 
 export default Sensor({
   name: "double-await",
@@ -285,7 +285,7 @@ export default Sensor({
   test("local variable survives across await point", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, param, type Context, type Widget } from "mindcraft";
+import { Sensor, param, type Context, type Widget } from "wendoo";
 
 export default Sensor({
   name: "local-across-await",
@@ -330,7 +330,7 @@ export default Sensor({
   test("await on sync function call produces compile error", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, param, type Context, type Widget } from "mindcraft";
+import { Sensor, param, type Context, type Widget } from "wendoo";
 
 export default Sensor({
   name: "bad-await",

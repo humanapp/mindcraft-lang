@@ -1,21 +1,21 @@
-import { assertUnreachable } from "@mindcraft-lang/core";
+import { assertUnreachable } from "@wendoo-lang/core";
 import {
   type BrainServices,
   type IBrainTileDef,
   type ITileCatalog,
   LiteralDisplayFormats,
-} from "@mindcraft-lang/core/brain";
+} from "@wendoo-lang/core/brain";
 import {
   applyDisplayFormat,
   type BrainTileAccessorDef,
   type BrainTileLiteralDef,
   type BrainTileVariableDef,
   getCatalogFallbackLabel,
-} from "@mindcraft-lang/core/brain/tiles";
-import type { EditorMode } from "@mindcraft-lang/ui/brain-editor/editor-mode";
-import type { TileSourceLibrary } from "@mindcraft-lang/ui/brain-editor/tile-library-groups";
-import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
-import type { PrintTransport } from "@mindcraft-lang/ui/print/standalone-print-document";
+} from "@wendoo-lang/core/brain/tiles";
+import type { EditorMode } from "@wendoo-lang/ui/brain-editor/editor-mode";
+import type { TileSourceLibrary } from "@wendoo-lang/ui/brain-editor/tile-library-groups";
+import type { TileVisual } from "@wendoo-lang/ui/brain-editor/types";
+import type { PrintTransport } from "@wendoo-lang/ui/print/standalone-print-document";
 import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from "react";
 import { DocsRegistry } from "./DocsRegistry";
 

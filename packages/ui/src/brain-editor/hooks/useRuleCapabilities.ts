@@ -1,9 +1,9 @@
-import type { ReadonlyBitSet, UniqueSet } from "@mindcraft-lang/core";
-import type { IBrainRuleDef } from "@mindcraft-lang/core/brain";
+import type { ReadonlyBitSet, UniqueSet } from "@wendoo-lang/core";
+import type { IBrainRuleDef } from "@wendoo-lang/core/brain";
 import {
   collectRuleHierarchyCapabilities,
   collectRuleHierarchyOutputKeys,
-} from "@mindcraft-lang/core/brain/language-service";
+} from "@wendoo-lang/core/brain/language-service";
 import { useMemo } from "react";
 
 /**

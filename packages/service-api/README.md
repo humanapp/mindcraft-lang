@@ -1,9 +1,9 @@
-# @mindcraft-lang/service-api
+# @wendoo-lang/service-api
 
 Request/response schemas, shared enums, error shapes, and serialization formats for the
-Mindcraft backend service API.
+Wendoo backend service API.
 
-Defines the contract between the Mindcraft backend service and client-side consumers.
+Defines the contract between the Wendoo backend service and client-side consumers.
 
 ## License
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
-import type { WsMessage } from "@mindcraft-lang/bridge-protocol";
+import type { WsMessage } from "@wendoo-lang/bridge-protocol";
 import { WsClient } from "./ws-client.js";
 
 // ---------------------------------------------------------------------------

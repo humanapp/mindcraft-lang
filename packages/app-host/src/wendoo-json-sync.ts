@@ -1,5 +1,4 @@
-import { fileContentText } from "@mindcraft-lang/service-api";
-import { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
+import { fileContentText } from "@wendoo-lang/service-api";
 import type { ExtensionTarget, ProjectContentManifest } from "./project-content-manifest.js";
 import {
   parseProjectContentManifest,
@@ -8,8 +7,9 @@ import {
 } from "./project-content-manifest.js";
 import type { ProjectFileSystem } from "./project-file-system.js";
 import type { ProjectManifest } from "./project-manifest.js";
+import { WENDOO_JSON_PATH } from "./wendoo-json.js";
 
-/** Manifest fields that flow bidirectionally between the store and `mindcraft.json`. */
+/** Manifest fields that flow bidirectionally between the store and `wendoo.json`. */
 type SyncedManifestFields = {
   name: string;
   version: string;
@@ -80,14 +80,14 @@ function contentManifestsEqual(a: ProjectContentManifest, b: ProjectContentManif
 
 /**
  * Write the content manifest derived from `manifest` into the project file
- * system's `mindcraft.json`, creating the file if it does not exist. Does
+ * system's `wendoo.json`, creating the file if it does not exist. Does
  * nothing if the file already matches the manifest.
  */
-export function syncManifestToMindcraftJson(filesystem: ProjectFileSystem, manifest: ProjectManifest): void {
+export function syncManifestToWendooJson(filesystem: ProjectFileSystem, manifest: ProjectManifest): void {
   const desired = contentManifestFromManifest(manifest);
 
   const snapshot = filesystem.exportSnapshot();
-  const existing = snapshot.get(MINDCRAFT_JSON_PATH);
+  const existing = snapshot.get(WENDOO_JSON_PATH);
   const existingText = existing?.kind === "file" ? fileContentText(existing.content) : undefined;
   if (existingText !== undefined) {
     const parsed = parseProjectContentManifest(existingText);
@@ -98,7 +98,7 @@ export function syncManifestToMindcraftJson(filesystem: ProjectFileSystem, manif
 
   filesystem.applyLocalChange({
     action: "write",
-    path: MINDCRAFT_JSON_PATH,
+    path: WENDOO_JSON_PATH,
     content: serializeProjectContentManifest(desired),
     newEtag: `sync-${Date.now()}`,
   });
@@ -106,10 +106,10 @@ export function syncManifestToMindcraftJson(filesystem: ProjectFileSystem, manif
 
 /**
  * Compute the patch needed to bring `manifest` into agreement with the synced
- * fields of a `mindcraft.json` document. Returns `undefined` if the document
+ * fields of a `wendoo.json` document. Returns `undefined` if the document
  * is unparseable or no fields differ.
  */
-export function diffMindcraftJsonToManifest(
+export function diffWendooJsonToManifest(
   content: string,
   manifest: ProjectManifest
 ): Partial<SyncedManifestFields> | undefined {

@@ -4,8 +4,8 @@ import type {
   FetchedExtensionFile,
   ProjectContentManifest,
   ProjectContentManifestParseResult,
-} from "@mindcraft-lang/app-host";
-import { MINDCRAFT_JSON } from "../mindcraft-json";
+} from "@wendoo-lang/app-host";
+import { WENDOO_JSON } from "../wendoo-json";
 import { isSafeRelativePath } from "./path-confinement";
 
 /** Path segment under which cached target apps are keyed within the cache root. */
@@ -257,9 +257,9 @@ export async function ensureCachedTargetAppInStore(
   }
   // The manifest is the completion marker: written last, after every bundle
   // file, so an interrupted population is never observed as a hit.
-  const manifestFile = files.find((file) => file.path === MINDCRAFT_JSON);
+  const manifestFile = files.find((file) => file.path === WENDOO_JSON);
   if (manifestFile !== undefined) {
-    await access.writeFile(joinRelative(cacheDir, MINDCRAFT_JSON), manifestFile.content);
+    await access.writeFile(joinRelative(cacheDir, WENDOO_JSON), manifestFile.content);
   }
   return resolved;
 }
@@ -275,7 +275,7 @@ async function resolveCachedAppDir(
   source: TargetAppSource,
   cacheDir: string
 ): Promise<Extract<EnsureCachedTargetAppResult, { ok: true }> | undefined> {
-  const manifestText = await access.readTextFile(joinRelative(cacheDir, MINDCRAFT_JSON));
+  const manifestText = await access.readTextFile(joinRelative(cacheDir, WENDOO_JSON));
   if (manifestText === undefined) {
     return undefined;
   }

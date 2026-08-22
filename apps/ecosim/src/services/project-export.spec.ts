@@ -1,9 +1,9 @@
 import "fake-indexeddb/auto";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { createIdbProjectStore, ProjectManager } from "@mindcraft-lang/app-host";
-import { AppEnvironmentHost } from "@mindcraft-lang/bridge-app";
-import { BrainDef, coreModule } from "@mindcraft-lang/core/app";
+import { createIdbProjectStore, ProjectManager } from "@wendoo-lang/app-host";
+import { AppEnvironmentHost } from "@wendoo-lang/bridge-app";
+import { BrainDef, coreModule } from "@wendoo-lang/core/app";
 import { name as simName } from "../../package.json";
 import { createEcosimModule } from "../brain";
 import type { Obstacle } from "../brain/vision";
@@ -33,7 +33,7 @@ globalShim.localStorage ??= memoryStorage();
 globalShim.sessionStorage ??= memoryStorage();
 
 const TILE_PATH = "tiles/wander.ts";
-const TILE_SOURCE = `import { Actuator, type Context } from "mindcraft";
+const TILE_SOURCE = `import { Actuator, type Context } from "wendoo";
 
 export default Actuator({
   name: "wander",

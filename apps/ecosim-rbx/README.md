@@ -13,7 +13,7 @@ Studio-authored content and no place file in the repo.
 You spawn on the west edge of a walled arena roughly 107 by 80 studs, with four
 crates scattered through it. Sharing the arena are twelve creatures: two red
 carnivores, five orange herbivores, and five small green plants. Each one runs a
-real Mindcraft brain -- the same `.brain` assets the ecosim webapp ships, loaded
+real Wendoo brain -- the same `.brain` assets the ecosim webapp ships, loaded
 unmodified -- so what you watch is the brain program executing, not a scripted
 routine.
 
@@ -51,7 +51,7 @@ plant off its anchor makes it visibly spring back.
   npm --prefix apps/ecosim-rbx install
   ```
 
-  `@mindcraft-lang/core` is a `file:` dependency, so npm links it from
+  `@wendoo-lang/core` is a `file:` dependency, so npm links it from
   `packages/core`.
 
 ## Build
@@ -61,7 +61,7 @@ npm run build
 ```
 
 `prebuild` runs `npm run build:deps`, which builds this app's `file:`
-dependencies in dependency order. This app's `mindcraftBuild.needs` names the
+dependencies in dependency order. This app's `wendooBuild.needs` names the
 `rbx` variant, so the driver also builds the Luau target of every dependency
 that declares one -- here, `packages/core`. The compiler writes Luau into
 `out/` and copies the roblox-ts runtime into `include/`. Neither directory is
@@ -90,7 +90,7 @@ npm test
 
 `test/abi-parity.spec.ts` is the automated ABI parity check between this app and
 `apps/ecosim`. It runs on Node (`tsx --test`, outside the roblox-ts program),
-builds one Mindcraft environment from each app's `createEcosimModule`, and
+builds one Wendoo environment from each app's `createEcosimModule`, and
 compares what the two register: tile catalogs, host actions and their resolved
 call-definition slots, the type registry, host functions, operators,
 conversions, the brain-JSON migration, and the three shipped brain assets loaded
@@ -145,7 +145,7 @@ VS Code extension installs the Studio plugin and can start the server for you;
 the extension reads the root `aftman.toml` to pick the Rojo version.
 
 The extension only discovers `*.project.json` files sitting at the top level
-of a workspace folder, so open `mindcraft-lang.code-workspace` at the repo
+of a workspace folder, so open `wendoo-lang.code-workspace` at the repo
 root -- it adds `apps/ecosim-rbx` as a workspace folder, which makes this
 app's `default.project.json` appear in the extension's project list.
 
@@ -190,5 +190,5 @@ faults. Walk your character into a creature to shove it.
   (the headless host), and `suites/`. Also outside `src/`.
 
 `default.project.json` also mounts `node_modules/@rbxts` and
-`node_modules/@mindcraft-lang` under `ReplicatedStorage.rbxts_include.node_modules`
+`node_modules/@wendoo-lang` under `ReplicatedStorage.rbxts_include.node_modules`
 so compiled `require` calls resolve at runtime.

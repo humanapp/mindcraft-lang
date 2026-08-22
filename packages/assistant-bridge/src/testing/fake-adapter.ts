@@ -1,4 +1,4 @@
-import type { MindcraftBrain } from "@mindcraft-lang/core/app";
+import type { WendooBrain } from "@wendoo-lang/core/app";
 import type { RehearsalWorld, WorldDriver, WorldStaging } from "../kit/index.js";
 import { createRehearsalAdapter } from "../kit/index.js";
 import type { ScenarioInputKind, SubjectStateChannel, TargetAdapter, TargetManifest } from "../target/adapter.js";
@@ -6,7 +6,7 @@ import { DispatchOutcome } from "../target/adapter.js";
 import type { FakeWorldState } from "./fake-module.js";
 import { createFakeModule } from "./fake-module.js";
 
-/** Mindcraft identity the fake target's adapter reports itself as. */
+/** Wendoo identity the fake target's adapter reports itself as. */
 export const FAKE_TARGET_IDENTITY = "example-org/trg-fake";
 
 /** The one role a fake scenario may put under study. */
@@ -51,7 +51,7 @@ export const FAKE_RING_THINKS = 2;
  */
 class FakeWorld implements RehearsalWorld {
   private readonly state: FakeWorldState = { signal: false };
-  private readonly brain: MindcraftBrain;
+  private readonly brain: WendooBrain;
   private time = 0;
   private alive = true;
   /** Zero-based index of the think the next {@link step} runs. */

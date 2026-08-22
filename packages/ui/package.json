@@ -1,21 +1,21 @@
 {
-  "name": "@mindcraft-lang/ui",
-  "description": "Shared React UI components and brain editor for Mindcraft apps",
+  "name": "@wendoo-lang/ui",
+  "description": "Shared React UI components and brain editor for Wendoo apps",
   "version": "0.2.1",
   "type": "module",
   "author": "humanapp",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/humanapp/mindcraft-lang.git",
+    "url": "https://github.com/humanapp/wendoo-lang.git",
     "directory": "packages/ui"
   },
   "bugs": {
-    "url": "https://github.com/humanapp/mindcraft-lang/issues"
+    "url": "https://github.com/humanapp/wendoo-lang/issues"
   },
-  "homepage": "https://github.com/humanapp/mindcraft-lang/tree/main/packages/ui#readme",
+  "homepage": "https://github.com/humanapp/wendoo-lang/tree/main/packages/ui#readme",
   "keywords": [
-    "mindcraft",
+    "wendoo",
     "visual-programming",
     "tile-based",
     "ui",
@@ -48,7 +48,7 @@
     "release:major": "node ../../scripts/release.js major"
   },
   "dependencies": {
-    "@mindcraft-lang/core": "file:../core",
+    "@wendoo-lang/core": "file:../core",
     "@radix-ui/react-context-menu": "^2.3.7",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",

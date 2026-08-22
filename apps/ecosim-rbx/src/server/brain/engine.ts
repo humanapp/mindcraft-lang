@@ -1,4 +1,4 @@
-import { BrainDef, type IBrainDef, logger, type MindcraftEnvironment, Vector2 } from "@mindcraft-lang/core/app";
+import { BrainDef, type IBrainDef, logger, Vector2, type WendooEnvironment } from "@wendoo-lang/core/app";
 import carnivoreBrainJson from "shared/brains/default-carnivore.json";
 import herbivoreBrainJson from "shared/brains/default-herbivore.json";
 import plantBrainJson from "shared/brains/default-plant.json";
@@ -103,7 +103,7 @@ export class Engine {
    * @param container - Instance creature and blip parts are parented to.
    */
   constructor(
-    readonly env: MindcraftEnvironment,
+    readonly env: WendooEnvironment,
     obstacles: readonly Obstacle[],
     private readonly container: Instance
   ) {

@@ -7,18 +7,18 @@ import type {
   ProjectManifest,
   ProjectRef,
   ProjectStore,
-} from "@mindcraft-lang/app-host";
+} from "@wendoo-lang/app-host";
 import {
   AppHostErrorCode,
   appHostError,
   applyProjectFileChangeToSnapshot,
   fileContentEquals,
   fileContentToWire,
-  MINDCRAFT_JSON_PATH,
   parseProjectContentManifest,
   serializeProjectContentManifest,
-} from "@mindcraft-lang/app-host";
-import type { FileSystemNotification } from "@mindcraft-lang/bridge-protocol";
+  WENDOO_JSON_PATH,
+} from "@wendoo-lang/app-host";
+import type { FileSystemNotification } from "@wendoo-lang/bridge-protocol";
 import type { InstalledExtensionSnapshots } from "./fetched-extension-snapshots.js";
 import {
   INSTALLED_EXTENSIONS_APP_DATA_KEY,
@@ -31,7 +31,7 @@ export const WORKSPACE_FOLDER_PROJECT_COLLECTION_ID = "workspace-folder";
 
 /** Stable identifiers for workspace-folder store errors. */
 export const WorkspaceFolderStoreErrorCode = {
-  /** The host-provided `mindcraft.json` failed content-manifest validation. */
+  /** The host-provided `wendoo.json` failed content-manifest validation. */
   INVALID_MANIFEST: "WORKSPACE_FOLDER_INVALID_MANIFEST",
   /** A multi-project or collection-management operation was invoked; a workspace folder holds exactly one project. */
   UNSUPPORTED_OPERATION: "WORKSPACE_FOLDER_UNSUPPORTED_OPERATION",
@@ -72,9 +72,9 @@ export interface FolderAppDataCodec {
 export interface WorkspaceFolderRpc {
   /** Apply one file change to the project folder. Resolves when written. */
   sendChange(change: FileSystemNotification): Promise<void>;
-  /** Replace the project's `mindcraft.json` with `content`. */
+  /** Replace the project's `wendoo.json` with `content`. */
   writeManifest(content: string): Promise<void>;
-  /** Read the project's file snapshot entries, excluding `mindcraft.json`. */
+  /** Read the project's file snapshot entries, excluding `wendoo.json`. */
   loadFiles(): Promise<ProjectFileSnapshot>;
 }
 
@@ -84,7 +84,7 @@ export interface WorkspaceFolderProjectStoreOptions {
   rpc: WorkspaceFolderRpc;
   /** Stable opaque id of the host-provided project. */
   projectId: string;
-  /** JSON text of the project's `mindcraft.json` as read from disk. */
+  /** JSON text of the project's `wendoo.json` as read from disk. */
   manifestContent: string;
   /** App name keying this app's chunk in the manifest's `app` map. */
   appName: string;
@@ -125,7 +125,7 @@ function parseRecord(raw: string | undefined): Record<string, unknown> | undefin
  * A {@link ProjectStore} over a host-owned workspace folder: the folder is the
  * single project of the store's single collection. File writes are
  * change-granular; the project manifest and its app data are stored inside the
- * folder's `mindcraft.json` (brains and app chunks in the pass-through
+ * folder's `wendoo.json` (brains and app chunks in the pass-through
  * section, unknown fields preserved). Multi-project and collection-management
  * operations throw {@link WorkspaceFolderStoreError}.
  */
@@ -157,7 +157,7 @@ export class WorkspaceFolderProjectStore implements ProjectStore {
     if (!parsed.ok) {
       throw new WorkspaceFolderStoreError(
         WorkspaceFolderStoreErrorCode.INVALID_MANIFEST,
-        `mindcraft.json is not a valid project manifest: ${parsed.errors[0]?.message ?? "unknown error"}`
+        `wendoo.json is not a valid project manifest: ${parsed.errors[0]?.message ?? "unknown error"}`
       );
     }
     this.base = parsed.manifest;
@@ -191,13 +191,13 @@ export class WorkspaceFolderProjectStore implements ProjectStore {
   }
 
   /**
-   * Absorb a change observed on disk outside the app: a `mindcraft.json`
+   * Absorb a change observed on disk outside the app: a `wendoo.json`
    * write replaces the store's manifest and app-data state; any other change
    * updates the store's view of the folder. Returns the change in project
    * file form for the caller to apply to the live project file system.
    */
   absorbExternalChange(change: FileSystemNotification): ProjectFileChange {
-    if (change.action === "write" && change.path === MINDCRAFT_JSON_PATH) {
+    if (change.action === "write" && change.path === WENDOO_JSON_PATH) {
       this.lastManifestContent = change.content;
       const parsed = parseProjectContentManifest(change.content);
       if (parsed.ok) {
@@ -294,7 +294,7 @@ export class WorkspaceFolderProjectStore implements ProjectStore {
   async loadProjectFiles(id: string): Promise<ProjectFileSnapshot | undefined> {
     this.requireProject(id);
     const snapshot = await this.rpc.loadFiles();
-    snapshot.delete(MINDCRAFT_JSON_PATH);
+    snapshot.delete(WENDOO_JSON_PATH);
     this.mirror = new Map(snapshot);
     return new Map(snapshot);
   }
@@ -456,7 +456,7 @@ export class WorkspaceFolderProjectStore implements ProjectStore {
     }
     const next: ProjectFileSnapshot = new Map();
     for (const [path, entry] of target) {
-      if (path !== MINDCRAFT_JSON_PATH) {
+      if (path !== WENDOO_JSON_PATH) {
         next.set(path, entry);
       }
     }
@@ -470,9 +470,9 @@ function touchesManifestFile(change: ProjectFileChange): boolean {
     case "delete":
     case "mkdir":
     case "rmdir":
-      return change.path === MINDCRAFT_JSON_PATH;
+      return change.path === WENDOO_JSON_PATH;
     case "rename":
-      return change.oldPath === MINDCRAFT_JSON_PATH || change.newPath === MINDCRAFT_JSON_PATH;
+      return change.oldPath === WENDOO_JSON_PATH || change.newPath === WENDOO_JSON_PATH;
     case "import":
       return false;
   }
@@ -480,14 +480,14 @@ function touchesManifestFile(change: ProjectFileChange): boolean {
 
 /**
  * Compute the change-granular writes that bring `mirror` (the store's view of
- * the folder) to `target`. The `mindcraft.json` entry is ignored on both
+ * the folder) to `target`. The `wendoo.json` entry is ignored on both
  * sides; removals under a removed directory are covered by its `rmdir`.
  */
 function diffSnapshotChanges(mirror: ProjectFileSnapshot, target: ProjectFileSnapshot): FileSystemNotification[] {
   const changes: FileSystemNotification[] = [];
 
   for (const [path, entry] of target) {
-    if (path === MINDCRAFT_JSON_PATH) {
+    if (path === WENDOO_JSON_PATH) {
       continue;
     }
     const current = mirror.get(path);
@@ -508,7 +508,7 @@ function diffSnapshotChanges(mirror: ProjectFileSnapshot, target: ProjectFileSna
     }
   }
 
-  const removedPaths = [...mirror.keys()].filter((path) => path !== MINDCRAFT_JSON_PATH && !target.has(path)).sort();
+  const removedPaths = [...mirror.keys()].filter((path) => path !== WENDOO_JSON_PATH && !target.has(path)).sort();
   const removedDirectories: string[] = [];
   for (const path of removedPaths) {
     if (removedDirectories.some((directory) => path.startsWith(`${directory}/`))) {

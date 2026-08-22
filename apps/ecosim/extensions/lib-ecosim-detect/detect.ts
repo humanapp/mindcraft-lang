@@ -1,4 +1,4 @@
-import { type ActorRef, type Context, choice, modifier, optional, repeated, Sensor, type Vector2 } from "mindcraft";
+import { type ActorRef, type Context, choice, modifier, optional, repeated, Sensor, type Vector2 } from "wendoo";
 
 const kNearbyDistanceThreshold = 100;
 const kFarAwayDistanceThreshold = 300;

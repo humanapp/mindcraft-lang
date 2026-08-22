@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, runtime } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
+import { List, runtime } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { ExecutionContext } from "@wendoo-lang/core/runtime";
 import {
   type BooleanValue,
   ContextTypeIds,
@@ -31,8 +31,8 @@ import {
   type Value,
   ValueDict,
   VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
@@ -107,7 +107,7 @@ describe("control flow + local variables", () => {
 
   test("if/else returns correct value for true branch", () => {
     const source = `
-import { Sensor, param, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "test-if",
@@ -144,7 +144,7 @@ export default Sensor({
 
   test("if/else returns correct value for false branch", () => {
     const source = `
-import { Sensor, param, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "test-if",
@@ -181,7 +181,7 @@ export default Sensor({
 
   test("if without else", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test-if-no-else",
@@ -214,7 +214,7 @@ export default Sensor({
 
   test("while loop counting to N", () => {
     const source = `
-import { Sensor, param, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "test-while",
@@ -253,7 +253,7 @@ export default Sensor({
 
   test("do...while loop runs at least once", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test-do-while",
@@ -286,7 +286,7 @@ export default Sensor({
 
   test("do...while loop with multiple iterations", () => {
     const source = `
-import { Sensor, param, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "test-do-while-multi",
@@ -326,7 +326,7 @@ export default Sensor({
 
   test("break in do...while loop", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test-do-while-break",
@@ -362,7 +362,7 @@ export default Sensor({
 
   test("continue in do...while loop", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test-do-while-continue",
@@ -401,7 +401,7 @@ export default Sensor({
 
   test("for loop runs correct number of iterations", () => {
     const source = `
-import { Sensor, param, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "test-for",
@@ -439,7 +439,7 @@ export default Sensor({
 
   test("for loop with i++ increment", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test-for-pp",
@@ -473,7 +473,7 @@ export default Sensor({
 
   test("shadowed variables return correct value", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test-shadow",
@@ -506,7 +506,7 @@ export default Sensor({
 
   test("break exits while loop", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test-break",
@@ -542,7 +542,7 @@ export default Sensor({
 
   test("continue skips iteration in for loop", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test-continue",
@@ -579,7 +579,7 @@ export default Sensor({
 
   test("switch executes matching case", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test-switch-match",
@@ -616,7 +616,7 @@ export default Sensor({
 
   test("switch can match a case after default", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test-switch-case-after-default",
@@ -653,7 +653,7 @@ export default Sensor({
 
   test("switch default can fall through to later cases", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test-switch-default-fallthrough",
@@ -693,7 +693,7 @@ export default Sensor({
 
   test("break exits switch without breaking the loop", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test-switch-break",
@@ -734,7 +734,7 @@ export default Sensor({
 
   test("continue inside switch continues the enclosing loop", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test-switch-continue",
@@ -772,7 +772,7 @@ export default Sensor({
 
   test("nested blocks produce correct variable indices", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test-nested",
@@ -809,7 +809,7 @@ export default Sensor({
 
   test("else-if chains execute correctly", () => {
     const source = `
-import { Sensor, param, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "test-elseif",
@@ -879,7 +879,7 @@ describe("helper functions + callsite-persistent state", () => {
 
   test("helper function called from onExecute returns correct value", () => {
     const source = `
-import { Sensor, param, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "wendoo";
 
 function clamp(v: number, lo: number, hi: number): number {
   if (v < lo) return lo;
@@ -943,7 +943,7 @@ export default Sensor({
 
   test("helper function with arithmetic", () => {
     const source = `
-import { Sensor, param, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "wendoo";
 
 function double(n: number): number {
   return n + n;
@@ -978,7 +978,7 @@ export default Sensor({
 
   test("multiple helper functions can call each other", () => {
     const source = `
-import { Sensor, param, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "wendoo";
 
 function addOne(n: number): number {
   return n + 1;
@@ -1017,7 +1017,7 @@ export default Sensor({
 
   test("top-level let persists across invocations via callsite vars", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 let count = 0;
 
@@ -1071,7 +1071,7 @@ export default Sensor({
 
   test("multiple top-level vars have correct slot indices", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 let a = 10;
 let b = 20;
@@ -1112,7 +1112,7 @@ export default Sensor({
 
   test("activation function resets state when callsiteVars is freshly allocated", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 let count = 0;
 
@@ -1168,7 +1168,7 @@ export default Sensor({
 
   test("helper function can access top-level callsite var", () => {
     const source = `
-import { Sensor, param, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "wendoo";
 
 let total = 0;
 
@@ -1224,7 +1224,7 @@ export default Sensor({
 
   test("no top-level vars produces numStateSlots=0 and no initializer or activation func", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "simple",
@@ -1244,7 +1244,7 @@ export default Sensor({
 
   test("program has correct function count with helpers", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function helper1(): number { return 1; }
 function helper2(): number { return 2; }
@@ -1277,7 +1277,7 @@ export default Sensor({
 
   test("helper with loop and local variables", () => {
     const source = `
-import { Sensor, param, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "wendoo";
 
 function sum(n: number): number {
   let total = 0;
@@ -1316,7 +1316,7 @@ export default Sensor({
 
   test("top-level const with initializer works", () => {
     const source = `
-import { Sensor, param, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "wendoo";
 
 const THRESHOLD = 10;
 
@@ -1371,7 +1371,7 @@ describe("activation function", () => {
 
   test("onPageEntered resets a callsite var; next exec call sees the reset value", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 let count = 0;
 
@@ -1425,7 +1425,7 @@ export default Sensor({
 
   test("source without onPageEntered emits initializer but no activation func", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 let count = 0;
 
@@ -1477,7 +1477,7 @@ export default Sensor({
 
   test("activation function calls user function after init (user can override init values)", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 let startValue = 0;
 
@@ -1518,7 +1518,7 @@ export default Sensor({
 
   test("no activation or initializer function is emitted with no callsite vars and no onPageEntered", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "minimal",
@@ -1539,7 +1539,7 @@ export default Sensor({
 
   test("onPageEntered with local variables and control flow", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 let a = 0;
 let b = 0;
@@ -1581,7 +1581,7 @@ export default Sensor({
 
   test("module-scope initializer runs exactly once across multiple page activations", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 let x = 0;
 
@@ -1649,7 +1649,7 @@ describe("onPageExited handler", () => {
 
   test("descriptor recognizes property-assignment arrow form", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "exit-arrow",
@@ -1665,7 +1665,7 @@ export default Sensor({
 
   test("descriptor recognizes property-assignment function-expression form", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "exit-fn-expr",
@@ -1681,7 +1681,7 @@ export default Sensor({
 
   test("descriptor recognizes method-shorthand form", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "exit-method",
@@ -1697,7 +1697,7 @@ export default Sensor({
 
   test("missing onPageExited leaves deactivationFuncId unset", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "no-exit",
@@ -1712,7 +1712,7 @@ export default Sensor({
 
   test("non-function onPageExited produces OnPageExitedMustBeFunction diag", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "exit-not-fn",
@@ -1726,7 +1726,7 @@ export default Sensor({
 
   test("program with onPageEntered + onPageExited + module-init produces three distinct func ids", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 let count = 0;
 
@@ -1749,7 +1749,7 @@ export default Sensor({
 
   test("onPageExited mutation persists into the next exec call (brain-instance-scoped storage)", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 let count = 0;
 
@@ -1799,7 +1799,7 @@ export default Sensor({
 
   test("onPageExited body without a block produces OnPageExitedHasNoBody diag", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "exit-no-body",

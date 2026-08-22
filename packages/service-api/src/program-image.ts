@@ -1,39 +1,39 @@
 import {
-  MINDCRAFT_BINARY_PROGRAM_IMAGE_MAGIC,
-  MINDCRAFT_PROGRAM_IMAGE_FORMAT,
-  MINDCRAFT_PROGRAM_IMAGE_VERSION,
-  type MindcraftProgramImage,
-  type MindcraftProgramImageBytes,
-  MindcraftProgramImageEncoding,
-} from "@mindcraft-lang/core/runtime";
+  WENDOO_BINARY_PROGRAM_IMAGE_MAGIC,
+  WENDOO_PROGRAM_IMAGE_FORMAT,
+  WENDOO_PROGRAM_IMAGE_VERSION,
+  type WendooProgramImage,
+  type WendooProgramImageBytes,
+  WendooProgramImageEncoding,
+} from "@wendoo-lang/core/runtime";
 
 export {
-  MINDCRAFT_BINARY_PROGRAM_IMAGE_MAGIC,
-  MINDCRAFT_PROGRAM_IMAGE_FORMAT,
-  MINDCRAFT_PROGRAM_IMAGE_VERSION,
-  type MindcraftProgramImage,
-  type MindcraftProgramImageBytes,
-  MindcraftProgramImageEncoding,
+  WENDOO_BINARY_PROGRAM_IMAGE_MAGIC,
+  WENDOO_PROGRAM_IMAGE_FORMAT,
+  WENDOO_PROGRAM_IMAGE_VERSION,
+  type WendooProgramImage,
+  type WendooProgramImageBytes,
+  WendooProgramImageEncoding,
 };
 
 /** Validation code constants used by program image diagnostics. */
-export const MindcraftProgramImageValidationCode = {
-  INVALID_PROGRAM_IMAGE_ENCODING: "MINDCRAFT_PROGRAM_IMAGE_INVALID_ENCODING",
-  UNSUPPORTED_BINARY_PROGRAM_IMAGE: "MINDCRAFT_PROGRAM_IMAGE_UNSUPPORTED_BINARY_ENCODING",
-  INVALID_PROGRAM_IMAGE_JSON: "MINDCRAFT_PROGRAM_IMAGE_INVALID_JSON",
-  INVALID_PROGRAM_IMAGE_ROOT: "MINDCRAFT_PROGRAM_IMAGE_INVALID_ROOT",
-  INVALID_PROGRAM_IMAGE_FORMAT: "MINDCRAFT_PROGRAM_IMAGE_INVALID_FORMAT",
-  INVALID_PROGRAM_IMAGE_VERSION: "MINDCRAFT_PROGRAM_IMAGE_INVALID_VERSION",
-  INVALID_PROGRAM_IMAGE_PROFILE: "MINDCRAFT_PROGRAM_IMAGE_INVALID_PROFILE",
-  MISSING_PROGRAM_IMAGE_PROGRAM: "MINDCRAFT_PROGRAM_IMAGE_MISSING_PROGRAM",
+export const WendooProgramImageValidationCode = {
+  INVALID_PROGRAM_IMAGE_ENCODING: "WENDOO_PROGRAM_IMAGE_INVALID_ENCODING",
+  UNSUPPORTED_BINARY_PROGRAM_IMAGE: "WENDOO_PROGRAM_IMAGE_UNSUPPORTED_BINARY_ENCODING",
+  INVALID_PROGRAM_IMAGE_JSON: "WENDOO_PROGRAM_IMAGE_INVALID_JSON",
+  INVALID_PROGRAM_IMAGE_ROOT: "WENDOO_PROGRAM_IMAGE_INVALID_ROOT",
+  INVALID_PROGRAM_IMAGE_FORMAT: "WENDOO_PROGRAM_IMAGE_INVALID_FORMAT",
+  INVALID_PROGRAM_IMAGE_VERSION: "WENDOO_PROGRAM_IMAGE_INVALID_VERSION",
+  INVALID_PROGRAM_IMAGE_PROFILE: "WENDOO_PROGRAM_IMAGE_INVALID_PROFILE",
+  MISSING_PROGRAM_IMAGE_PROGRAM: "WENDOO_PROGRAM_IMAGE_MISSING_PROGRAM",
 } as const;
 
-/** Union of all {@link MindcraftProgramImageValidationCode} values. */
-export type MindcraftProgramImageValidationCode =
-  (typeof MindcraftProgramImageValidationCode)[keyof typeof MindcraftProgramImageValidationCode];
+/** Union of all {@link WendooProgramImageValidationCode} values. */
+export type WendooProgramImageValidationCode =
+  (typeof WendooProgramImageValidationCode)[keyof typeof WendooProgramImageValidationCode];
 
 /** Validation diagnostic for a rejected program image. */
-export interface MindcraftProgramImageValidationError<TCode extends string = MindcraftProgramImageValidationCode> {
+export interface WendooProgramImageValidationError<TCode extends string = WendooProgramImageValidationCode> {
   /** Stable machine-readable validation code. */
   readonly code: TCode;
 
@@ -48,20 +48,20 @@ export interface MindcraftProgramImageValidationError<TCode extends string = Min
 }
 
 /** Result of validating or parsing a program image. */
-export type MindcraftProgramImageParseResult<
+export type WendooProgramImageParseResult<
   TProgram = unknown,
   TProfileId extends string = string,
-  TError extends MindcraftProgramImageValidationError<string> = MindcraftProgramImageValidationError,
+  TError extends WendooProgramImageValidationError<string> = WendooProgramImageValidationError,
 > =
   | {
       /** True when a valid program image was produced. */
       readonly ok: true;
 
       /** Encoding used by the parsed program image. */
-      readonly encoding: typeof MindcraftProgramImageEncoding.JSON;
+      readonly encoding: typeof WendooProgramImageEncoding.JSON;
 
       /** Parsed program image envelope. */
-      readonly image: MindcraftProgramImage<TProgram, TProfileId>;
+      readonly image: WendooProgramImage<TProgram, TProfileId>;
 
       /** Empty diagnostics list for a valid image. */
       readonly errors: readonly [];
@@ -71,7 +71,7 @@ export type MindcraftProgramImageParseResult<
       readonly ok: false;
 
       /** Encoding detected before validation failed, when available. */
-      readonly encoding?: MindcraftProgramImageEncoding;
+      readonly encoding?: WendooProgramImageEncoding;
 
       /** Validation diagnostics. */
       readonly errors: readonly TError[];
@@ -82,20 +82,18 @@ export type MindcraftProgramImageParseResult<
  *
  * @param input - Program image contents.
  */
-export function parseMindcraftProgramImage(
-  input: string | MindcraftProgramImageBytes
-): MindcraftProgramImageParseResult {
+export function parseWendooProgramImage(input: string | WendooProgramImageBytes): WendooProgramImageParseResult {
   if (typeof input === "string") {
-    return parseMindcraftProgramImageJson(input);
+    return parseWendooProgramImageJson(input);
   }
 
-  const encoding = detectMindcraftProgramImageEncoding(input);
+  const encoding = detectWendooProgramImageEncoding(input);
   if (encoding === undefined) {
     return {
       ok: false,
       errors: [
         {
-          code: MindcraftProgramImageValidationCode.INVALID_PROGRAM_IMAGE_ENCODING,
+          code: WendooProgramImageValidationCode.INVALID_PROGRAM_IMAGE_ENCODING,
           path: "$",
           message: "Program image encoding is not recognized.",
         },
@@ -103,13 +101,13 @@ export function parseMindcraftProgramImage(
     };
   }
 
-  if (encoding === MindcraftProgramImageEncoding.BINARY) {
+  if (encoding === WendooProgramImageEncoding.BINARY) {
     return {
       ok: false,
       encoding,
       errors: [
         {
-          code: MindcraftProgramImageValidationCode.UNSUPPORTED_BINARY_PROGRAM_IMAGE,
+          code: WendooProgramImageValidationCode.UNSUPPORTED_BINARY_PROGRAM_IMAGE,
           path: "$",
           message: "Binary program image encoding is not supported by this reader.",
         },
@@ -117,7 +115,7 @@ export function parseMindcraftProgramImage(
     };
   }
 
-  return parseMindcraftProgramImageJson(new TextDecoder().decode(new Uint8Array(input)));
+  return parseWendooProgramImageJson(new TextDecoder().decode(new Uint8Array(input)));
 }
 
 /**
@@ -125,17 +123,17 @@ export function parseMindcraftProgramImage(
  *
  * @param content - Program image JSON text.
  */
-export function parseMindcraftProgramImageJson(content: string): MindcraftProgramImageParseResult {
+export function parseWendooProgramImageJson(content: string): WendooProgramImageParseResult {
   let parsed: unknown;
   try {
     parsed = JSON.parse(content);
   } catch (cause) {
     return {
       ok: false,
-      encoding: MindcraftProgramImageEncoding.JSON,
+      encoding: WendooProgramImageEncoding.JSON,
       errors: [
         {
-          code: MindcraftProgramImageValidationCode.INVALID_PROGRAM_IMAGE_JSON,
+          code: WendooProgramImageValidationCode.INVALID_PROGRAM_IMAGE_JSON,
           path: "$",
           message: "Program image is not valid JSON.",
           cause,
@@ -144,7 +142,7 @@ export function parseMindcraftProgramImageJson(content: string): MindcraftProgra
     };
   }
 
-  return validateMindcraftProgramImage(parsed);
+  return validateWendooProgramImage(parsed);
 }
 
 /**
@@ -152,14 +150,14 @@ export function parseMindcraftProgramImageJson(content: string): MindcraftProgra
  *
  * @param value - Parsed JSON value from a program image.
  */
-export function validateMindcraftProgramImage(value: unknown): MindcraftProgramImageParseResult {
+export function validateWendooProgramImage(value: unknown): WendooProgramImageParseResult {
   if (!isRecord(value)) {
     return {
       ok: false,
-      encoding: MindcraftProgramImageEncoding.JSON,
+      encoding: WendooProgramImageEncoding.JSON,
       errors: [
         {
-          code: MindcraftProgramImageValidationCode.INVALID_PROGRAM_IMAGE_ROOT,
+          code: WendooProgramImageValidationCode.INVALID_PROGRAM_IMAGE_ROOT,
           path: "$",
           message: "Program image root must be an object.",
         },
@@ -167,36 +165,36 @@ export function validateMindcraftProgramImage(value: unknown): MindcraftProgramI
     };
   }
 
-  const errors: MindcraftProgramImageValidationError[] = [];
+  const errors: WendooProgramImageValidationError[] = [];
   const format = readString(
     value,
     "format",
     "$.format",
-    MindcraftProgramImageValidationCode.INVALID_PROGRAM_IMAGE_FORMAT,
+    WendooProgramImageValidationCode.INVALID_PROGRAM_IMAGE_FORMAT,
     errors
   );
   const version = readNumber(
     value,
     "version",
     "$.version",
-    MindcraftProgramImageValidationCode.INVALID_PROGRAM_IMAGE_VERSION,
+    WendooProgramImageValidationCode.INVALID_PROGRAM_IMAGE_VERSION,
     errors
   );
   const program = value.program;
 
-  if (format !== undefined && format !== MINDCRAFT_PROGRAM_IMAGE_FORMAT) {
+  if (format !== undefined && format !== WENDOO_PROGRAM_IMAGE_FORMAT) {
     errors.push({
-      code: MindcraftProgramImageValidationCode.INVALID_PROGRAM_IMAGE_FORMAT,
+      code: WendooProgramImageValidationCode.INVALID_PROGRAM_IMAGE_FORMAT,
       path: "$.format",
-      message: `Program image format must be "${MINDCRAFT_PROGRAM_IMAGE_FORMAT}".`,
+      message: `Program image format must be "${WENDOO_PROGRAM_IMAGE_FORMAT}".`,
     });
   }
 
-  if (version !== undefined && version !== MINDCRAFT_PROGRAM_IMAGE_VERSION) {
+  if (version !== undefined && version !== WENDOO_PROGRAM_IMAGE_VERSION) {
     errors.push({
-      code: MindcraftProgramImageValidationCode.INVALID_PROGRAM_IMAGE_VERSION,
+      code: WendooProgramImageValidationCode.INVALID_PROGRAM_IMAGE_VERSION,
       path: "$.version",
-      message: `Program image version must be ${MINDCRAFT_PROGRAM_IMAGE_VERSION}.`,
+      message: `Program image version must be ${WENDOO_PROGRAM_IMAGE_VERSION}.`,
     });
   }
 
@@ -204,28 +202,28 @@ export function validateMindcraftProgramImage(value: unknown): MindcraftProgramI
     value,
     "profileId",
     "$.profileId",
-    MindcraftProgramImageValidationCode.INVALID_PROGRAM_IMAGE_PROFILE,
+    WendooProgramImageValidationCode.INVALID_PROGRAM_IMAGE_PROFILE,
     errors
   );
 
   if (program === undefined || program === null) {
     errors.push({
-      code: MindcraftProgramImageValidationCode.MISSING_PROGRAM_IMAGE_PROGRAM,
+      code: WendooProgramImageValidationCode.MISSING_PROGRAM_IMAGE_PROGRAM,
       path: "$.program",
       message: "Program image program payload is required.",
     });
   }
 
   if (errors.length > 0) {
-    return { ok: false, encoding: MindcraftProgramImageEncoding.JSON, errors };
+    return { ok: false, encoding: WendooProgramImageEncoding.JSON, errors };
   }
 
   return {
     ok: true,
-    encoding: MindcraftProgramImageEncoding.JSON,
+    encoding: WendooProgramImageEncoding.JSON,
     image: {
-      format: MINDCRAFT_PROGRAM_IMAGE_FORMAT,
-      version: MINDCRAFT_PROGRAM_IMAGE_VERSION,
+      format: WENDOO_PROGRAM_IMAGE_FORMAT,
+      version: WENDOO_PROGRAM_IMAGE_VERSION,
       profileId: profileId as string,
       program,
     },
@@ -238,17 +236,17 @@ export function validateMindcraftProgramImage(value: unknown): MindcraftProgramI
  *
  * @param bytes - Program image bytes.
  */
-export function detectMindcraftProgramImageEncoding(
-  bytes: MindcraftProgramImageBytes
-): MindcraftProgramImageEncoding | undefined {
+export function detectWendooProgramImageEncoding(
+  bytes: WendooProgramImageBytes
+): WendooProgramImageEncoding | undefined {
   const firstByte = firstContentByte(bytes);
   if (firstByte === undefined) {
     return undefined;
   }
   if (firstByte === 0x7b || firstByte === 0x5b) {
-    return MindcraftProgramImageEncoding.JSON;
+    return WendooProgramImageEncoding.JSON;
   }
-  return hasBinaryMagic(bytes) ? MindcraftProgramImageEncoding.BINARY : undefined;
+  return hasBinaryMagic(bytes) ? WendooProgramImageEncoding.BINARY : undefined;
 }
 
 /**
@@ -256,13 +254,13 @@ export function detectMindcraftProgramImageEncoding(
  *
  * @param image - Program image envelope to serialize.
  */
-export function serializeMindcraftProgramImageJson<TProgram, TProfileId extends string>(
-  image: MindcraftProgramImage<TProgram, TProfileId>
+export function serializeWendooProgramImageJson<TProgram, TProfileId extends string>(
+  image: WendooProgramImage<TProgram, TProfileId>
 ): string {
   return JSON.stringify(image);
 }
 
-function firstContentByte(bytes: MindcraftProgramImageBytes): number | undefined {
+function firstContentByte(bytes: WendooProgramImageBytes): number | undefined {
   for (let index = 0; index < bytes.length; index += 1) {
     const byte = bytes[index];
     if (byte !== 0x09 && byte !== 0x0a && byte !== 0x0d && byte !== 0x20) {
@@ -272,12 +270,12 @@ function firstContentByte(bytes: MindcraftProgramImageBytes): number | undefined
   return undefined;
 }
 
-function hasBinaryMagic(bytes: MindcraftProgramImageBytes): boolean {
-  if (bytes.length < MINDCRAFT_BINARY_PROGRAM_IMAGE_MAGIC.length) {
+function hasBinaryMagic(bytes: WendooProgramImageBytes): boolean {
+  if (bytes.length < WENDOO_BINARY_PROGRAM_IMAGE_MAGIC.length) {
     return false;
   }
-  for (let index = 0; index < MINDCRAFT_BINARY_PROGRAM_IMAGE_MAGIC.length; index += 1) {
-    if (bytes[index] !== MINDCRAFT_BINARY_PROGRAM_IMAGE_MAGIC[index]) {
+  for (let index = 0; index < WENDOO_BINARY_PROGRAM_IMAGE_MAGIC.length; index += 1) {
+    if (bytes[index] !== WENDOO_BINARY_PROGRAM_IMAGE_MAGIC[index]) {
       return false;
     }
   }
@@ -288,8 +286,8 @@ function readString(
   record: Readonly<Record<string, unknown>>,
   key: string,
   path: string,
-  code: MindcraftProgramImageValidationCode,
-  errors: MindcraftProgramImageValidationError[]
+  code: WendooProgramImageValidationCode,
+  errors: WendooProgramImageValidationError[]
 ): string | undefined {
   const value = record[key];
   if (typeof value !== "string") {
@@ -307,8 +305,8 @@ function readNumber(
   record: Readonly<Record<string, unknown>>,
   key: string,
   path: string,
-  code: MindcraftProgramImageValidationCode,
-  errors: MindcraftProgramImageValidationError[]
+  code: WendooProgramImageValidationCode,
+  errors: WendooProgramImageValidationError[]
 ): number | undefined {
   const value = record[key];
   if (typeof value !== "number" || !Number.isInteger(value)) {

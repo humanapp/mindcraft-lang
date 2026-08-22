@@ -1,44 +1,43 @@
 /** Program image format identifier used by JSON-encoded `.mcprogram` files. */
-export const MINDCRAFT_PROGRAM_IMAGE_FORMAT = "mindcraft.program";
+export const WENDOO_PROGRAM_IMAGE_FORMAT = "wendoo.program";
 
 /** Program image envelope version. */
-export const MINDCRAFT_PROGRAM_IMAGE_VERSION = 1;
+export const WENDOO_PROGRAM_IMAGE_VERSION = 1;
 
 /**
- * Binary `.mcprogram` magic bytes (`0x89` + `"MBP"`, "mindcraft binary program").
+ * Binary `.mcprogram` magic bytes (`0x89` + `"MBP"`, "wendoo binary program").
  * The high-bit lead byte distinguishes the binary form from JSON text and catches
  * 7-bit/text-mode corruption (the same role `0x89` plays in the PNG signature);
  * the `MBP` identifier makes the format recognizable in a hex dump.
  */
-export const MINDCRAFT_BINARY_PROGRAM_IMAGE_MAGIC = [0x89, 0x4d, 0x42, 0x50] as const;
+export const WENDOO_BINARY_PROGRAM_IMAGE_MAGIC = [0x89, 0x4d, 0x42, 0x50] as const;
 
 /** Program image encodings recognized by program image readers. */
-export const MindcraftProgramImageEncoding = {
+export const WendooProgramImageEncoding = {
   JSON: "json",
   BINARY: "binary",
 } as const;
 
-/** Union of all {@link MindcraftProgramImageEncoding} values. */
-export type MindcraftProgramImageEncoding =
-  (typeof MindcraftProgramImageEncoding)[keyof typeof MindcraftProgramImageEncoding];
+/** Union of all {@link WendooProgramImageEncoding} values. */
+export type WendooProgramImageEncoding = (typeof WendooProgramImageEncoding)[keyof typeof WendooProgramImageEncoding];
 
-/** Serialized Mindcraft program image envelope. */
-export interface MindcraftProgramImage<TProgram = unknown, TProfileId extends string = string> {
+/** Serialized Wendoo program image envelope. */
+export interface WendooProgramImage<TProgram = unknown, TProfileId extends string = string> {
   /** Program image format identifier. */
-  readonly format: typeof MINDCRAFT_PROGRAM_IMAGE_FORMAT;
+  readonly format: typeof WENDOO_PROGRAM_IMAGE_FORMAT;
 
   /** Program image envelope version. */
-  readonly version: typeof MINDCRAFT_PROGRAM_IMAGE_VERSION;
+  readonly version: typeof WENDOO_PROGRAM_IMAGE_VERSION;
 
   /** Device profile required by the program image. */
   readonly profileId: TProfileId;
 
-  /** Linked Mindcraft program payload. */
+  /** Linked Wendoo program payload. */
   readonly program: TProgram;
 }
 
 /** Byte-like collection accepted by program image encoding detection. */
-export interface MindcraftProgramImageBytes {
+export interface WendooProgramImageBytes {
   /** Number of bytes in the collection. */
   readonly length: number;
 

@@ -1,20 +1,20 @@
 {
-  "name": "@mindcraft-lang/core",
+  "name": "@wendoo-lang/core",
   "version": "0.2.16",
-  "description": "Core implementation of the Mindcraft tile-based visual programming language",
+  "description": "Core implementation of the Wendoo tile-based visual programming language",
   "license": "MIT",
   "author": "humanapp",
   "repository": {
     "type": "git",
-    "url": "https://github.com/humanapp/mindcraft-lang.git",
+    "url": "https://github.com/humanapp/wendoo-lang.git",
     "directory": "packages/core"
   },
   "bugs": {
-    "url": "https://github.com/humanapp/mindcraft-lang/issues"
+    "url": "https://github.com/humanapp/wendoo-lang/issues"
   },
-  "homepage": "https://github.com/humanapp/mindcraft-lang/tree/main/packages/core#readme",
+  "homepage": "https://github.com/humanapp/wendoo-lang/tree/main/packages/core#readme",
   "keywords": [
-    "mindcraft",
+    "wendoo",
     "visual-programming",
     "tile-based",
     "compiler",
@@ -68,11 +68,11 @@
       },
       "default": "./dist/rbx/init.luau"
     },
-    "./lib/mindcraft.core.d.ts": {
-      "default": "./lib/mindcraft.core.d.ts"
+    "./lib/wendoo.core.d.ts": {
+      "default": "./lib/wendoo.core.d.ts"
     },
-    "./lib/mindcraft.json": {
-      "default": "./lib/mindcraft.json"
+    "./lib/wendoo.json": {
+      "default": "./lib/wendoo.json"
     },
     "./lib/index.ts": {
       "default": "./lib/index.ts"
@@ -446,7 +446,7 @@
     "lib",
     "README.md"
   ],
-  "mindcraftBuild": {
+  "wendooBuild": {
     "script": "build:prod",
     "outputs": [
       "dist/node",

@@ -23,7 +23,7 @@ import type { VmConfig } from "./vm-types";
 import { FiberState, VmStatus } from "./vm-types";
 
 /**
- * Runtime entry point for a compiled Mindcraft brain. Owns the VM, the fiber
+ * Runtime entry point for a compiled Wendoo brain. Owns the VM, the fiber
  * scheduler, the page lifecycle FSM, and brain- and rule-scoped variable
  * storage. Built once per linked {@link Program} from a pre-built
  * {@link PlatformServices} aggregate (minus the `brain` tier, which the

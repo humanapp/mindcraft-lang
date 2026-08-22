@@ -1,9 +1,9 @@
-import { assertUnreachable } from "@mindcraft-lang/core";
-import { type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
-import type { BrainTileAccessorDef, BrainTileLiteralDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
-import { adjustColor, cn, formatValue, readableInk, staticAssetUrl } from "@mindcraft-lang/ui";
-import { kDefaultTileHue, tileBorderColor, tileEdgeColor } from "@mindcraft-lang/ui/brain-editor/tile-visual-utils";
-import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
+import { assertUnreachable } from "@wendoo-lang/core";
+import { type IBrainTileDef, RuleSide } from "@wendoo-lang/core/brain";
+import type { BrainTileAccessorDef, BrainTileLiteralDef, BrainTileVariableDef } from "@wendoo-lang/core/brain/tiles";
+import { adjustColor, cn, formatValue, readableInk, staticAssetUrl } from "@wendoo-lang/ui";
+import { kDefaultTileHue, tileBorderColor, tileEdgeColor } from "@wendoo-lang/ui/brain-editor/tile-visual-utils";
+import type { TileVisual } from "@wendoo-lang/ui/brain-editor/types";
 import { useLayoutEffect, useState } from "react";
 import { useDocsResolveTileVisual } from "./DocsSidebarContext";
 

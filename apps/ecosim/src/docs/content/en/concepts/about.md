@@ -1,4 +1,4 @@
-# Mindcraft Ecosystem Sim
+# Wendoo Ecosystem Sim
 
 A living ecosystem where **carnivores**, **herbivores**, and **plants** compete to survive -- and you program their brains.
 

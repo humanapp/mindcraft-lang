@@ -1,21 +1,21 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
-import { List } from "@mindcraft-lang/core";
-import { type BrainServices, CoreCapabilityBits, mkVariableTileId } from "@mindcraft-lang/core/brain";
-import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { ParseDiagCode, type TypecheckResult } from "@mindcraft-lang/core/brain/compiler";
-import type { BrainJson, RuleJson } from "@mindcraft-lang/core/brain/model";
-import { BrainDef, BrainPageDef, BrainRuleDef, kMaxBrainRuleDepth } from "@mindcraft-lang/core/brain/model";
+import { List } from "@wendoo-lang/core";
+import { type BrainServices, CoreCapabilityBits, mkVariableTileId } from "@wendoo-lang/core/brain";
+import { __test__appendTile, __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { ParseDiagCode, type TypecheckResult } from "@wendoo-lang/core/brain/compiler";
+import type { BrainJson, RuleJson } from "@wendoo-lang/core/brain/model";
+import { BrainDef, BrainPageDef, BrainRuleDef, kMaxBrainRuleDepth } from "@wendoo-lang/core/brain/model";
 import {
   BrainTileActuatorDef,
   BrainTileLiteralDef,
   BrainTileOutputDef,
   BrainTileSensorDef,
   BrainTileVariableDef,
-} from "@mindcraft-lang/core/brain/tiles";
-import { bag, CoreTypeIds, mkActionDescriptor, mkCallDef, NIL_VALUE } from "@mindcraft-lang/core/runtime";
-import { BitSet } from "@mindcraft-lang/core/util";
+} from "@wendoo-lang/core/brain/tiles";
+import { bag, CoreTypeIds, mkActionDescriptor, mkCallDef, NIL_VALUE } from "@wendoo-lang/core/runtime";
+import { BitSet } from "@wendoo-lang/core/util";
 
 let services: BrainServices;
 

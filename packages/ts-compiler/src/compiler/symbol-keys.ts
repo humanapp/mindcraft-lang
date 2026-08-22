@@ -22,7 +22,7 @@
  * these markers.
  */
 
-import { type ActionKind, mkPrivateArgId, mkScopedOutputName, mkUserActionKey } from "@mindcraft-lang/core/runtime";
+import { type ActionKind, mkPrivateArgId, mkScopedOutputName, mkUserActionKey } from "@wendoo-lang/core/runtime";
 
 /**
  * Registry name of a user-declared type or System: the project namespace, the

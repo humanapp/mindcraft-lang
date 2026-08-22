@@ -8,11 +8,11 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
-import { type BrainServices, type IBrainTileDef, mkVariableTileId } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { BrainDef, type BrainJson, UnregisteredTileErrorCode } from "@mindcraft-lang/core/brain/model";
-import { BrainTileLiteralDef, BrainTileOperatorDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
-import { CoreOpId, CoreTypeIds } from "@mindcraft-lang/core/runtime";
+import { type BrainServices, type IBrainTileDef, mkVariableTileId } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { BrainDef, type BrainJson, UnregisteredTileErrorCode } from "@wendoo-lang/core/brain/model";
+import { BrainTileLiteralDef, BrainTileOperatorDef, BrainTileVariableDef } from "@wendoo-lang/core/brain/tiles";
+import { CoreOpId, CoreTypeIds } from "@wendoo-lang/core/runtime";
 
 let services: BrainServices;
 

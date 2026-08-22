@@ -6,7 +6,7 @@ import type {
   ProjectFileSnapshot,
   ProjectFileSystem,
   ProjectManifest,
-} from "@mindcraft-lang/app-host";
+} from "@wendoo-lang/app-host";
 import {
   AppHostErrorCode,
   buildActiveProjectExportDocument,
@@ -17,19 +17,19 @@ import {
   DEFAULT_PROJECT_NAME,
   ImportDiagnosticCode,
   importProjectDocument,
-  MINDCRAFT_JSON_PATH,
   ProjectContentManifestErrorCode,
   ProjectManager,
   parseProjectContentManifest,
-  syncManifestToMindcraftJson,
-} from "@mindcraft-lang/app-host";
-import type { MindcraftProjectFileContent } from "@mindcraft-lang/service-api";
+  syncManifestToWendooJson,
+  WENDOO_JSON_PATH,
+} from "@wendoo-lang/app-host";
+import type { WendooProjectFileContent } from "@wendoo-lang/service-api";
 import {
   fileContentToBytes,
   fileContentToWire,
-  MINDCRAFT_PROJECT_FORMAT,
-  MindcraftProjectDocumentValidationCode,
-} from "@mindcraft-lang/service-api";
+  WENDOO_PROJECT_FORMAT,
+  WendooProjectDocumentValidationCode,
+} from "@wendoo-lang/service-api";
 import { assertRejectsWithCode } from "./test-support/error-assertions.js";
 import { MemoryProjectStore } from "./test-support/memory-project-store.js";
 
@@ -93,10 +93,10 @@ function makeManifest(overrides?: Partial<ProjectManifest>): ProjectManifest {
 /** A well-formed v2 document with overridable manifest fields and contents. */
 function makeDocument(
   manifestOverrides?: Record<string, unknown>,
-  contents?: Record<string, MindcraftProjectFileContent>
+  contents?: Record<string, WendooProjectFileContent>
 ): Record<string, unknown> {
   return {
-    format: MINDCRAFT_PROJECT_FORMAT,
+    format: WENDOO_PROJECT_FORMAT,
     manifest: {
       name: "Shared Project",
       version: "0.1.0",
@@ -107,7 +107,7 @@ function makeDocument(
   };
 }
 
-function makeFile(doc: Record<string, unknown>, name = "test.mindcraft"): File {
+function makeFile(doc: Record<string, unknown>, name = "test.wendoo"): File {
   const json = JSON.stringify(doc);
   return new File([json], name, { type: "application/json" });
 }
@@ -123,16 +123,16 @@ function hasDiagnosticCode(
 // -- Tests --------------------------------------------------------------------
 
 describe("buildProjectExportDocument", () => {
-  it("exports user file contents and excludes mindcraft.json", async () => {
+  it("exports user file contents and excludes wendoo.json", async () => {
     const files = new Map([
       ["src/main.ts", { kind: "file" as const, content: "hello", etag: "e1", isReadonly: false }],
-      [MINDCRAFT_JSON_PATH, { kind: "file" as const, content: "{}", etag: "e2", isReadonly: false }],
+      [WENDOO_JSON_PATH, { kind: "file" as const, content: "{}", etag: "e2", isReadonly: false }],
     ]);
     const ws = makeProjectFileSystem(files);
 
     const result = await buildProjectExportDocument(makeManifest(), ws, async () => undefined);
 
-    assert.strictEqual(result.format, MINDCRAFT_PROJECT_FORMAT);
+    assert.strictEqual(result.format, WENDOO_PROJECT_FORMAT);
     assert.deepStrictEqual(result.contents, { "src/main.ts": "hello" });
     assert.strictEqual(result.manifest.name, "My Project");
     assert.strictEqual(result.manifest.description, "A test project");
@@ -297,7 +297,7 @@ describe("importProjectDocument", () => {
 
   it("rejects files over size limit", async () => {
     const content = "x".repeat(100);
-    const file = new File([content], "test.mindcraft");
+    const file = new File([content], "test.wendoo");
 
     const result = await importProjectDocument(file, "test-app", pm, { maxFileSize: 10 });
 
@@ -306,17 +306,17 @@ describe("importProjectDocument", () => {
   });
 
   it("rejects invalid JSON with the document validation code", async () => {
-    const file = new File(["not json {{{"], "test.mindcraft");
+    const file = new File(["not json {{{"], "test.wendoo");
 
     const result = await importProjectDocument(file, "test-app", pm);
 
     assert.strictEqual(result.success, false);
-    assert.ok(hasDiagnosticCode(result.diagnostics, "error", MindcraftProjectDocumentValidationCode.INVALID_JSON));
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", WendooProjectDocumentValidationCode.INVALID_JSON));
   });
 
   it("rejects a document in the retired doc-level shape", async () => {
     const legacy = {
-      format: "mindcraft.project",
+      format: "wendoo.project",
       name: "Old Project",
       description: "",
       files: [{ path: "src/main.ts", content: "hello" }],
@@ -327,7 +327,7 @@ describe("importProjectDocument", () => {
     const result = await importProjectDocument(makeFile(legacy), "test-app", pm);
 
     assert.strictEqual(result.success, false);
-    assert.ok(hasDiagnosticCode(result.diagnostics, "error", MindcraftProjectDocumentValidationCode.INVALID_FORMAT));
+    assert.ok(hasDiagnosticCode(result.diagnostics, "error", WendooProjectDocumentValidationCode.INVALID_FORMAT));
     assert.strictEqual((await store.listProjects(DEFAULT_PROJECT_COLLECTION_ID)).length, 0);
   });
 
@@ -343,9 +343,7 @@ describe("importProjectDocument", () => {
     for (const path of ["../escape.ts", "/absolute.ts", "src\\backslash.ts"]) {
       const result = await importProjectDocument(makeFile(makeDocument({}, { [path]: "bad" })), "test-app", pm);
       assert.strictEqual(result.success, false, `Expected failure for ${path}`);
-      assert.ok(
-        hasDiagnosticCode(result.diagnostics, "error", MindcraftProjectDocumentValidationCode.INVALID_FILE_PATH)
-      );
+      assert.ok(hasDiagnosticCode(result.diagnostics, "error", WendooProjectDocumentValidationCode.INVALID_FILE_PATH));
     }
     assert.strictEqual((await store.listProjects(DEFAULT_PROJECT_COLLECTION_ID)).length, 0);
   });
@@ -374,14 +372,14 @@ describe("importProjectDocument", () => {
     assert.strictEqual(project?.description, "imported desc");
   });
 
-  it("skips a mindcraft.json entry carried in the contents map", async () => {
-    const doc = makeDocument({}, { [MINDCRAFT_JSON_PATH]: "{}", "src/main.ts": "hello" });
+  it("skips a wendoo.json entry carried in the contents map", async () => {
+    const doc = makeDocument({}, { [WENDOO_JSON_PATH]: "{}", "src/main.ts": "hello" });
 
     const result = await importProjectDocument(makeFile(doc), "test-app", pm);
 
     assert.strictEqual(result.success, true);
     const snapshot = await store.loadProjectFiles(result.projectId!);
-    assert.strictEqual(snapshot?.has(MINDCRAFT_JSON_PATH), false);
+    assert.strictEqual(snapshot?.has(WENDOO_JSON_PATH), false);
     assert.ok(snapshot?.get("src/main.ts"));
   });
 
@@ -587,12 +585,12 @@ describe("project round-trips through import and export", () => {
 
   it("re-exports an imported project byte-stably, extras chunks included", async () => {
     const original = {
-      format: MINDCRAFT_PROJECT_FORMAT,
+      format: WENDOO_PROJECT_FORMAT,
       manifest: {
         name: "Shared Project",
         version: "1.0.0",
         description: "shared desc",
-        extensions: { "example-org/mindcraft-position": "gh:example-org/mindcraft-position@v1.2.0" },
+        extensions: { "example-org/wendoo-position": "gh:example-org/wendoo-position@v1.2.0" },
         targets: { "example-org/trg-platform": { packageVersion: "^1.0.0" } },
         brains: { main: { pages: [] } },
         app: { "other-app": { settings: true } },
@@ -629,9 +627,9 @@ describe("project round-trips through import and export", () => {
 
 describe("project extensions interchange", () => {
   const EXTENSIONS = {
-    "example-org/mindcraft-position": "gh:example-org/mindcraft-position@v1.2.0",
+    "example-org/wendoo-position": "gh:example-org/wendoo-position@v1.2.0",
     "example-org/steering": "gh:example-org/steering#main",
-    "mindcraft-lang/microbit-stdlib": "embedded:mindcraft-lang/microbit-stdlib",
+    "wendoo-lang/microbit-stdlib": "embedded:wendoo-lang/microbit-stdlib",
   };
 
   let store: MemoryProjectStore;
@@ -678,14 +676,14 @@ describe("project extensions interchange", () => {
     assert.deepStrictEqual(manifest.extensions, EXTENSIONS);
   });
 
-  it("projects imported extensions into mindcraft.json when the project is opened and synced", async () => {
+  it("projects imported extensions into wendoo.json when the project is opened and synced", async () => {
     const result = await importProjectDocument(makeFile(makeDocument({ extensions: EXTENSIONS })), "test-app", pm);
     assert.strictEqual(result.success, true);
 
     const active = await pm.open(result.projectId!);
-    syncManifestToMindcraftJson(active.filesystem, active.manifest);
+    syncManifestToWendooJson(active.filesystem, active.manifest);
 
-    const entry = active.filesystem.exportSnapshot().get(MINDCRAFT_JSON_PATH);
+    const entry = active.filesystem.exportSnapshot().get(WENDOO_JSON_PATH);
     assert.ok(entry && entry.kind === "file" && typeof entry.content === "string");
     const parsed = parseProjectContentManifest(entry.content);
     assert.ok(parsed.ok);
@@ -747,8 +745,8 @@ describe("project extensions interchange", () => {
 
 describe("project targets interchange", () => {
   const TARGETS = {
-    "mindcraft-lang/trg-microbit-v2": { packageVersion: "^0.8.0" },
-    "mindcraft-lang/lib-missing-platform": { packageVersion: "^1.0.0" },
+    "wendoo-lang/trg-microbit-v2": { packageVersion: "^0.8.0" },
+    "wendoo-lang/lib-missing-platform": { packageVersion: "^1.0.0" },
   };
 
   let store: MemoryProjectStore;
@@ -799,14 +797,14 @@ describe("project targets interchange", () => {
     assert.strictEqual(manifest?.targets, undefined);
   });
 
-  it("projects imported targets into mindcraft.json when the project is opened and synced", async () => {
+  it("projects imported targets into wendoo.json when the project is opened and synced", async () => {
     const result = await importProjectDocument(makeFile(makeDocument({ targets: TARGETS })), "test-app", pm);
     assert.strictEqual(result.success, true);
 
     const active = await pm.open(result.projectId!);
-    syncManifestToMindcraftJson(active.filesystem, active.manifest);
+    syncManifestToWendooJson(active.filesystem, active.manifest);
 
-    const entry = active.filesystem.exportSnapshot().get(MINDCRAFT_JSON_PATH);
+    const entry = active.filesystem.exportSnapshot().get(WENDOO_JSON_PATH);
     assert.ok(entry && entry.kind === "file" && typeof entry.content === "string");
     const parsed = parseProjectContentManifest(entry.content);
     assert.ok(parsed.ok);
@@ -908,7 +906,7 @@ describe("ProjectManager.createFromSnapshot", () => {
     const store = new MemoryProjectStore();
     const pm = new ProjectManager(store);
     await pm.init();
-    const targets = { "mindcraft-lang/trg-microbit-v2": { packageVersion: "^0.8.0" } };
+    const targets = { "wendoo-lang/trg-microbit-v2": { packageVersion: "^0.8.0" } };
     const snapshot: ProjectFileSnapshot = new Map();
 
     const withTargets = await pm.createFromSnapshot(

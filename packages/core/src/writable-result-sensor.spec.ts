@@ -1,17 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import {
-  coreModule,
-  createHostSensor,
-  createMindcraftEnvironment,
-  List,
-  type MindcraftModule,
-} from "@mindcraft-lang/core";
-import { type BrainServices, mkOperatorTileId, TilePlacement } from "@mindcraft-lang/core/brain";
-import { __test__appendTile } from "@mindcraft-lang/core/brain/__test__";
-import { BrainDef } from "@mindcraft-lang/core/brain/model";
-import { BrainTileAccessorDef, BrainTileLiteralDef, BrainTileSensorDef } from "@mindcraft-lang/core/brain/tiles";
+import { coreModule, createHostSensor, createWendooEnvironment, List, type WendooModule } from "@wendoo-lang/core";
+import { type BrainServices, mkOperatorTileId, TilePlacement } from "@wendoo-lang/core/brain";
+import { __test__appendTile } from "@wendoo-lang/core/brain/__test__";
+import { BrainDef } from "@wendoo-lang/core/brain/model";
+import { BrainTileAccessorDef, BrainTileLiteralDef, BrainTileSensorDef } from "@wendoo-lang/core/brain/tiles";
 import {
   CoreOpId,
   CoreTypeIds,
@@ -23,7 +17,7 @@ import {
   type NumberValue,
   TRUE_VALUE,
   type TypeId,
-} from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
 
 /** Host-owned state a native "actor" struct reads from and writes to by reference. */
 interface ActorState {
@@ -36,7 +30,7 @@ interface ActorState {
  * live actor: one with `writableResult`, one read-only.
  */
 function createActorModule(host: ActorState): {
-  module: MindcraftModule;
+  module: WendooModule;
   captured: {
     actorTypeId?: TypeId;
     writableTile?: BrainTileSensorDef;
@@ -53,7 +47,7 @@ function createActorModule(host: ActorState): {
     healthAccessor?: BrainTileAccessorDef;
   } = {};
 
-  const module: MindcraftModule = {
+  const module: WendooModule = {
     id: "actor-module",
     install(api): void {
       const numTypeId = mkTypeId(NativeType.Number, "number");
@@ -227,7 +221,7 @@ describe("createHostSensor `inline` forwarding", () => {
 describe("writableResult sensor field write (headless, native reference struct)", () => {
   function setup(host: ActorState) {
     const { module, captured } = createActorModule(host);
-    const environment = createMindcraftEnvironment({ modules: [coreModule(), module] });
+    const environment = createWendooEnvironment({ modules: [coreModule(), module] });
     const services = getEnvironmentServices(environment);
     return { environment, services, captured };
   }

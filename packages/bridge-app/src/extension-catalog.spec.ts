@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { ExtensionCatalogDocument } from "@mindcraft-lang/app-host";
+import type { ExtensionCatalogDocument } from "@wendoo-lang/app-host";
 import type { EmbeddedExtension } from "./embedded-extensions.js";
 import { resolveProjectExtensions } from "./embedded-extensions.js";
 import type { ExtensionCatalogEntry, PlatformStackLayer } from "./extension-catalog.js";
@@ -16,7 +16,7 @@ import {
   uninstallExtension,
 } from "./extension-catalog.js";
 
-/** Build an embedded extension whose bundled `mindcraft.json` declares the given manifest fields. */
+/** Build an embedded extension whose bundled `wendoo.json` declares the given manifest fields. */
 function ext(
   coordinate: string,
   manifest: {
@@ -33,7 +33,7 @@ function ext(
     files: [
       { path: "index.ts", content: "export {};" },
       {
-        path: "mindcraft.json",
+        path: "wendoo.json",
         content: JSON.stringify({
           name: manifest.name ?? coordinate,
           version: manifest.version ?? "1.0.0",
@@ -47,14 +47,14 @@ function ext(
   };
 }
 
-const CORE = "mindcraft-lang/core";
-const CODAL = "mindcraft-lang/codal";
-const MICROBIT = "mindcraft-lang/microbit-v2";
-const SIM = "mindcraft-lang/lib-ecosim";
-const POSITION = "mindcraft-lang/microbit-position";
-const FLOCK = "mindcraft-lang/lib-ecosim-flock";
-const SHARED_MATH = "mindcraft-lang/shared-math";
-const LEGACY = "mindcraft-lang/legacy-widget";
+const CORE = "wendoo-lang/core";
+const CODAL = "wendoo-lang/codal";
+const MICROBIT = "wendoo-lang/microbit-v2";
+const SIM = "wendoo-lang/lib-ecosim";
+const POSITION = "wendoo-lang/microbit-position";
+const FLOCK = "wendoo-lang/lib-ecosim-flock";
+const SHARED_MATH = "wendoo-lang/shared-math";
+const LEGACY = "wendoo-lang/legacy-widget";
 
 const coreLib = ext(CORE, { name: "Core", version: "0.2.1" });
 const codalLib = ext(CODAL, { name: "Codal", version: "0.2.1", extensions: { [CORE]: `embedded:${CORE}` } });
@@ -155,9 +155,9 @@ describe("isExtensionCompatible -- stack inclusion and semver ranges", () => {
 });
 
 describe("isExtensionCompatible -- shared mid-tier layer, differing top-level target", () => {
-  const LIB_CODAL = "mindcraft-lang/lib-codal";
-  const TRG_MICROBIT = "mindcraft-lang/trg-microbit-v2";
-  const TRG_ARCADE = "mindcraft-lang/trg-arcade";
+  const LIB_CODAL = "wendoo-lang/lib-codal";
+  const TRG_MICROBIT = "wendoo-lang/trg-microbit-v2";
+  const TRG_ARCADE = "wendoo-lang/trg-arcade";
 
   // A library that targets the shared codal mid-tier layer, agnostic to which
   // codal-based top-level target sits above it.
@@ -261,7 +261,7 @@ describe("buildExtensionCatalog -- two platforms", () => {
     // GAMEPAD is a top-level embedded install whose manifest depends on POSITION.
     // POSITION resolves transitively but is not a top-level manifest-map entry,
     // so it is not an entry card; the platform layer is never an entry card.
-    const GAMEPAD = "mindcraft-lang/microbit-gamepad";
+    const GAMEPAD = "wendoo-lang/microbit-gamepad";
     const gamepadAddon = ext(GAMEPAD, {
       name: "Gamepad",
       version: "1.0.0",
@@ -307,7 +307,7 @@ describe("installEmbeddedExtension", () => {
   });
 
   test("rejects a coordinate that names no bundled extension", () => {
-    const result = installEmbeddedExtension(microbitProject, microbitEmbedRecord, "mindcraft-lang/nonexistent");
+    const result = installEmbeddedExtension(microbitProject, microbitEmbedRecord, "wendoo-lang/nonexistent");
     assert.equal(result.ok, false);
     assert.equal(result.code, ExtensionActionResultCode.UNKNOWN_COORDINATE);
     assert.deepEqual(result.extensions, microbitProject);
@@ -353,7 +353,7 @@ describe("uninstallExtension", () => {
 
   test("rejects uninstalling a coordinate another installed extension depends on", () => {
     // A gamepad add-on that depends on the Position add-on, both installed.
-    const GAMEPAD = "mindcraft-lang/microbit-gamepad";
+    const GAMEPAD = "wendoo-lang/microbit-gamepad";
     const gamepadAddon = ext(GAMEPAD, {
       name: "Gamepad",
       version: "1.0.0",
@@ -432,7 +432,7 @@ describe("remote (gh:) catalog entries and actions", () => {
       [
         REMOTE_REFERENCE,
         new Map([
-          ["/mindcraft.json", JSON.stringify({ ...manifest, files: ["index.ts"] })],
+          ["/wendoo.json", JSON.stringify({ ...manifest, files: ["index.ts"] })],
           ["/index.ts", "export const p = 1;"],
         ]),
       ],
@@ -540,13 +540,13 @@ describe("remote (gh:) catalog entries and actions", () => {
     // An embedded extension's manifest requires the remote coordinate: after
     // removing its explicit entry the dependent would pull it back, so the
     // removal is refused.
-    const dependent = ext("mindcraft-lang/robot", {
+    const dependent = ext("wendoo-lang/robot", {
       name: "Robot",
       version: "1.0.0",
       extensions: { [REMOTE]: REMOTE_REFERENCE },
     });
     const blocked = uninstallExtension(
-      { "mindcraft-lang/robot": "embedded:mindcraft-lang/robot", [REMOTE]: REMOTE_REFERENCE },
+      { "wendoo-lang/robot": "embedded:wendoo-lang/robot", [REMOTE]: REMOTE_REFERENCE },
       REMOTE,
       new Set(),
       [dependent],
@@ -569,7 +569,7 @@ describe("buildExtensionCatalogOffers -- compatibility-filtered against the proj
   // manifest) and gh: offers (targets read from the catalog entry) against the
   // micro:bit stack (core, codal, microbit-v2 at 0.2.1).
   const document: ExtensionCatalogDocument = {
-    format: "mindcraft.catalog/1",
+    format: "wendoo.catalog/1",
     entries: [
       // Embedded, declared target coordinate (MICROBIT) is a stack layer.
       {
@@ -715,7 +715,7 @@ describe("library descriptions on entry cards", () => {
         reference,
         new Map([
           [
-            "/mindcraft.json",
+            "/wendoo.json",
             JSON.stringify({ name: "Described", version: "1.0.0", description: DESCRIPTION, files: ["index.ts"] }),
           ],
           ["/index.ts", "export {};"],
@@ -733,7 +733,7 @@ describe("library descriptions on entry cards", () => {
 
   test("a manifest without a description falls back to the catalog document's entry description", () => {
     const catalog: ExtensionCatalogDocument = {
-      format: "mindcraft.catalog/1",
+      format: "wendoo.catalog/1",
       entries: [
         {
           kind: "library",
@@ -759,7 +759,7 @@ describe("library descriptions on entry cards", () => {
 
   test("the installed manifest's description wins over the catalog document's", () => {
     const catalog: ExtensionCatalogDocument = {
-      format: "mindcraft.catalog/1",
+      format: "wendoo.catalog/1",
       entries: [
         {
           kind: "library",

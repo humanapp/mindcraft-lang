@@ -1,8 +1,8 @@
-import { RuleSide } from "@mindcraft-lang/core/brain";
-import { tileSentenceWord } from "@mindcraft-lang/core/brain/language-service";
-import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import type { BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
-import type { Localizer } from "@mindcraft-lang/core/localization";
+import { RuleSide } from "@wendoo-lang/core/brain";
+import { tileSentenceWord } from "@wendoo-lang/core/brain/language-service";
+import type { BrainRuleDef } from "@wendoo-lang/core/brain/model";
+import type { BrainTileVariableDef } from "@wendoo-lang/core/brain/tiles";
+import type { Localizer } from "@wendoo-lang/core/localization";
 import {
   ArrowLeftFromLine,
   ArrowRightFromLine,
@@ -74,7 +74,7 @@ import { tileSourceNamespace } from "./tile-library-groups";
 import { kDefaultTileHue, resolveTileVisual, tileBorderColor } from "./tile-visual-utils";
 
 /** Drag payload format carrying a candidate key from a chip to the armed slot. */
-export const kCandidateDragMimeType = "application/x-mindcraft-candidate";
+export const kCandidateDragMimeType = "application/x-wendoo-candidate";
 
 /**
  * Attribute marking an element the offering's grid cursor can rest the keyboard

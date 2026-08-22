@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, runtime } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext, Scheduler } from "@mindcraft-lang/core/runtime";
+import { List, runtime } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { ExecutionContext, Scheduler } from "@wendoo-lang/core/runtime";
 import {
   CoreTypeIds,
   HandleTable,
@@ -16,8 +16,8 @@ import {
   type StructValue,
   type Value,
   VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { UserTileProject } from "./project.js";
@@ -88,7 +88,7 @@ export interface Point {
 }
 `,
       "sensors/check.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Point } from "../helpers/types";
 
 export default Sensor({
@@ -119,7 +119,7 @@ export interface Vec2 {
 }
 `,
       "sensors/a.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Vec2 } from "../helpers/types";
 
 export default Sensor({
@@ -131,7 +131,7 @@ export default Sensor({
 });
 `,
       "sensors/b.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Vec2 } from "../helpers/types";
 
 export default Sensor({
@@ -170,7 +170,7 @@ export type Config = {
 };
 `,
       "sensors/check.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Config } from "../helpers/types";
 
 export default Sensor({
@@ -211,7 +211,7 @@ export interface Outer {
 }
 `,
       "sensors/check.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Outer, Inner } from "../helpers/types";
 
 export default Sensor({
@@ -249,7 +249,7 @@ export interface Handler {
 }
 `,
       "sensors/check.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { Handler } from "../helpers/types";
 
 export default Sensor({

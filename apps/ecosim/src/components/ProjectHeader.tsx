@@ -3,8 +3,8 @@ import type {
   ProjectCollectionState,
   ProjectCollectionSummary,
   ProjectCollectionSummaryChange,
-} from "@mindcraft-lang/app-host";
-import { AppHostError, DEFAULT_PROJECT_COLLECTION_ID } from "@mindcraft-lang/app-host";
+} from "@wendoo-lang/app-host";
+import { AppHostError, DEFAULT_PROJECT_COLLECTION_ID } from "@wendoo-lang/app-host";
 import {
   Button,
   Dialog,
@@ -22,7 +22,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
   Input,
-} from "@mindcraft-lang/ui";
+} from "@wendoo-lang/ui";
 import {
   Check,
   ChevronDown,

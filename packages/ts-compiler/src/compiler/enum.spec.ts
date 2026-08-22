@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, runtime } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
+import { List, runtime } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { ExecutionContext } from "@wendoo-lang/core/runtime";
 import {
   type BooleanValue,
   ContextTypeIds,
@@ -31,8 +31,8 @@ import {
   type Value,
   ValueDict,
   VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";
@@ -109,7 +109,7 @@ describe("user-authored enum declarations", () => {
 
   test("local enum member lowers to EnumValue and resolves a qualified output type", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 enum Direction {
   Up = "north",
@@ -149,7 +149,7 @@ export default Sensor({
 
   test("local string enum supports equality and string conversion sites", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 enum Direction {
   Up = "north",
@@ -192,7 +192,7 @@ export default Sensor({
 
   test("local numeric enum works in numeric conversion sites", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 enum Throttle {
   Idle = 0,
@@ -231,7 +231,7 @@ export default Sensor({
 
   test("empty enum can be referenced as a type", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 enum Empty {}
 
@@ -284,7 +284,7 @@ describe("enum value literals", () => {
   test("string literal with enum type annotation produces EnumValue", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Direction } from "mindcraft";
+import { Sensor, type Context, type Direction } from "wendoo";
 
 export default Sensor({
   name: "enum-literal",
@@ -324,7 +324,7 @@ export default Sensor({
   test("enum value as function argument", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Direction } from "mindcraft";
+import { Sensor, type Context, type Direction } from "wendoo";
 
 function identity(d: Direction): Direction {
   return d;
@@ -367,7 +367,7 @@ export default Sensor({
   test("enum value as return value", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Direction } from "mindcraft";
+import { Sensor, type Context, type Direction } from "wendoo";
 
 export default Sensor({
   name: "enum-return",
@@ -406,7 +406,7 @@ export default Sensor({
   test("plain string literal without enum context produces StringValue", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "plain-string",
@@ -443,7 +443,7 @@ export default Sensor({
   test("enum equality (===) returns true for matching values", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Direction } from "mindcraft";
+import { Sensor, type Context, type Direction } from "wendoo";
 
 export default Sensor({
   name: "enum-eq-true",
@@ -482,7 +482,7 @@ export default Sensor({
   test("enum equality (===) returns false for different values", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Direction } from "mindcraft";
+import { Sensor, type Context, type Direction } from "wendoo";
 
 function checkEqual(a: Direction, b: Direction): boolean {
   return a === b;
@@ -523,7 +523,7 @@ export default Sensor({
   test("enum inequality (!==) returns true for different values", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Direction } from "mindcraft";
+import { Sensor, type Context, type Direction } from "wendoo";
 
 function checkNotEqual(a: Direction, b: Direction): boolean {
   return a !== b;

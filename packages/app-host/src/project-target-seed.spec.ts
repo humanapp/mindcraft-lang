@@ -4,17 +4,17 @@ import type { ExtensionCatalogDocumentEntry } from "./extension-catalog-document
 import { parseProjectContentManifest } from "./project-content-manifest.js";
 import { registryTargetEntry, seedProjectTargets } from "./project-target-seed.js";
 
-const TARGET_COORDINATE = "mindcraft-lang/trg-ecosim";
-const OTHER_TARGET_COORDINATE = "mindcraft-lang/trg-microbit-v2";
+const TARGET_COORDINATE = "wendoo-lang/trg-ecosim";
+const OTHER_TARGET_COORDINATE = "wendoo-lang/trg-microbit-v2";
 
-/** Registry entries a `mindcraft.json` import or unpack seeds a target from. */
+/** Registry entries a `wendoo.json` import or unpack seeds a target from. */
 const CATALOG: readonly Pick<ExtensionCatalogDocumentEntry, "coordinate" | "kind" | "version">[] = [
   { coordinate: TARGET_COORDINATE, kind: "target", version: "0.1.0" },
   { coordinate: OTHER_TARGET_COORDINATE, kind: "target", version: "0.9.2" },
-  { coordinate: "mindcraft-lang/lib-cutebot", kind: "library", version: "1.4.0" },
+  { coordinate: "wendoo-lang/lib-cutebot", kind: "library", version: "1.4.0" },
 ];
 
-/** A `mindcraft.json` text declaring `extensions` (by coordinate) and optionally `targets`. */
+/** A `wendoo.json` text declaring `extensions` (by coordinate) and optionally `targets`. */
 function manifestText(
   extensions: Readonly<Record<string, string>>,
   targets?: Readonly<Record<string, { packageVersion: string }>>
@@ -69,7 +69,7 @@ describe("seedProjectTargets", () => {
   });
 
   it("ignores a declared coordinate that is a non-target catalog entry", () => {
-    const text = manifestText({ "mindcraft-lang/lib-cutebot": "embedded:mindcraft-lang/lib-cutebot" });
+    const text = manifestText({ "wendoo-lang/lib-cutebot": "embedded:wendoo-lang/lib-cutebot" });
     assert.equal(seedProjectTargets(text, CATALOG), text);
   });
 

@@ -1,11 +1,11 @@
-import { assertUnreachable, List } from "@mindcraft-lang/core";
+import { assertUnreachable, List } from "@wendoo-lang/core";
 import {
   type BrainServices,
   CoreCapabilityBits,
   type IBrainTileDef,
   type ITileMetadata,
   TilePlacement,
-} from "@mindcraft-lang/core/brain";
+} from "@wendoo-lang/core/brain";
 import {
   BrainTileActuatorDef,
   BrainTileModifierDef,
@@ -14,7 +14,7 @@ import {
   BrainTileSensorDef,
   createAccessorTileDef,
   createVariableFactoryTileDef,
-} from "@mindcraft-lang/core/brain/tiles";
+} from "@wendoo-lang/core/brain/tiles";
 import {
   type ActionDescriptor,
   mkAnonParameterId,
@@ -24,8 +24,8 @@ import {
   splitNamespacedTypeName,
   type TypeId,
   type UserArgIdentity,
-} from "@mindcraft-lang/core/runtime";
-import { BitSet } from "@mindcraft-lang/core/util";
+} from "@wendoo-lang/core/runtime";
+import { BitSet } from "@wendoo-lang/core/util";
 import { collectModifiers, collectParams } from "../compiler/arg-spec-utils.js";
 import { privateArgTileId } from "../compiler/symbol-keys.js";
 import type { ExtractedModifier, ExtractedParam, UserAuthoredProgram, UserTileDefinition } from "../compiler/types.js";

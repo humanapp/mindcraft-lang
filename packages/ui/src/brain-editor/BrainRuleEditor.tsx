@@ -1,7 +1,7 @@
-import { List } from "@mindcraft-lang/core";
-import { type IBrainTileDef, type ITileCatalog, RuleSide } from "@mindcraft-lang/core/brain";
-import type { TypecheckResult } from "@mindcraft-lang/core/brain/compiler";
-import type { BrainCommand, BrainCommandHistory, BrainRuleDef, RulePlacement } from "@mindcraft-lang/core/brain/model";
+import { List } from "@wendoo-lang/core";
+import { type IBrainTileDef, type ITileCatalog, RuleSide } from "@wendoo-lang/core/brain";
+import type { TypecheckResult } from "@wendoo-lang/core/brain/compiler";
+import type { BrainCommand, BrainCommandHistory, BrainRuleDef, RulePlacement } from "@wendoo-lang/core/brain/model";
 import {
   AddTileCommand,
   DeleteRuleCommand,
@@ -11,7 +11,7 @@ import {
   PasteTileBeforeCommand,
   RemoveTileCommand,
   ReplaceTileCommand,
-} from "@mindcraft-lang/core/brain/model";
+} from "@wendoo-lang/core/brain/model";
 import { Plus } from "lucide-react";
 import {
   type CSSProperties,

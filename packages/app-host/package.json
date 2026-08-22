@@ -1,21 +1,21 @@
 {
-  "name": "@mindcraft-lang/app-host",
+  "name": "@wendoo-lang/app-host",
   "version": "0.2.6",
-  "description": "Project management and project file storage for Mindcraft apps",
+  "description": "Project management and project file storage for Wendoo apps",
   "license": "MIT",
   "type": "module",
   "author": "humanapp",
   "repository": {
     "type": "git",
-    "url": "https://github.com/humanapp/mindcraft-lang.git",
+    "url": "https://github.com/humanapp/wendoo-lang.git",
     "directory": "packages/app-host"
   },
   "bugs": {
-    "url": "https://github.com/humanapp/mindcraft-lang/issues"
+    "url": "https://github.com/humanapp/wendoo-lang/issues"
   },
-  "homepage": "https://github.com/humanapp/mindcraft-lang/tree/main/packages/app-host#readme",
+  "homepage": "https://github.com/humanapp/wendoo-lang/tree/main/packages/app-host#readme",
   "keywords": [
-    "mindcraft",
+    "wendoo",
     "visual-programming",
     "tile-based",
     "typescript",
@@ -47,7 +47,7 @@
       "import": "./dist/index.js"
     }
   },
-  "mindcraftBuild": {
+  "wendooBuild": {
     "script": "build:prod",
     "outputs": [
       "dist"
@@ -79,8 +79,8 @@
     "typescript": "~5.9.3"
   },
   "dependencies": {
-    "@mindcraft-lang/core": "file:../core",
-    "@mindcraft-lang/service-api": "file:../service-api",
+    "@wendoo-lang/core": "file:../core",
+    "@wendoo-lang/service-api": "file:../service-api",
     "idb": "^8.0.3"
   }
 }

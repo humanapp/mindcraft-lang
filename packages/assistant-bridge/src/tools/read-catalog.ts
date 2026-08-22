@@ -1,10 +1,10 @@
-import type { ReadonlyBitSet } from "@mindcraft-lang/core";
-import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
-import { isActionTileDef, TilePlacement } from "@mindcraft-lang/core/brain";
-import { tileSentenceWord } from "@mindcraft-lang/core/brain/language-service";
-import type { BrainTileParameterDef } from "@mindcraft-lang/core/brain/tiles";
-import type { Localizer } from "@mindcraft-lang/core/localization";
-import type { BrainActionCallArgSpec, BrainActionCallSpec } from "@mindcraft-lang/core/runtime";
+import type { ReadonlyBitSet } from "@wendoo-lang/core";
+import type { IBrainTileDef } from "@wendoo-lang/core/brain";
+import { isActionTileDef, TilePlacement } from "@wendoo-lang/core/brain";
+import { tileSentenceWord } from "@wendoo-lang/core/brain/language-service";
+import type { BrainTileParameterDef } from "@wendoo-lang/core/brain/tiles";
+import type { Localizer } from "@wendoo-lang/core/localization";
+import type { BrainActionCallArgSpec, BrainActionCallSpec } from "@wendoo-lang/core/runtime";
 import type { ToolInput } from "./tool-schemas.js";
 import { type AuthoringWorkspace, allTiles } from "./workspace.js";
 

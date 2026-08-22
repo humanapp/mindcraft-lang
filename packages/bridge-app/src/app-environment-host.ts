@@ -10,7 +10,7 @@ import type {
   ProjectFileSystem,
   ProjectManifest,
   UnstableDependency,
-} from "@mindcraft-lang/app-host";
+} from "@wendoo-lang/app-host";
 import {
   AppHostError,
   AppHostErrorCode,
@@ -18,33 +18,33 @@ import {
   applyCatalogMove,
   checkExtensionReferenceUpdate,
   collectUnstableDependencies,
-  diffMindcraftJsonToManifest,
+  diffWendooJsonToManifest,
   ExtensionFetchErrorCode,
   type FileContent,
   fetchExtensionSnapshot,
   fileContentText,
   highestListedRelease,
-  MINDCRAFT_JSON_PATH,
   type ProjectManager,
   parseCatalogMoveReference,
   parseExtensionAddInput,
   parseProjectContentManifest,
   resolveExtensionAddInput,
-  syncManifestToMindcraftJson,
-} from "@mindcraft-lang/app-host";
-import type { FolderInstalledExtensionMetadata } from "@mindcraft-lang/bridge-protocol";
-import type { IBrainDef, MindcraftEnvironment, MindcraftModule } from "@mindcraft-lang/core/app";
+  syncManifestToWendooJson,
+  WENDOO_JSON_PATH,
+} from "@wendoo-lang/app-host";
+import type { FolderInstalledExtensionMetadata } from "@wendoo-lang/bridge-protocol";
+import type { IBrainDef, WendooEnvironment, WendooModule } from "@wendoo-lang/core/app";
 import {
-  createMindcraftEnvironment,
+  createWendooEnvironment,
   Dict,
   encodePersistedBrainJson,
   logger,
   renameBrainNamespaces,
-} from "@mindcraft-lang/core/app";
-import type { PersistedBrainJson } from "@mindcraft-lang/core/brain/model";
-import type { Localizer } from "@mindcraft-lang/core/localization";
-import type { ActionKey, IRngServices, ProfileNumerics } from "@mindcraft-lang/core/runtime";
-import type { Mount, WorkspaceCompileResult, WorkspaceDiagnosticEntry } from "@mindcraft-lang/ts-compiler";
+} from "@wendoo-lang/core/app";
+import type { PersistedBrainJson } from "@wendoo-lang/core/brain/model";
+import type { Localizer } from "@wendoo-lang/core/localization";
+import type { ActionKey, IRngServices, ProfileNumerics } from "@wendoo-lang/core/runtime";
+import type { Mount, WorkspaceCompileResult, WorkspaceDiagnosticEntry } from "@wendoo-lang/ts-compiler";
 import type { AppBridge, AppBridgeState, ProjectFileChange } from "./app-bridge.js";
 import type { BridgeProjectHandle, ProjectCompilerHandle } from "./compilation.js";
 import { augmentProjectFileSystem, createBridgeProject, createProjectCompiler } from "./compilation.js";
@@ -142,8 +142,8 @@ const NO_COMPILE_DIAGNOSTICS: readonly WorkspaceCompileDiagnostic[] = [];
 /** Options for {@link AppEnvironmentHost}. */
 export interface AppEnvironmentHostOptions {
   projectManager: ProjectManager;
-  /** Mindcraft modules to register with the environment. */
-  modules: readonly MindcraftModule[];
+  /** Wendoo modules to register with the environment. */
+  modules: readonly WendooModule[];
   /** Read-only content mounts supplied to the project compiler and remote VFS. */
   mounts: readonly Mount[];
   /**
@@ -173,7 +173,7 @@ export interface AppEnvironmentHostOptions {
 
   /**
    * Host-supplied RNG. The bridge app forwards this to
-   * {@link createMindcraftEnvironment} so brains pull randomness from the host
+   * {@link createWendooEnvironment} so brains pull randomness from the host
    * (e.g. the simulator's seeded RNG). When omitted, the environment falls back
    * to a default-seeded one, which draws the same sequence every run.
    */
@@ -181,14 +181,14 @@ export interface AppEnvironmentHostOptions {
 
   /**
    * Brain-observable numeric semantics for the host's device profile,
-   * forwarded to {@link createMindcraftEnvironment}. When omitted, the
+   * forwarded to {@link createWendooEnvironment}. When omitted, the
    * environment falls back to the f64 (native double-precision) default.
    */
   numerics?: ProfileNumerics;
 
   /**
    * Host-supplied display-time translation service, forwarded to
-   * {@link createMindcraftEnvironment}. When omitted, the environment falls
+   * {@link createWendooEnvironment}. When omitted, the environment falls
    * back to the default localizer, which renders every source string as
    * authored.
    */
@@ -210,12 +210,12 @@ export interface AppEnvironmentHostOptions {
 // ---------------------------------------------------------------------------
 
 /**
- * Glue layer that wires a {@link ProjectManager}, a {@link MindcraftEnvironment},
+ * Glue layer that wires a {@link ProjectManager}, a {@link WendooEnvironment},
  * the project compiler, user-tile registration, and (optionally) the bridge
  * into a single host an app UI can drive.
  */
 export class AppEnvironmentHost {
-  readonly env: MindcraftEnvironment;
+  readonly env: WendooEnvironment;
   readonly projectManager: ProjectManager;
 
   private readonly mounts: readonly Mount[];
@@ -308,7 +308,7 @@ export class AppEnvironmentHost {
     this._loadBindingToken = options.loadBindingToken ?? (() => undefined);
     this._saveBindingToken = options.saveBindingToken ?? (() => {});
 
-    this.env = createMindcraftEnvironment({
+    this.env = createWendooEnvironment({
       modules: [...options.modules],
       rng: options.rng,
       numerics: options.numerics,
@@ -492,7 +492,7 @@ export class AppEnvironmentHost {
         }
       },
     });
-    syncManifestToMindcraftJson(this.projectFileSystem, this.projectManager.activeProject!.manifest);
+    syncManifestToWendooJson(this.projectFileSystem, this.projectManager.activeProject!.manifest);
     this._compiler.initialize();
   }
 
@@ -740,7 +740,7 @@ export class AppEnvironmentHost {
 
   async updateProjectMetadata(updates: Partial<Pick<ProjectManifest, "name" | "description">>): Promise<void> {
     await this.projectManager.updateActive(updates);
-    syncManifestToMindcraftJson(this.projectFileSystem, this.projectManager.activeProject!.manifest);
+    syncManifestToWendooJson(this.projectFileSystem, this.projectManager.activeProject!.manifest);
   }
 
   /** The installed fetched-extension content available to the active project, keyed by reference. */
@@ -778,7 +778,7 @@ export class AppEnvironmentHost {
    * The installed libraries of the active project's resolved extension
    * closure: one record per resolved origin, carrying the coordinate a
    * compiled tile's identity namespace names and the display name the
-   * library's own `mindcraft.json` declares. Empty until the compiler is
+   * library's own `wendoo.json` declares. Empty until the compiler is
    * wired.
    */
   get installedLibraries(): readonly Pick<ExtensionCatalogEntry, "coordinate" | "name">[] {
@@ -855,22 +855,22 @@ export class AppEnvironmentHost {
     return fetchExtensionSnapshot(reference, this.extensionFetchTransport);
   }
 
-  /** Materialize a resolution: dependencies, `mindcraft.json`, and a recompile of the whole workspace. */
+  /** Materialize a resolution: dependencies, `wendoo.json`, and a recompile of the whole workspace. */
   private applyResolution(resolution: ResolvedExtensions): void {
     if (!this._compiler) {
       return;
     }
     this.setLastResolution(resolution);
     this._compiler.compiler.setDependencies(resolution.dependencies, resolution.dependencyMounts);
-    syncManifestToMindcraftJson(this.projectFileSystem, this.projectManager.activeProject!.manifest);
+    syncManifestToWendooJson(this.projectFileSystem, this.projectManager.activeProject!.manifest);
     this._compiler.replaceProjectFiles();
   }
 
-  /** Rewrite `mindcraft.json` from the store manifest, restoring the file after a refused transaction. */
+  /** Rewrite `wendoo.json` from the store manifest, restoring the file after a refused transaction. */
   private resyncManifestFile(): void {
     const active = this.projectManager.activeProject;
     if (active) {
-      syncManifestToMindcraftJson(this.projectFileSystem, active.manifest);
+      syncManifestToWendooJson(this.projectFileSystem, active.manifest);
     }
   }
 
@@ -1412,7 +1412,7 @@ export class AppEnvironmentHost {
         },
       };
     }
-    const manifestEntry = decodeInstalledSnapshotFiles(record).get(`/${MINDCRAFT_JSON_PATH}`);
+    const manifestEntry = decodeInstalledSnapshotFiles(record).get(`/${WENDOO_JSON_PATH}`);
     const manifestContent = manifestEntry === undefined ? undefined : fileContentText(manifestEntry);
     const parsed = manifestContent !== undefined ? parseProjectContentManifest(manifestContent) : undefined;
     return checkExtensionReferenceUpdate({
@@ -1845,7 +1845,7 @@ export class AppEnvironmentHost {
   /**
    * Apply a project file change observed outside the app (a folder-session
    * external edit): applies it to the project file system and the workspace
-   * compiler, recompiles, and absorbs any `mindcraft.json` manifest change.
+   * compiler, recompiles, and absorbs any `wendoo.json` manifest change.
    */
   applyExternalProjectFileChange(change: ProjectFileChange): void {
     this.projectFileSystem.applyRemoteChange(change);
@@ -1858,19 +1858,19 @@ export class AppEnvironmentHost {
 
   /**
    * Absorb a project file change made by a remote peer: bumps the VFS
-   * revision, and a `mindcraft.json` write is diffed against the active
+   * revision, and a `wendoo.json` write is diffed against the active
    * manifest -- an extensions change runs through the install transaction and
    * the remaining synced fields patch the manifest. The change itself must
    * already be applied to the project file system.
    */
   handleRemoteProjectFileChange(change: ProjectFileChange): void {
     this.bumpVfsRevision();
-    if (change.action === "write" && change.path === MINDCRAFT_JSON_PATH && this.projectManager.activeProject) {
+    if (change.action === "write" && change.path === WENDOO_JSON_PATH && this.projectManager.activeProject) {
       const manifestText = fileContentText(change.content);
       const patch =
         manifestText === undefined
           ? undefined
-          : diffMindcraftJsonToManifest(manifestText, this.projectManager.activeProject.manifest);
+          : diffWendooJsonToManifest(manifestText, this.projectManager.activeProject.manifest);
       if (patch) {
         // An extensions change flows through the install transaction, the
         // same pipeline the extension browser uses; the remaining synced

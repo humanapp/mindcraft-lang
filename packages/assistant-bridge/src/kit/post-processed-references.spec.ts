@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
 /** package.json field a local package declares its build interface in. */
-const buildField = "mindcraftBuild";
+const buildField = "wendooBuild";
 
 /** Directory names never walked: build output, installed packages, and tool state. */
 function skipped(name: string): boolean {

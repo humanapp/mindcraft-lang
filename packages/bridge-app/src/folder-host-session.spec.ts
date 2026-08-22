@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { fileContentToWire } from "@mindcraft-lang/app-host";
+import { fileContentToWire } from "@wendoo-lang/app-host";
 import type {
   FileContentPayload,
   FolderAppMessage,
@@ -9,8 +9,8 @@ import type {
   FolderOpenExternalDocumentMessage,
   FolderSessionErrorCode as FolderSessionErrorCodeType,
   FolderVolumeWriteMessage,
-} from "@mindcraft-lang/bridge-protocol";
-import { FolderSessionErrorCode, INSTALLED_EXTENSIONS_METADATA_PATH } from "@mindcraft-lang/bridge-protocol";
+} from "@wendoo-lang/bridge-protocol";
+import { FolderSessionErrorCode, INSTALLED_EXTENSIONS_METADATA_PATH } from "@wendoo-lang/bridge-protocol";
 import {
   decodeInstalledSnapshotFiles,
   INSTALLED_EXTENSIONS_APP_DATA_KEY,
@@ -192,7 +192,7 @@ describe("folder session installed-extensions cache seeding", () => {
           { content: JSON.stringify({ [POSITION_ORIGIN]: { reference: POSITION_REFERENCE, specifier: "v0.1.0" } }) },
         ],
         [
-          `.libraries/${POSITION_ORIGIN}/mindcraft.json`,
+          `.libraries/${POSITION_ORIGIN}/wendoo.json`,
           { content: JSON.stringify({ name: "Position", version: "0.1.0" }) },
         ],
         [`.libraries/${POSITION_ORIGIN}/index.ts`, { content: "export const position = 42;\n" }],
@@ -209,7 +209,7 @@ describe("folder session installed-extensions cache seeding", () => {
     assert.equal(record.specifier, "v0.1.0");
     const files = decodeInstalledSnapshotFiles(record);
     assert.equal(files.get("/index.ts"), "export const position = 42;\n");
-    assert.equal(files.get("/mindcraft.json"), JSON.stringify({ name: "Position", version: "0.1.0" }));
+    assert.equal(files.get("/wendoo.json"), JSON.stringify({ name: "Position", version: "0.1.0" }));
     assert.deepEqual(
       [...(files.get("/icon.png") as Uint8Array)],
       [...ICON_BYTES],

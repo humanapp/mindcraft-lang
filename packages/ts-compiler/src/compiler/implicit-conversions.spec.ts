@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, runtime } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
+import { List, runtime } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { ExecutionContext } from "@wendoo-lang/core/runtime";
 import {
   type BooleanValue,
   ContextTypeIds,
@@ -31,8 +31,8 @@ import {
   type Value,
   ValueDict,
   VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { buildAmbientDeclarations } from "./ambient.js";
@@ -124,7 +124,7 @@ describe("binary operator implicit conversions", () => {
 
   test("existing direct overloads still compile and execute", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function joinParts(left: string, right: string): string {
   return left + right;
@@ -157,7 +157,7 @@ export default Sensor({
 
   test("binary lowering can convert the right operand to match an overload", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function addFlag(count: number, flag: boolean): number {
   // @ts-ignore testing runtime implicit conversion behavior
@@ -191,7 +191,7 @@ export default Sensor({
 
   test("binary lowering reports a no-overload diagnostic when no implicit conversion exists", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function stringify(values: number[]): string {
   return values + "!";
@@ -211,7 +211,7 @@ export default Sensor({
 
   test("binary lowering reports ambiguous implicit conversions", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function compare(left: string, right: boolean): boolean {
   // @ts-ignore testing runtime implicit conversion ambiguity
@@ -233,7 +233,7 @@ export default Sensor({
   test("enum values concatenate with strings through enum-to-string conversion", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Direction } from "mindcraft";
+import { Sensor, type Context, type Direction } from "wendoo";
 
 function label(direction: Direction): string {
   return direction + "!";
@@ -302,7 +302,7 @@ describe("target-typed implicit conversions", () => {
   test("return statement converts a pre-registered enum value to string", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Signal } from "mindcraft";
+import { Sensor, type Context, type Signal } from "wendoo";
 
 export default Sensor({
   name: "enum-return-string",
@@ -337,7 +337,7 @@ export default Sensor({
   test("function-call arguments convert enum values to the declared parameter type", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Signal } from "mindcraft";
+import { Sensor, type Context, type Signal } from "wendoo";
 
 function label(text: string): string {
   return text + "-label";
@@ -376,7 +376,7 @@ export default Sensor({
   test("variable initializers and simple assignments convert numeric enum values to number", () => {
     const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type Throttle } from "mindcraft";
+import { Sensor, type Context, type Throttle } from "wendoo";
 
 export default Sensor({
   name: "numeric-enum-targets",
@@ -415,7 +415,7 @@ export default Sensor({
 
   test("missing target-type conversion produces a clear lowering diagnostic", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function expectText(text: string): string {
   return text;

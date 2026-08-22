@@ -1,4 +1,4 @@
-import { CoreHostActions } from "@mindcraft-lang/core/runtime";
+import { CoreHostActions } from "@wendoo-lang/core/runtime";
 /**
  * Behavioral tests for the Brain runtime.
  *
@@ -19,17 +19,17 @@ import {
   type HostSensorDefinition,
   List,
   type ReadonlyList,
-} from "@mindcraft-lang/core";
+} from "@wendoo-lang/core";
 import {
   Brain,
   type BrainServices,
   CoreCapabilityBits,
   mkVariableTileId,
   TilePlacement,
-} from "@mindcraft-lang/core/brain";
-import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { compileBrain } from "@mindcraft-lang/core/brain/compiler";
-import { BrainDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+} from "@wendoo-lang/core/brain";
+import { __test__appendTile, __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { compileBrain } from "@wendoo-lang/core/brain/compiler";
+import { BrainDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
 import {
   BrainTileAccessorDef,
   BrainTileActuatorDef,
@@ -38,8 +38,8 @@ import {
   BrainTileSensorDef,
   BrainTileVariableDef,
   buildDescriptorOutputTiles,
-} from "@mindcraft-lang/core/brain/tiles";
-import type { ExecutionContext, Instr, UserActionArtifact } from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/brain/tiles";
+import type { ExecutionContext, Instr, UserActionArtifact } from "@wendoo-lang/core/runtime";
 import {
   type ActionDescriptor,
   type BooleanValue,
@@ -71,8 +71,8 @@ import {
   TRUE_VALUE,
   type Value,
   VOID_VALUE,
-} from "@mindcraft-lang/core/runtime";
-import { BitSet } from "@mindcraft-lang/core/util";
+} from "@wendoo-lang/core/runtime";
+import { BitSet } from "@wendoo-lang/core/util";
 
 let services: BrainServices;
 let opAdd: BrainTileOperatorDef;

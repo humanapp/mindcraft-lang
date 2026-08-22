@@ -12,9 +12,9 @@ import {
   runCliBin,
 } from "./test-support/publish-fixtures.js";
 
-/** A committed .mindcraft document generated (and byte-pinned) by the microbit-sim app's real export path. */
+/** A committed .wendoo document generated (and byte-pinned) by the microbit-sim app's real export path. */
 const APP_EXPORT_DOCUMENT = fileURLToPath(
-  new URL("../../../../../apps/microbit-sim/src/services/__fixtures__/sample-project.mindcraft", import.meta.url)
+  new URL("../../../../../apps/microbit-sim/src/services/__fixtures__/sample-project.wendoo", import.meta.url)
 );
 
 const scratchDirs: string[] = [];
@@ -76,16 +76,13 @@ describe("export to published repository", () => {
       assert.match(published.stdout, new RegExp(`published ${version.replaceAll(".", "\\.")} \\(tag ${tag}\\)`));
 
       const clone = await cloneAtTag(root, remote, tag);
-      const expectedTree = [...contentPaths, "mindcraft.json", "README.md"].sort();
+      const expectedTree = [...contentPaths, "wendoo.json", "README.md"].sort();
       assert.deepEqual(await listProjectFiles(clone), expectedTree);
       for (const contentPath of contentPaths) {
         assert.equal(await readFile(path.join(clone, contentPath), "utf8"), document.contents[contentPath]);
       }
 
-      const manifest = JSON.parse(await readFile(path.join(clone, "mindcraft.json"), "utf8")) as Record<
-        string,
-        unknown
-      >;
+      const manifest = JSON.parse(await readFile(path.join(clone, "wendoo.json"), "utf8")) as Record<string, unknown>;
       assert.equal(manifest.name, document.manifest.name);
       assert.equal(manifest.version, version);
       assert.equal(manifest.identity, "example-org/sample-project");

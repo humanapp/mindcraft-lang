@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { before, describe, it } from "node:test";
-import type { ExtensionFetchTransport } from "@mindcraft-lang/app-host";
+import type { ExtensionFetchTransport } from "@wendoo-lang/app-host";
 import {
   checkExtensionReferenceUpdate,
   createJsDelivrExtensionTransport,
@@ -8,9 +8,9 @@ import {
   highestListedRelease,
   JSDELIVR_CDN_BASE_URL,
   resolveExtensionAddInput,
-} from "@mindcraft-lang/app-host";
+} from "@wendoo-lang/app-host";
 
-const LIVE_COORDINATE = "mindcraft-lang/lib-codal-position";
+const LIVE_COORDINATE = "wendoo-lang/lib-codal-position";
 
 /**
  * The oldest published release of the live coordinate, used as an installed
@@ -21,7 +21,7 @@ const LIVE_COORDINATE = "mindcraft-lang/lib-codal-position";
 const LIVE_OLD_VERSION = "0.1.0";
 
 /**
- * Commit SHA of the `v0.1.0` tag on mindcraft-lang/lib-codal-position,
+ * Commit SHA of the `v0.1.0` tag on wendoo-lang/lib-codal-position,
  * resolved once (read-only) and pinned here as the published contract
  * guarantees tag immutability.
  */
@@ -32,7 +32,7 @@ const PROBE_TIMEOUT_MS = 15000;
 /** True when the live jsDelivr CDN answers within the probe timeout. */
 async function liveCdnAvailable(): Promise<boolean> {
   try {
-    const response = await fetch(`${JSDELIVR_CDN_BASE_URL}/gh/${LIVE_COORDINATE}@${LIVE_OLD_VERSION}/mindcraft.json`, {
+    const response = await fetch(`${JSDELIVR_CDN_BASE_URL}/gh/${LIVE_COORDINATE}@${LIVE_OLD_VERSION}/wendoo.json`, {
       signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
     });
     return response.ok;
@@ -76,10 +76,10 @@ describe("live jsDelivr probes (self-skipping offline)", () => {
     assert.equal(result.snapshot.specifier, latest);
     assert.equal(result.snapshot.manifest.identity, LIVE_COORDINATE);
     assert.equal(result.snapshot.manifest.version, latest);
-    // The snapshot carries mindcraft.json plus exactly the manifest-listed files.
+    // The snapshot carries wendoo.json plus exactly the manifest-listed files.
     assert.deepStrictEqual(
       result.snapshot.files.map((file) => file.path),
-      ["mindcraft.json", ...(result.snapshot.manifest.files ?? [])]
+      ["wendoo.json", ...(result.snapshot.manifest.files ?? [])]
     );
     for (const file of result.snapshot.files) {
       assert.ok(file.content.byteLength > 0, `expected bytes for ${file.path}`);
@@ -103,13 +103,12 @@ describe("live jsDelivr probes (self-skipping offline)", () => {
     // Finding: the CDN classifies only the full 40-character form as an
     // immutable commit; an abbreviated SHA is served but classified (and
     // cached) as a mutable branch-like specifier.
-    const fullForm = await fetch(
-      `${JSDELIVR_CDN_BASE_URL}/gh/${LIVE_COORDINATE}@${LIVE_TAG_COMMIT_SHA}/mindcraft.json`,
-      { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) }
-    );
+    const fullForm = await fetch(`${JSDELIVR_CDN_BASE_URL}/gh/${LIVE_COORDINATE}@${LIVE_TAG_COMMIT_SHA}/wendoo.json`, {
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+    });
     assert.equal(fullForm.headers.get("x-jsd-version-type"), "commit");
     const shortForm = await fetch(
-      `${JSDELIVR_CDN_BASE_URL}/gh/${LIVE_COORDINATE}@${LIVE_TAG_COMMIT_SHA.slice(0, 7)}/mindcraft.json`,
+      `${JSDELIVR_CDN_BASE_URL}/gh/${LIVE_COORDINATE}@${LIVE_TAG_COMMIT_SHA.slice(0, 7)}/wendoo.json`,
       { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) }
     );
     t.diagnostic(
@@ -122,7 +121,7 @@ describe("live jsDelivr probes (self-skipping offline)", () => {
     if (!online) return t.skip("jsDelivr is unreachable");
 
     const transport = createJsDelivrExtensionTransport();
-    const resolved = await transport.resolveBranch("mindcraft-lang", "lib-codal-position", "main");
+    const resolved = await transport.resolveBranch("wendoo-lang", "lib-codal-position", "main");
     t.diagnostic(`resolveBranch(main) -> ${JSON.stringify(resolved)}`);
     if (!resolved.ok && (resolved.kind === "rate-limited" || resolved.kind === "unreachable")) {
       return t.skip(`GitHub API unavailable: ${resolved.kind}`);
@@ -141,7 +140,7 @@ describe("live jsDelivr probes (self-skipping offline)", () => {
     if (!online) return t.skip("jsDelivr is unreachable");
 
     const resolved = await createJsDelivrExtensionTransport().resolveBranch(
-      "mindcraft-lang",
+      "wendoo-lang",
       "lib-codal-position",
       "definitely-absent-branch"
     );
@@ -172,7 +171,7 @@ describe("live jsDelivr probes (self-skipping offline)", () => {
     const transport = createJsDelivrExtensionTransport();
     // Finding: /repos/<owner>/<repo>/tags lists the repository's tags by name;
     // the transport strips a leading "v", so the tag v0.1.0 lists as "0.1.0".
-    const listed = await transport.listVersionTags("mindcraft-lang", "lib-codal-position");
+    const listed = await transport.listVersionTags("wendoo-lang", "lib-codal-position");
     t.diagnostic(`listVersionTags -> ${JSON.stringify(listed)}`);
     assert.ok(listed.ok);
     assert.ok(listed.versions.includes(LIVE_OLD_VERSION));

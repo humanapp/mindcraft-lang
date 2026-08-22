@@ -1,9 +1,4 @@
-import {
-  createHostActuator,
-  createHostSensor,
-  type MindcraftModule,
-  type MindcraftModuleApi,
-} from "@mindcraft-lang/core/app";
+import { createHostActuator, createHostSensor, type WendooModule, type WendooModuleApi } from "@wendoo-lang/core/app";
 import fnBump, { modifiers as bumpModifiers } from "./actions/bump";
 import fnEat, { parameters as eatParameters } from "./actions/eat";
 import fnMove, { modifiers as moveModifiers, parameters as moveParameters } from "./actions/move";
@@ -17,11 +12,11 @@ import { migrateEcosimBrainJson } from "./migrations";
 import { registerTiles } from "./tiles";
 import { registerTypes } from "./type-system";
 
-export function createEcosimModule(): MindcraftModule {
+export function createEcosimModule(): WendooModule {
   return {
-    id: "mindcraft.ecosim",
+    id: "wendoo.ecosim",
     migrateBrainJson: migrateEcosimBrainJson,
-    install(api: MindcraftModuleApi): void {
+    install(api: WendooModuleApi): void {
       registerTypes(api);
       registerEngineContext(api);
       registerBrainContext(api);

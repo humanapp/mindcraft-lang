@@ -8,24 +8,19 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { List } from "@mindcraft-lang/core";
-import {
-  coreModule,
-  createMindcraftEnvironment,
-  type MindcraftEnvironment,
-  mkActuatorTileId,
-} from "@mindcraft-lang/core/app";
-import { type IBrainTileDef, type ITileCatalog, RuleSide } from "@mindcraft-lang/core/brain";
-import { CompilationDiagCode } from "@mindcraft-lang/core/brain/compiler";
+import { List } from "@wendoo-lang/core";
+import { coreModule, createWendooEnvironment, mkActuatorTileId, type WendooEnvironment } from "@wendoo-lang/core/app";
+import { type IBrainTileDef, type ITileCatalog, RuleSide } from "@wendoo-lang/core/brain";
+import { CompilationDiagCode } from "@wendoo-lang/core/brain/compiler";
 import {
   type InsertionContext,
   parseTilesForSuggestions,
   suggestTiles,
-} from "@mindcraft-lang/core/brain/language-service";
-import { BrainDef } from "@mindcraft-lang/core/brain/model";
-import { mkModifierTileId, mkParameterTileId } from "@mindcraft-lang/core/runtime";
-import { buildCompiledActionBundle, UserTileProject, type WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
-import { TEST_PROJECT_NAMESPACE } from "@mindcraft-lang/ts-compiler/testing";
+} from "@wendoo-lang/core/brain/language-service";
+import { BrainDef } from "@wendoo-lang/core/brain/model";
+import { mkModifierTileId, mkParameterTileId } from "@wendoo-lang/core/runtime";
+import { buildCompiledActionBundle, UserTileProject, type WorkspaceCompileResult } from "@wendoo-lang/ts-compiler";
+import { TEST_PROJECT_NAMESPACE } from "@wendoo-lang/ts-compiler/testing";
 import { applyCompiledUserTiles } from "./user-tile-registration.js";
 
 const MINE_ID = "acmine0000000001";
@@ -39,7 +34,7 @@ const SHARED_MODIFIER_TILE_ID = mkModifierTileId("modifier.shared.boost");
 const SHARED_PARAM_TILE_ID = mkParameterTileId("parameter.count");
 const MINE_PRIVATE_PARAM_TILE_ID = mkParameterTileId(`${TEST_PROJECT_NAMESPACE}:user.${MINE_ID}.speed`);
 
-const MY_ACTUATOR = `import { Actuator, modifier, optional, param, type Context } from "mindcraft";
+const MY_ACTUATOR = `import { Actuator, modifier, optional, param, type Context } from "wendoo";
 
 export default Actuator({
   id: "${MINE_ID}",
@@ -54,7 +49,7 @@ export default Actuator({
 });
 `;
 
-const KEEP_ACTUATOR = `import { Actuator, modifier, optional, type Context } from "mindcraft";
+const KEEP_ACTUATOR = `import { Actuator, modifier, optional, type Context } from "wendoo";
 
 export default Actuator({
   id: "${KEEP_ID}",
@@ -66,13 +61,13 @@ export default Actuator({
 `;
 
 /** A warm compiler project plus the environment its compiles are applied to, mirroring one live app session. */
-function createSession(): { env: MindcraftEnvironment; project: UserTileProject } {
-  const env = createMindcraftEnvironment({ modules: [coreModule()] });
+function createSession(): { env: WendooEnvironment; project: UserTileProject } {
+  const env = createWendooEnvironment({ modules: [coreModule()] });
   const project = new UserTileProject({ projectNamespace: TEST_PROJECT_NAMESPACE, services: env.brainServices });
   return { env, project };
 }
 
-function applyCompile(env: MindcraftEnvironment, project: UserTileProject): void {
+function applyCompile(env: WendooEnvironment, project: UserTileProject): void {
   const projectResult = project.compileAll();
   const bundle = buildCompiledActionBundle(projectResult, { services: env.brainServices });
   const result: WorkspaceCompileResult = { files: new Map(), projectResult, rootResults: [projectResult], bundle };
@@ -80,7 +75,7 @@ function applyCompile(env: MindcraftEnvironment, project: UserTileProject): void
 }
 
 /** Tile ids the oracle offers on the DO side after `placed`, over the environment's live catalog chain. */
-function offeredTileIds(env: MindcraftEnvironment, placed: readonly IBrainTileDef[] = []): Set<string> {
+function offeredTileIds(env: WendooEnvironment, placed: readonly IBrainTileDef[] = []): Set<string> {
   const context: InsertionContext = { ruleSide: RuleSide.Do, expr: parseTilesForSuggestions(List.from(placed)) };
   const catalogs = List.from<ITileCatalog>([...env.tileCatalogs()]);
   const result = suggestTiles(context, catalogs, env.brainServices);
@@ -90,7 +85,7 @@ function offeredTileIds(env: MindcraftEnvironment, placed: readonly IBrainTileDe
   return ids;
 }
 
-function tileDef(env: MindcraftEnvironment, tileId: string): IBrainTileDef | undefined {
+function tileDef(env: WendooEnvironment, tileId: string): IBrainTileDef | undefined {
   for (const catalog of env.tileCatalogs()) {
     const found = catalog.get(tileId);
     if (found) return found;

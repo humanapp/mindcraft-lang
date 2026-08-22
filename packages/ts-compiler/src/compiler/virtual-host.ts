@@ -33,7 +33,7 @@ export function createVirtualCompilerHost(
       if (content === undefined) return undefined;
       return ts.createSourceFile(fileName, content, languageVersion);
     },
-    getDefaultLibFileName: () => `${LIB_DIR}lib.mindcraft.d.ts`,
+    getDefaultLibFileName: () => `${LIB_DIR}lib.wendoo.d.ts`,
     writeFile: () => {},
     getCurrentDirectory: () => "/",
     getCanonicalFileName: (fileName) => fileName,

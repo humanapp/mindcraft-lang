@@ -1,5 +1,5 @@
 {
-  "name": "@mindcraft-lang/assistant-bridge",
+  "name": "@wendoo-lang/assistant-bridge",
   "version": "0.1.0",
   "description": "Assistant bridge: the open tool contract, catalog digest, trace summarizer, target adapter interface, and the rehearsal adapter kit",
   "license": "MIT",
@@ -7,15 +7,15 @@
   "author": "humanapp",
   "repository": {
     "type": "git",
-    "url": "https://github.com/humanapp/mindcraft-lang.git",
+    "url": "https://github.com/humanapp/wendoo-lang.git",
     "directory": "packages/assistant-bridge"
   },
   "bugs": {
-    "url": "https://github.com/humanapp/mindcraft-lang/issues"
+    "url": "https://github.com/humanapp/wendoo-lang/issues"
   },
-  "homepage": "https://github.com/humanapp/mindcraft-lang/tree/main/packages/assistant-bridge#readme",
+  "homepage": "https://github.com/humanapp/wendoo-lang/tree/main/packages/assistant-bridge#readme",
   "keywords": [
-    "mindcraft",
+    "wendoo",
     "assistant",
     "tile-based",
     "visual-programming",
@@ -40,7 +40,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "mindcraft-assemble-target-package": "dist/kit/assemble-target-package.js"
+    "wendoo-assemble-target-package": "dist/kit/assemble-target-package.js"
   },
   "exports": {
     ".": {
@@ -65,7 +65,7 @@
       "import": "./dist/testing/index.js"
     }
   },
-  "mindcraftBuild": {
+  "wendooBuild": {
     "script": "build:prod",
     "outputs": [
       "dist"
@@ -91,8 +91,8 @@
     "release:major": "node ../../scripts/release.js major"
   },
   "dependencies": {
-    "@mindcraft-lang/assistant-relay": "file:../assistant-relay",
-    "@mindcraft-lang/core": "file:../core",
+    "@wendoo-lang/assistant-relay": "file:../assistant-relay",
+    "@wendoo-lang/core": "file:../core",
     "zod": "^4.3.6"
   },
   "devDependencies": {

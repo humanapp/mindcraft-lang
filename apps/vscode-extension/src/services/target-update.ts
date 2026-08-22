@@ -2,7 +2,7 @@ import {
   highestListedRelease,
   parseProjectContentManifest,
   serializeProjectContentManifest,
-} from "@mindcraft-lang/app-host";
+} from "@wendoo-lang/app-host";
 
 /** Stable identifiers for the outcome of one Update Target run. */
 export const TargetUpdateOutcome = {
@@ -195,13 +195,13 @@ export type TargetRangeManifestUpdate =
     };
 
 /**
- * Set the `targets` entry for `coordinate` in a `mindcraft.json` document to a
+ * Set the `targets` entry for `coordinate` in a `wendoo.json` document to a
  * caret range at `latestVersion`, adding the entry when absent. The document
  * is parsed and re-serialized as a content manifest, so every other field --
  * including fields outside the manifest schema -- is preserved. Returns the
  * input text unchanged when the entry already carries the range.
  *
- * @param content - JSON text of the project's `mindcraft.json`.
+ * @param content - JSON text of the project's `wendoo.json`.
  * @param coordinate - The target package's `<owner>/<repo>` coordinate.
  * @param latestVersion - The release version the caret range floors at.
  */

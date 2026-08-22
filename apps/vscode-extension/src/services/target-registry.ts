@@ -1,5 +1,5 @@
-import type { ExtensionCatalogDocumentEntry } from "@mindcraft-lang/app-host";
-import { registryTargetEntry, validateExtensionCatalogDocument } from "@mindcraft-lang/app-host";
+import type { ExtensionCatalogDocumentEntry } from "@wendoo-lang/app-host";
+import { registryTargetEntry, validateExtensionCatalogDocument } from "@wendoo-lang/app-host";
 import bundledTargetsRegistry from "../../../../packages/cli/targets.json";
 import type { FolderTargetDescriptor } from "./project-skeleton";
 
@@ -54,7 +54,7 @@ export type ProjectTargetResolution =
     };
 
 /**
- * Resolve the target descriptor a project opens with. The `mindcraft.devTarget`
+ * Resolve the target descriptor a project opens with. The `wendoo.devTarget`
  * override wins when set; otherwise the project's declared target coordinates
  * are matched against the registry entries by membership, and the single listed
  * coordinate's pinned ref becomes the hosted app. Fails with a stable code when

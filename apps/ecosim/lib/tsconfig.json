@@ -9,5 +9,5 @@
     "types": []
   },
   "include": ["*.ts"],
-  "files": ["../../../packages/core/lib/mindcraft.core.d.ts"]
+  "files": ["../../../packages/core/lib/wendoo.core.d.ts"]
 }

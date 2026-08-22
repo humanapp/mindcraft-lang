@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { FetchedExtensionSnapshot } from "@mindcraft-lang/app-host";
-import { base64ToBytes, bytesToBase64 } from "@mindcraft-lang/app-host";
+import type { FetchedExtensionSnapshot } from "@wendoo-lang/app-host";
+import { base64ToBytes, bytesToBase64 } from "@wendoo-lang/app-host";
 import {
   decodeInstalledSnapshotFiles,
   fetchedContentFromSnapshots,
@@ -32,7 +32,7 @@ describe("fetched extension snapshot records", () => {
       specifier: "v0.1.0",
       manifest: { name: "Position", version: "0.1.0", extensions: {} },
       files: [
-        { path: "mindcraft.json", content: new TextEncoder().encode('{"name":"Position","version":"0.1.0"}') },
+        { path: "wendoo.json", content: new TextEncoder().encode('{"name":"Position","version":"0.1.0"}') },
         { path: "assets/icon.png", content: ICON_BYTES },
       ],
     };

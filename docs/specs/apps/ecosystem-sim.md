@@ -6,16 +6,16 @@ Draft
 
 ## Overview
 
-The Ecosystem Sim is a browser-based 2D ecosystem simulation built with Vite, React 19, Phaser 3, and Matter.js physics. It serves as the flagship demo for the Mindcraft brain programming language (implemented in `packages/core`). Users observe and control a top-down world populated by three actor archetypes -- carnivores, herbivores, and plants -- each driven by a user-editable visual brain program. A React sidebar provides live statistics, population controls, and a time-scale slider. A modal brain editor (from `@mindcraft-lang/ui`) lets users visually program each archetype's behavior by placing tiles together forming rules. An integrated docs sidebar provides contextual help for tiles and programming patterns.
+The Ecosystem Sim is a browser-based 2D ecosystem simulation built with Vite, React 19, Phaser 3, and Matter.js physics. It serves as the flagship demo for the Wendoo brain programming language (implemented in `packages/core`). Users observe and control a top-down world populated by three actor archetypes -- carnivores, herbivores, and plants -- each driven by a user-editable visual brain program. A React sidebar provides live statistics, population controls, and a time-scale slider. A modal brain editor (from `@wendoo-lang/ui`) lets users visually program each archetype's behavior by placing tiles together forming rules. An integrated docs sidebar provides contextual help for tiles and programming patterns.
 
-The app lives at `apps/ecosim/` within the `mindcraft-lang` monorepo.
+The app lives at `apps/ecosim/` within the `wendoo-lang` monorepo.
 
 ## Product Goals
 
-- Demonstrate that the Mindcraft brain language can drive per-entity AI in a live simulation.
+- Demonstrate that the Wendoo brain language can drive per-entity AI in a live simulation.
 - Let users program predator/prey/plant behaviors through a visual brain editor and immediately see results.
 - Provide a legible ecosystem with scoring that rewards balanced predator-prey dynamics.
-- Keep the rendering simple (procedural circles, no sprite assets) so the codebase focus stays on mindcraft integration.
+- Keep the rendering simple (procedural circles, no sprite assets) so the codebase focus stays on wendoo integration.
 
 ## Non-Goals
 
@@ -47,12 +47,12 @@ The app lives at `apps/ecosim/` within the `mindcraft-lang` monorepo.
 | tailwind-merge                | ^3.4                    | Tailwind class deduplication                           |
 | lucide-react                  | ^0.561                  | SVG icon library                                       |
 | sonner                        | ^2.0                    | Toast notifications                                    |
-| @mindcraft-lang/core          | workspace               | Brain language compiler, runtime, and tile definitions |
-| @mindcraft-lang/ui            | workspace (source-only) | Brain editor UI components, shadcn primitives          |
-| @mindcraft-lang/docs          | workspace (source-only) | Documentation framework and markdown renderer          |
-| @mindcraft-lang/app-host      | workspace               | Project, workspace, import/export, and persistence APIs |
-| @mindcraft-lang/bridge-app    | workspace               | App-side bridge, compiler, and user tile integration   |
-| @mindcraft-lang/ts-compiler   | workspace               | TypeScript compiler and ambient declaration support    |
+| @wendoo-lang/core          | workspace               | Brain language compiler, runtime, and tile definitions |
+| @wendoo-lang/ui            | workspace (source-only) | Brain editor UI components, shadcn primitives          |
+| @wendoo-lang/docs          | workspace (source-only) | Documentation framework and markdown renderer          |
+| @wendoo-lang/app-host      | workspace               | Project, workspace, import/export, and persistence APIs |
+| @wendoo-lang/bridge-app    | workspace               | App-side bridge, compiler, and user tile integration   |
+| @wendoo-lang/ts-compiler   | workspace               | TypeScript compiler and ambient declaration support    |
 | Biome                         | 2.3 (dev)               | Linter and formatter                                   |
 | TypeScript                    | ~5.9                    | Type checking                                          |
 | terser                        | ^5.28 (dev)             | Production minification                                |
@@ -174,8 +174,8 @@ apps/ecosim/
 ### Path Aliases
 
 - `@/*` -> `./src/*` (tsconfig + Vite alias)
-- `@mindcraft-lang/ui` -> `../../packages/ui/src` (source-only, no build step)
-- `@mindcraft-lang/docs` -> `../../packages/docs/src` (source-only, no build step)
+- `@wendoo-lang/ui` -> `../../packages/ui/src` (source-only, no build step)
+- `@wendoo-lang/docs` -> `../../packages/docs/src` (source-only, no build step)
 
 ### Module Dependency Flow
 
@@ -184,10 +184,10 @@ main.tsx
   |-- bootstrap.ts (side-effect: registers core + app brain components)
   |-- App.tsx
   |     |-- PhaserGame.tsx -> game/main.ts -> scenes/Boot -> Preloader -> Playground
-  |     |-- components/ProjectHeader.tsx -> @mindcraft-lang/app-host project/workspace APIs
+  |     |-- components/ProjectHeader.tsx -> @wendoo-lang/app-host project/workspace APIs
   |     |-- components/Sidebar.tsx
-  |     |-- brain-editor-config.tsx -> @mindcraft-lang/ui (BrainEditorDialog)
-  |     |-- docs integration -> @mindcraft-lang/docs (DocsSidebar)
+  |     |-- brain-editor-config.tsx -> @wendoo-lang/ui (BrainEditorDialog)
+  |     |-- docs integration -> @wendoo-lang/docs (DocsSidebar)
   |-- DocsPage.tsx (alternate route: /docs/*)
 ```
 
@@ -233,7 +233,7 @@ Communication is unidirectional: React calls methods on the Playground scene. Th
 
 ## Core Package Integration
 
-The sim app depends on `@mindcraft-lang/core` for the brain language runtime. This section describes the integration surface.
+The sim app depends on `@wendoo-lang/core` for the brain language runtime. This section describes the integration surface.
 
 ### Initialization
 
@@ -264,7 +264,7 @@ Host functions receive `(ctx: ExecutionContext, args: MapValue) -> Value`:
 
 ### BrainEditorConfig
 
-The brain editor UI (`@mindcraft-lang/ui`) is decoupled from app-specific data via a config object built by `brain-editor-config.tsx`:
+The brain editor UI (`@wendoo-lang/ui`) is decoupled from app-specific data via a config object built by `brain-editor-config.tsx`:
 
 - `dataTypeIcons`: maps type IDs to SVG icon paths (Boolean, Number, String, Vector2, ActorRef)
 - `dataTypeNames`: maps type IDs to display names ("boolean", "number", "text", "vec2", "actor")
@@ -720,7 +720,7 @@ Top to bottom:
 
 ### Brain Editor Dialog
 
-Opens as a modal overlay when "Edit Brain" is clicked for an archetype. Uses `BrainEditorDialog` from `@mindcraft-lang/ui`, configured via `BrainEditorConfig`. The editor displays the full brain program as pages of rules, each rule having When-side (sensors/conditions) and Do-side (actuators/actions) tiles. Users drag tiles from a picker, snap them together, set parameters, and see changes reflected immediately in the simulation.
+Opens as a modal overlay when "Edit Brain" is clicked for an archetype. Uses `BrainEditorDialog` from `@wendoo-lang/ui`, configured via `BrainEditorConfig`. The editor displays the full brain program as pages of rules, each rule having When-side (sensors/conditions) and Do-side (actuators/actions) tiles. Users drag tiles from a picker, snap them together, set parameters, and see changes reflected immediately in the simulation.
 
 ### Score Snapshot Polling
 
@@ -740,7 +740,7 @@ OKLch color space tokens for light/dark modes. Key tokens: background, foregroun
 
 ### Docs Registry
 
-`docs-registry.ts` uses Vite's `import.meta.glob()` to eagerly load all markdown files from `content/en/tiles/` and `content/en/patterns/`. A manifest (`manifest.ts`) maps tile IDs and pattern IDs to content keys. The `buildDocsRegistry()` factory from `@mindcraft-lang/docs` merges app-specific docs with core docs.
+`docs-registry.ts` uses Vite's `import.meta.glob()` to eagerly load all markdown files from `content/en/tiles/` and `content/en/patterns/`. A manifest (`manifest.ts`) maps tile IDs and pattern IDs to content keys. The `buildDocsRegistry()` factory from `@wendoo-lang/docs` merges app-specific docs with core docs.
 
 ### Docs Sidebar
 
@@ -784,7 +784,7 @@ Each phase produces a working, verifiable artifact. Phases are sequential unless
 
 **Deliverables**:
 
-- Vite config (dev + prod) with React plugin, path aliases (`@/*`, `@mindcraft-lang/ui`, `@mindcraft-lang/docs`)
+- Vite config (dev + prod) with React plugin, path aliases (`@/*`, `@wendoo-lang/ui`, `@wendoo-lang/docs`)
 - `index.html` with `#root` div
 - `main.tsx` rendering an `App` component
 - `globals.css` with Tailwind imports and OKLch theme tokens
@@ -991,7 +991,7 @@ Each phase produces a working, verifiable artifact. Phases are sequential unless
 - `docs/content/en/tiles/`: markdown documentation for each tile (see, bump, move, eat, say, turn, shoot, and modifiers/parameters)
 - `docs/content/en/patterns/`: markdown documentation for programming patterns (flee-predator, hunt-and-eat, etc.)
 - `docs/docs-registry.ts`: Vite glob imports, registry builder, merge with core docs
-- `DocsPage.tsx`: standalone page at `/docs` route using SharedDocsPage from @mindcraft-lang/docs
+- `DocsPage.tsx`: standalone page at `/docs` route using SharedDocsPage from @wendoo-lang/docs
 - `main.tsx` routing: URL path check for `/docs` prefix
 - DocsSidebarProvider + DocsSidebar integration in App.tsx
 - Brain editor `onTileDocs` callback -> opens docs sidebar to tile page

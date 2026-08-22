@@ -4,7 +4,7 @@ import { chmod, cp, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { after, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import { deriveCoordinateFromRemoteUrl } from "@mindcraft-lang/app-host";
+import { deriveCoordinateFromRemoteUrl } from "@wendoo-lang/app-host";
 import { resolvePublishTarget } from "./publish-command.js";
 import {
   cloneAtTag,
@@ -36,7 +36,7 @@ after(async () => {
 });
 
 async function readManifest(dir: string): Promise<{ version: string; identity?: string }> {
-  return JSON.parse(await readFile(path.join(dir, "mindcraft.json"), "utf8")) as {
+  return JSON.parse(await readFile(path.join(dir, "wendoo.json"), "utf8")) as {
     version: string;
     identity?: string;
   };
@@ -147,13 +147,13 @@ describe("resolvePublishTarget", () => {
   });
 });
 
-describe("mindcraft publish to a remote (constructed mode)", () => {
+describe("wendoo publish to a remote (constructed mode)", () => {
   it("publishes exactly the manifest-described tree, tagged and version-matched", async () => {
     const root = await scratch();
     const remote = await initBareRemote(root);
     const project = path.join(root, "project");
     await writeProjectFiles(project, {
-      "mindcraft.json": JSON.stringify(
+      "wendoo.json": JSON.stringify(
         { name: "Blinker", version: "0.1.0", files: ["index.ts", "assets/logo.bin"] },
         null,
         2
@@ -169,7 +169,7 @@ describe("mindcraft publish to a remote (constructed mode)", () => {
     assert.match(result.stdout, /published 0\.1\.1 \(tag v0\.1\.1\)/);
 
     const clone = await cloneAtTag(root, remote, "v0.1.1");
-    assert.deepEqual(await listProjectFiles(clone), ["README.md", "assets/logo.bin", "index.ts", "mindcraft.json"]);
+    assert.deepEqual(await listProjectFiles(clone), ["README.md", "assets/logo.bin", "index.ts", "wendoo.json"]);
     assert.equal(existsSync(path.join(clone, "tsconfig.json")), false);
     assert.equal(await readManifestVersion(clone), "0.1.1");
     assert.equal(await readFile(path.join(clone, "index.ts"), "utf8"), "export const blink = true;\n");
@@ -182,7 +182,7 @@ describe("mindcraft publish to a remote (constructed mode)", () => {
     const remote = await initBareRemote(root, "example-org/blinker.git");
     const project = path.join(root, "project");
     await writeProjectFiles(project, {
-      "mindcraft.json": JSON.stringify(
+      "wendoo.json": JSON.stringify(
         { name: "Blinker", version: "0.1.0", description: "Blinks an LED.", files: ["index.ts"] },
         null,
         2
@@ -200,7 +200,7 @@ describe("mindcraft publish to a remote (constructed mode)", () => {
     assert.match(readme, /example-org\/blinker/);
     assert.match(readme, /0\.1\.1/);
     assert.match(readme, /@lib\/example-org\/blinker/);
-    const publishedManifest = JSON.parse(await readFile(path.join(clone, "mindcraft.json"), "utf8")) as {
+    const publishedManifest = JSON.parse(await readFile(path.join(clone, "wendoo.json"), "utf8")) as {
       files?: readonly string[];
     };
     assert.deepEqual(publishedManifest.files, ["index.ts"]);
@@ -222,13 +222,13 @@ describe("mindcraft publish to a remote (constructed mode)", () => {
       null,
       2
     );
-    await writeProjectFiles(project, { "mindcraft.json": original, "index.ts": "export {};\n" });
+    await writeProjectFiles(project, { "wendoo.json": original, "index.ts": "export {};\n" });
 
     const result = await runCliBin(project, "publish", "patch", "--remote", remote);
 
     assert.equal(result.code, 0, result.stderr);
     const clone = await cloneAtTag(root, remote, "v0.1.1");
-    const published = await readFile(path.join(clone, "mindcraft.json"), "utf8");
+    const published = await readFile(path.join(clone, "wendoo.json"), "utf8");
     assert.equal(published, original.replace('"version": "0.1.0"', '"version": "0.1.1"'));
   });
 
@@ -239,7 +239,7 @@ describe("mindcraft publish to a remote (constructed mode)", () => {
     const brains = { main: { rules: [1, 2, 3], nested: { deep: true } } };
     const appChunk = ["verbatim", null, 4];
     await writeProjectFiles(project, {
-      "mindcraft.json": JSON.stringify(
+      "wendoo.json": JSON.stringify(
         { name: "Blinker", version: "0.1.0", files: ["index.ts"], brains, appChunk },
         null,
         2
@@ -251,7 +251,7 @@ describe("mindcraft publish to a remote (constructed mode)", () => {
     assert.equal(first.code, 0, first.stderr);
     assert.doesNotMatch(first.stderr, /identity changed/);
 
-    const writtenBack = await readFile(path.join(project, "mindcraft.json"), "utf8");
+    const writtenBack = await readFile(path.join(project, "wendoo.json"), "utf8");
     const expected = JSON.stringify(
       {
         name: "Blinker",
@@ -279,12 +279,12 @@ describe("mindcraft publish to a remote (constructed mode)", () => {
     const remote = await initBareRemote(root);
     const project = path.join(root, "project");
     const manifest = JSON.stringify({ name: "Blinker", version: "0.1.0", files: ["index.ts"] }, null, 2);
-    await writeProjectFiles(project, { "mindcraft.json": manifest, "index.ts": "export {};\n" });
+    await writeProjectFiles(project, { "wendoo.json": manifest, "index.ts": "export {};\n" });
 
     const first = await runCliBin(project, "publish", "patch", "--remote", remote);
     assert.equal(first.code, 0, first.stderr);
 
-    await writeProjectFiles(project, { "mindcraft.json": manifest });
+    await writeProjectFiles(project, { "wendoo.json": manifest });
     const second = await runCliBin(project, "publish", "patch", "--remote", remote);
     assert.equal(second.code, 1);
     assert.match(second.stderr, /PUBLISH_VERSION_ALREADY_PUBLISHED/);
@@ -295,7 +295,7 @@ describe("mindcraft publish to a remote (constructed mode)", () => {
     const remote = await initBareRemote(root, "example-org/blinker.git");
     const project = path.join(root, "project");
     await writeProjectFiles(project, {
-      "mindcraft.json": JSON.stringify(
+      "wendoo.json": JSON.stringify(
         { name: "Blinker", version: "0.3.0", identity: "old-org/blinker", files: ["index.ts"] },
         null,
         2
@@ -321,7 +321,7 @@ describe("mindcraft publish to a remote (constructed mode)", () => {
     const remote = await initBareRemote(root, "_remote.git");
     const project = path.join(root, "project");
     await writeProjectFiles(project, {
-      "mindcraft.json": JSON.stringify({ name: "Blinker", version: "0.1.0" }, null, 2),
+      "wendoo.json": JSON.stringify({ name: "Blinker", version: "0.1.0" }, null, 2),
     });
 
     const result = await runCliBin(project, "publish", "patch", "--remote", remote);
@@ -334,17 +334,17 @@ describe("mindcraft publish to a remote (constructed mode)", () => {
     const remote = await initBareRemote(root);
     const project = path.join(root, "project");
     await writeProjectFiles(project, {
-      "mindcraft.json": JSON.stringify({ name: "Blinker", version: "0.1.0" }, null, 2),
+      "wendoo.json": JSON.stringify({ name: "Blinker", version: "0.1.0" }, null, 2),
     });
 
-    await chmod(path.join(project, "mindcraft.json"), 0o444);
+    await chmod(path.join(project, "wendoo.json"), 0o444);
     try {
       const result = await runCliBin(project, "publish", "patch", "--remote", remote);
       assert.equal(result.code, 1);
       assert.match(result.stderr, /PUBLISH_WRITE_BACK_FAILED/);
       assert.match(result.stderr, /was published \(tag v0\.1\.1\)/);
     } finally {
-      await chmod(path.join(project, "mindcraft.json"), 0o644);
+      await chmod(path.join(project, "wendoo.json"), 0o644);
     }
     const clone = await cloneAtTag(root, remote, "v0.1.1");
     assert.equal(await readManifestVersion(clone), "0.1.1");
@@ -355,7 +355,7 @@ describe("mindcraft publish to a remote (constructed mode)", () => {
     const remote = await initBareRemote(root);
     const project = path.join(root, "project");
     await writeProjectFiles(project, {
-      "mindcraft.json": JSON.stringify(
+      "wendoo.json": JSON.stringify(
         { name: "Blinker", version: "0.1.0", extensions: { "author/steering": "gh:author/steering#main" } },
         null,
         2
@@ -377,7 +377,7 @@ describe("mindcraft publish to a remote (constructed mode)", () => {
     const remote = await initBareRemote(root);
     const project = path.join(root, "project");
     await writeProjectFiles(project, {
-      "mindcraft.json": JSON.stringify({ name: "Blinker", version: "0.1.0", files: ["ghost.ts"] }, null, 2),
+      "wendoo.json": JSON.stringify({ name: "Blinker", version: "0.1.0", files: ["ghost.ts"] }, null, 2),
     });
 
     const missing = await runCliBin(project, "publish", "patch", "--remote", remote);
@@ -387,7 +387,7 @@ describe("mindcraft publish to a remote (constructed mode)", () => {
 
     await writeProjectFiles(root, { "outside.txt": "outside\n" });
     await writeProjectFiles(project, {
-      "mindcraft.json": JSON.stringify({ name: "Blinker", version: "0.1.0", files: ["../outside.txt"] }, null, 2),
+      "wendoo.json": JSON.stringify({ name: "Blinker", version: "0.1.0", files: ["../outside.txt"] }, null, 2),
     });
     const escaped = await runCliBin(project, "publish", "patch", "--remote", remote);
     assert.equal(escaped.code, 1);
@@ -399,7 +399,7 @@ describe("mindcraft publish to a remote (constructed mode)", () => {
     const remote = await initBareRemote(root, "example-org/blinker.git");
     const project = path.join(root, "project");
     await writeProjectFiles(project, {
-      "mindcraft.json": JSON.stringify({ name: "Blinker", version: "0.4.0", files: ["index.ts"] }, null, 2),
+      "wendoo.json": JSON.stringify({ name: "Blinker", version: "0.4.0", files: ["index.ts"] }, null, 2),
       "index.ts": "export {};\n",
     });
 
@@ -420,14 +420,14 @@ describe("mindcraft publish to a remote (constructed mode)", () => {
     const remote = await initBareRemote(root);
     const project = path.join(root, "project");
     await writeProjectFiles(project, {
-      "mindcraft.json": JSON.stringify({ name: "Blinker", version: "0.4.0" }, null, 2),
+      "wendoo.json": JSON.stringify({ name: "Blinker", version: "0.4.0" }, null, 2),
     });
 
     const first = await runCliBin(project, "publish", "--remote", remote);
     assert.equal(first.code, 0, first.stderr);
 
     await writeProjectFiles(project, {
-      "mindcraft.json": JSON.stringify({ name: "Blinker", version: "0.5.0" }, null, 2),
+      "wendoo.json": JSON.stringify({ name: "Blinker", version: "0.5.0" }, null, 2),
     });
     const second = await runCliBin(project, "publish", "--remote", remote);
     assert.equal(second.code, 1);
@@ -454,7 +454,7 @@ describe("mindcraft publish to a remote (constructed mode)", () => {
     const libraryRemote = await initBareRemote(root, "example-org/blinker.git");
     const monorepoRemote = await initBareRemote(root, "acme/monorepo.git");
     const checkout = await initCheckoutProject(root, monorepoRemote, {
-      "packages/blinker/mindcraft.json": JSON.stringify(
+      "packages/blinker/wendoo.json": JSON.stringify(
         { name: "Blinker", version: "0.1.0", identity: "example-org/blinker", files: ["index.ts"] },
         null,
         2
@@ -479,12 +479,12 @@ describe("mindcraft publish to a remote (constructed mode)", () => {
   });
 });
 
-describe("mindcraft publish in a checkout (in-place mode)", () => {
+describe("wendoo publish in a checkout (in-place mode)", () => {
   it("bumps, commits, tags, and pushes branch and tag to origin", async () => {
     const root = await scratch();
     const remote = await initBareRemote(root);
     const checkout = await initCheckoutProject(root, remote, {
-      "mindcraft.json": JSON.stringify({ name: "Blinker", version: "0.2.0" }, null, 2),
+      "wendoo.json": JSON.stringify({ name: "Blinker", version: "0.2.0" }, null, 2),
       "index.ts": "export const blink = true;\n",
     });
 
@@ -508,11 +508,7 @@ describe("mindcraft publish in a checkout (in-place mode)", () => {
     const root = await scratch();
     const remote = await initBareRemote(root, "example-org/new-name.git");
     const checkout = await initCheckoutProject(root, remote, {
-      "mindcraft.json": JSON.stringify(
-        { name: "Blinker", version: "0.2.0", identity: "example-org/old-name" },
-        null,
-        2
-      ),
+      "wendoo.json": JSON.stringify({ name: "Blinker", version: "0.2.0", identity: "example-org/old-name" }, null, 2),
       "index.ts": "export const blink = true;\n",
     });
 
@@ -534,7 +530,7 @@ describe("mindcraft publish in a checkout (in-place mode)", () => {
     const root = await scratch();
     const remote = await initBareRemote(root, "example-org/blinker.git");
     const checkout = await initCheckoutProject(root, remote, {
-      "mindcraft.json": JSON.stringify({ name: "Blinker", version: "0.2.0", identity: "example-org/blinker" }, null, 2),
+      "wendoo.json": JSON.stringify({ name: "Blinker", version: "0.2.0", identity: "example-org/blinker" }, null, 2),
       "index.ts": "export const blink = true;\n",
     });
 
@@ -550,7 +546,7 @@ describe("mindcraft publish in a checkout (in-place mode)", () => {
     assert.equal(await readManifestVersion(clone), "0.2.1");
   });
 
-  it("fails with a clear missing-manifest error when the current folder has no mindcraft.json", async () => {
+  it("fails with a clear missing-manifest error when the current folder has no wendoo.json", async () => {
     const root = await scratch();
     const project = path.join(root, "project");
     await writeProjectFiles(project, { "index.ts": "export {};\n" });
@@ -565,7 +561,7 @@ describe("mindcraft publish in a checkout (in-place mode)", () => {
     const root = await scratch();
     const remote = await initBareRemote(root);
     const checkout = await initCheckoutProject(root, remote, {
-      "mindcraft.json": JSON.stringify({ name: "Blinker", version: "0.2.0" }, null, 2),
+      "wendoo.json": JSON.stringify({ name: "Blinker", version: "0.2.0" }, null, 2),
       "index.ts": "export const blink = true;\n",
     });
     await writeProjectFiles(checkout, { "index.ts": "export const blink = false;\n" });
@@ -581,7 +577,7 @@ describe("mindcraft publish in a checkout (in-place mode)", () => {
     const root = await scratch();
     const remote = await initBareRemote(root);
     const checkout = await initCheckoutProject(root, remote, {
-      "mindcraft.json": JSON.stringify({ name: "Blinker", version: "0.2.0" }, null, 2),
+      "wendoo.json": JSON.stringify({ name: "Blinker", version: "0.2.0" }, null, 2),
       "index.ts": "export const blink = true;\n",
     });
 
@@ -611,7 +607,7 @@ describe("mindcraft publish in a checkout (in-place mode)", () => {
     // The checkout already carries a README, so the README furniture leaves the
     // published tree identical to head and the as-is publish records a tag only.
     const checkout = await initCheckoutProject(root, remote, {
-      "mindcraft.json": JSON.stringify({ name: "Blinker", version: "0.2.0", identity: "example-org/blinker" }, null, 2),
+      "wendoo.json": JSON.stringify({ name: "Blinker", version: "0.2.0", identity: "example-org/blinker" }, null, 2),
       "index.ts": "export const blink = true;\n",
       "README.md": "# Blinker\n",
     });
@@ -629,7 +625,7 @@ describe("mindcraft publish in a checkout (in-place mode)", () => {
     const root = await scratch();
     const checkout = path.join(root, "checkout");
     await writeProjectFiles(checkout, {
-      "mindcraft.json": JSON.stringify({ name: "Blinker", version: "0.2.0" }, null, 2),
+      "wendoo.json": JSON.stringify({ name: "Blinker", version: "0.2.0" }, null, 2),
     });
     await runGit(checkout, "init", "--quiet");
     await runGit(checkout, "add", "--all");
@@ -644,14 +640,14 @@ describe("mindcraft publish in a checkout (in-place mode)", () => {
     const root = await scratch();
     const remote = await initBareRemote(root);
     const checkout = await initCheckoutProject(root, remote, {
-      "mindcraft.json": JSON.stringify({ name: "Blinker", version: "0.2.0" }, null, 2),
+      "wendoo.json": JSON.stringify({ name: "Blinker", version: "0.2.0" }, null, 2),
     });
 
     const first = await runCliBin(checkout, "publish", "patch");
     assert.equal(first.code, 0, first.stderr);
 
     await writeProjectFiles(checkout, {
-      "mindcraft.json": JSON.stringify({ name: "Blinker", version: "0.2.0" }, null, 2),
+      "wendoo.json": JSON.stringify({ name: "Blinker", version: "0.2.0" }, null, 2),
     });
     await runGit(checkout, "add", "--all");
     await runGit(checkout, "commit", "--quiet", "-m", "revert version");
@@ -664,7 +660,7 @@ describe("mindcraft publish in a checkout (in-place mode)", () => {
 
 function targetFiles(version: string, stamp: string): Record<string, string> {
   return {
-    "mindcraft.json": JSON.stringify(
+    "wendoo.json": JSON.stringify(
       {
         name: "Microbit V2",
         version,
@@ -680,7 +676,7 @@ function targetFiles(version: string, stamp: string): Record<string, string> {
   };
 }
 
-describe("mindcraft publish for a target (hostApp)", () => {
+describe("wendoo publish for a target (hostApp)", () => {
   it("ships the manifest's current version verbatim, without a bump (constructed mode)", async () => {
     const root = await scratch();
     const remote = await initBareRemote(root, "example-org/microbit.git");
@@ -775,13 +771,13 @@ describe("mindcraft publish for a target (hostApp)", () => {
   });
 });
 
-describe("mindcraft command surface", () => {
+describe("wendoo command surface", () => {
   it("rejects missing and unknown arguments with usage output", async () => {
     const root = await scratch();
 
     const noCommand = await runCliBin(root);
     assert.equal(noCommand.code, 1);
-    assert.match(noCommand.stderr, /usage: mindcraft <command>/);
+    assert.match(noCommand.stderr, /usage: wendoo <command>/);
 
     const unknownCommand = await runCliBin(root, "frobnicate");
     assert.equal(unknownCommand.code, 1);
@@ -789,7 +785,7 @@ describe("mindcraft command surface", () => {
 
     const badBump = await runCliBin(root, "publish", "huge");
     assert.equal(badBump.code, 1);
-    assert.match(badBump.stderr, /usage: mindcraft publish/);
+    assert.match(badBump.stderr, /usage: wendoo publish/);
 
     // Bare publish is the as-is surface; in a directory with no project it
     // refuses on the missing manifest, not on the missing bump argument.
@@ -825,7 +821,7 @@ describe("publishing the codal-position extension content", () => {
       assert.equal(result.stdout, `published ${expectedVersion} (tag v${expectedVersion})\n`);
 
       const clone = await cloneAtTag(root, remote, `v${expectedVersion}`);
-      assert.deepEqual(await listProjectFiles(clone), ["README.md", "index.ts", "mindcraft.json"]);
+      assert.deepEqual(await listProjectFiles(clone), ["README.md", "index.ts", "wendoo.json"]);
       assert.equal(existsSync(path.join(clone, "tsconfig.json")), false);
       assert.equal(await readManifestVersion(clone), expectedVersion);
       const sourceIndex = await readFile(path.join(CODAL_POSITION_EXT_DIR, "index.ts"));

@@ -1,7 +1,7 @@
-import type { FetchedExtensionSnapshot, FileContent } from "@mindcraft-lang/app-host";
-import { base64ToBytes, bytesToBase64, fileContentFromBytes, fileContentToBytes } from "@mindcraft-lang/app-host";
-import type { FolderInstalledExtensionMetadata } from "@mindcraft-lang/bridge-protocol";
-import { EXTENSIONS_TREE_PATH } from "@mindcraft-lang/bridge-protocol";
+import type { FetchedExtensionSnapshot, FileContent } from "@wendoo-lang/app-host";
+import { base64ToBytes, bytesToBase64, fileContentFromBytes, fileContentToBytes } from "@wendoo-lang/app-host";
+import type { FolderInstalledExtensionMetadata } from "@wendoo-lang/bridge-protocol";
+import { EXTENSIONS_TREE_PATH } from "@wendoo-lang/bridge-protocol";
 import type { FetchedExtensionContentMap } from "./embedded-extensions.js";
 
 /** App-data key holding a project's installed fetched-extension snapshots. */

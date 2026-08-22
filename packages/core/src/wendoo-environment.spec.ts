@@ -5,27 +5,27 @@ import {
   type CompiledActionArtifact,
   type CompiledActionBundle,
   coreModule,
-  createMindcraftEnvironment,
+  createWendooEnvironment,
   Dict,
   List,
-  type MindcraftEnvironment,
-  type MindcraftModule,
   type ReadonlyList,
-} from "@mindcraft-lang/core";
+  type WendooEnvironment,
+  type WendooModule,
+} from "@wendoo-lang/core";
 import {
   type BrainServices,
   type ITileCatalog,
   mkVariableFactoryTileId,
   mkVariableTileId,
   TilePlacement,
-} from "@mindcraft-lang/core/brain";
-import { BrainDef } from "@mindcraft-lang/core/brain/model";
+} from "@wendoo-lang/core/brain";
+import { BrainDef } from "@wendoo-lang/core/brain/model";
 import {
   BrainTileParameterDef,
   BrainTileSensorDef,
   BrainTileVariableDef,
   getCatalogFallbackLabel,
-} from "@mindcraft-lang/core/brain/tiles";
+} from "@wendoo-lang/core/brain/tiles";
 import {
   BYTECODE_VERSION,
   CoreTypeIds,
@@ -38,7 +38,7 @@ import {
   type StructTypeDef,
   TRUE_VALUE,
   type Value,
-} from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
 
 const noopCodec = {
   encode(): void {},
@@ -50,7 +50,7 @@ const noopCodec = {
   },
 };
 
-type MindcraftEnvironmentInternals = {
+type WendooEnvironmentInternals = {
   brainServices: BrainServices;
   bundleCatalog: ITileCatalog;
   trackedBrains: List<unknown>;
@@ -58,12 +58,12 @@ type MindcraftEnvironmentInternals = {
   buildCatalogChain(definition: BrainDef, overlays: List<ITileCatalog>): List<ITileCatalog>;
 };
 
-function getEnvironmentServices(environment: MindcraftEnvironment): BrainServices {
+function getEnvironmentServices(environment: WendooEnvironment): BrainServices {
   return (environment as unknown as { brainServices: BrainServices }).brainServices;
 }
 
-function getEnvironmentInternals(environment: MindcraftEnvironment): MindcraftEnvironmentInternals {
-  return environment as unknown as MindcraftEnvironmentInternals;
+function getEnvironmentInternals(environment: WendooEnvironment): WendooEnvironmentInternals {
+  return environment as unknown as WendooEnvironmentInternals;
 }
 
 function getRawCatalog(catalog: unknown): ITileCatalog {
@@ -84,7 +84,7 @@ function createAlphaModule(capture: {
   sensorTile?: BrainTileSensorDef;
   parameterTile?: BrainTileParameterDef;
   typeId?: string;
-}): MindcraftModule {
+}): WendooModule {
   return {
     id: "alpha-module",
     install(api): void {
@@ -161,7 +161,7 @@ function createAlphaModule(capture: {
   };
 }
 
-function createVariableFactoryStructModule(capture: { typeId?: string }): MindcraftModule {
+function createVariableFactoryStructModule(capture: { typeId?: string }): WendooModule {
   return {
     id: "gamma-module",
     install(api): void {
@@ -184,7 +184,7 @@ function createHostSensorModule(
   moduleId: string,
   key: string,
   sensorId: string = key
-): { module: MindcraftModule; tile: BrainTileSensorDef } {
+): { module: WendooModule; tile: BrainTileSensorDef } {
   const sensorCallDef = mkCallDef({ type: "bag", items: [] });
   const descriptor = {
     key,
@@ -303,10 +303,10 @@ function createSensorBrainDef(services: BrainServices, name: string, sensorTile:
   return brainDef;
 }
 
-describe("mindcraft environment", () => {
+describe("wendoo environment", () => {
   test("an app-registered struct variable factory reads with the type's display name", () => {
     const capture: { typeId?: string } = {};
-    const environment = createMindcraftEnvironment({
+    const environment = createWendooEnvironment({
       modules: [coreModule(), createVariableFactoryStructModule(capture)],
     });
     const services = getEnvironmentServices(environment);
@@ -328,8 +328,8 @@ describe("mindcraft environment", () => {
       typeId?: string;
     } = {};
 
-    const envA = createMindcraftEnvironment({ modules: [coreModule(), createAlphaModule(capture)] });
-    const envB = createMindcraftEnvironment({ modules: [coreModule()] });
+    const envA = createWendooEnvironment({ modules: [coreModule(), createAlphaModule(capture)] });
+    const envB = createWendooEnvironment({ modules: [coreModule()] });
 
     const servicesA = getEnvironmentServices(envA);
     const servicesB = getEnvironmentServices(envB);
@@ -373,7 +373,7 @@ describe("mindcraft environment", () => {
   });
 
   test("creates independent runnable brains from one definition", () => {
-    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule()] });
     const sharedDefinition = BrainDef.emptyBrainDef(getEnvironmentServices(environment), "Reusable Brain");
     sharedDefinition.appendNewPage();
 
@@ -404,7 +404,7 @@ describe("mindcraft environment", () => {
       parameterTile?: BrainTileParameterDef;
       typeId?: string;
     } = {};
-    const environment = createMindcraftEnvironment({ modules: [coreModule(), createAlphaModule(capture)] });
+    const environment = createWendooEnvironment({ modules: [coreModule(), createAlphaModule(capture)] });
 
     const brainDef = BrainDef.emptyBrainDef(getEnvironmentServices(environment), "Persisted Brain");
     const rule = brainDef.pages().get(0)!.children().get(0)!;
@@ -426,7 +426,7 @@ describe("mindcraft environment", () => {
   });
 
   test("deserializes persisted brains against hydrated and bundled tile metadata", () => {
-    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule()] });
     const bundled = createBundleSensor("bundle.persisted");
     const brainDef = createSensorBrainDef(getEnvironmentServices(environment), "Hydrated Brain", bundled.tile);
 
@@ -460,7 +460,7 @@ describe("mindcraft environment", () => {
 
   test("builds catalog chains with shared-first precedence", () => {
     const sharedSensor = createHostSensorModule("shared-order-module", "shared.order", "shared-order");
-    const environment = createMindcraftEnvironment({ modules: [coreModule(), sharedSensor.module] });
+    const environment = createWendooEnvironment({ modules: [coreModule(), sharedSensor.module] });
     const internals = getEnvironmentInternals(environment);
     const overlay = environment.createCatalog();
     const overlayRaw = getRawCatalog(overlay);
@@ -515,7 +515,7 @@ describe("mindcraft environment", () => {
   });
 
   test("stores hydrated and bundled tiles without mutating tile metadata", () => {
-    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule()] });
     const internals = getEnvironmentInternals(environment);
 
     const hydrated = createBundleSensor("hydrated.visual");
@@ -533,7 +533,7 @@ describe("mindcraft environment", () => {
   });
 
   test("selectively invalidates brains whose linked bundle action revisions change", () => {
-    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule()] });
     const alpha = createBundleSensor("bundle.alpha");
     const beta = createBundleSensor("bundle.beta");
 
@@ -594,7 +594,7 @@ describe("mindcraft environment", () => {
   });
 
   test("rebuildInvalidatedBrains rebuilds valid brains even when another fails to rebuild", () => {
-    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule()] });
     const good = createBundleSensor("bundle.good");
     const bad = createBundleSensor("bundle.bad");
     environment.replaceActionBundle(createActionBundle("bundle.rev1", [good, bad]));
@@ -624,7 +624,7 @@ describe("mindcraft environment", () => {
   });
 
   test("rebuildInvalidatedBrains without args rebuilds all brains invalidated across overlapping replacements", () => {
-    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule()] });
     const alpha = createBundleSensor("bundle.alpha");
     const beta = createBundleSensor("bundle.beta");
 
@@ -668,7 +668,7 @@ describe("mindcraft environment", () => {
   });
 
   test("disposing a brain removes it from tracking and excludes it from later invalidation and rebuild", () => {
-    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule()] });
     const internals = getEnvironmentInternals(environment);
     const alpha = createBundleSensor("bundle.alpha");
     const beta = createBundleSensor("bundle.beta");
@@ -723,8 +723,8 @@ describe("mindcraft environment", () => {
   });
 
   test("keeps tile presentation isolated between environments", () => {
-    const envA = createMindcraftEnvironment({ modules: [coreModule()] });
-    const envB = createMindcraftEnvironment({ modules: [coreModule()] });
+    const envA = createWendooEnvironment({ modules: [coreModule()] });
+    const envB = createWendooEnvironment({ modules: [coreModule()] });
     const bundleA = createBundleSensor("bundle.visual", "bundle.visual", "Alpha Label");
     const bundleB = createBundleSensor("bundle.visual", "bundle.visual", "Beta Label");
 

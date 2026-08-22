@@ -1,11 +1,11 @@
-import type { TileDocContent } from "@mindcraft-lang/assistant-bridge/kit";
+import type { TileDocContent } from "@wendoo-lang/assistant-bridge/kit";
 
 /** The brain document the app ships for each archetype, base64-encoded and keyed by archetype name. */
 export type ShippedBrainDefs = Readonly<Record<string, string>>;
 
 /** The app's own assets a rehearsal reads, carried with the module graph. */
 export interface RehearsalContent {
-  /** Mindcraft identity the adapter built over this content reports. */
+  /** Wendoo identity the adapter built over this content reports. */
   readonly targetIdentity: string;
   /** The app's tile documentation as raw markdown keyed by content key. */
   readonly tileDocs: TileDocContent;

@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, runtime } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext, Scheduler } from "@mindcraft-lang/core/runtime";
-import { CoreFuncId, HandleTable, NativeType, NIL_VALUE, Op, type Value, VmStatus } from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+import { List, runtime } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { ExecutionContext, Scheduler } from "@wendoo-lang/core/runtime";
+import { CoreFuncId, HandleTable, NativeType, NIL_VALUE, Op, type Value, VmStatus } from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { compileUserTile } from "./compile.js";
 import { CompileDiagCode, DescriptorDiagCode } from "./diag-codes.js";
@@ -40,7 +40,7 @@ function mkScheduler(): Scheduler {
 }
 
 const WHEN_RESULT_SENSOR = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "when-result-reader",
@@ -94,7 +94,7 @@ describe("ctx.getWhenResult()", () => {
 });
 
 const READER_WITHOUT_DECLARATION = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "when-reader-undeclared",
@@ -106,7 +106,7 @@ export default Sensor({
 `;
 
 const READER_WITH_DECLARATION = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "when-reader-declared",
@@ -119,7 +119,7 @@ export default Sensor({
 `;
 
 const DECLARATION_WITHOUT_READ = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "when-declared-no-read",
@@ -131,7 +131,7 @@ export default Sensor({
 `;
 
 const ACTUATOR_READER_WITHOUT_DECLARATION = `
-import { Actuator, type Context } from "mindcraft";
+import { Actuator, type Context } from "wendoo";
 
 export default Actuator({
   name: "when-actuator-undeclared",
@@ -142,7 +142,7 @@ export default Actuator({
 `;
 
 const DECLARATION_UNKNOWN_TYPE = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "when-declared-unknown",
@@ -154,7 +154,7 @@ export default Sensor({
 `;
 
 const DECLARATION_NOT_NAME_OR_REF = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "when-declared-parenthesized",

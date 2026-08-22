@@ -6,10 +6,10 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { IBrainTileDef } from "@mindcraft-lang/core/app";
-import { coreModule, createMindcraftEnvironment } from "@mindcraft-lang/core/app";
-import { tileSentenceWord } from "@mindcraft-lang/core/brain/language-service";
-import { createDefaultLocalizer } from "@mindcraft-lang/core/localization";
+import type { IBrainTileDef } from "@wendoo-lang/core/app";
+import { coreModule, createWendooEnvironment } from "@wendoo-lang/core/app";
+import { tileSentenceWord } from "@wendoo-lang/core/brain/language-service";
+import { createDefaultLocalizer } from "@wendoo-lang/core/localization";
 import { createEcosimModule } from "../index";
 
 /**
@@ -23,7 +23,7 @@ const kTileIdSeparator = "->";
 
 /** Every catalog tile of the shipped ecosim environment the tile picker can offer. */
 function visibleCatalogTiles(): IBrainTileDef[] {
-  const environment = createMindcraftEnvironment({ modules: [coreModule(), createEcosimModule()] });
+  const environment = createWendooEnvironment({ modules: [coreModule(), createEcosimModule()] });
   const tiles: IBrainTileDef[] = [];
   for (const catalog of environment.tileCatalogs()) {
     const all = catalog.getAll();

@@ -1,4 +1,4 @@
-export type { FileContent, WireFileContent } from "@mindcraft-lang/service-api";
+export type { FileContent, WireFileContent } from "@wendoo-lang/service-api";
 export {
   base64ToBytes,
   bytesToBase64,
@@ -11,7 +11,7 @@ export {
   fileContentToWire,
   isBinaryFileContent,
   LOWEST_CONTENT_VERSION,
-} from "@mindcraft-lang/service-api";
+} from "@wendoo-lang/service-api";
 export { AppHostError, AppHostErrorCode, appHostError } from "./app-host-error.js";
 export type { DependencyPinProbe, UnstableDependency } from "./dependency-stability.js";
 export { collectUnstableDependencies, UnstableDependencyCode } from "./dependency-stability.js";
@@ -43,10 +43,10 @@ export {
   CatalogMoveApplyErrorCode,
   ExtensionCatalogDocumentErrorCode,
   ExtensionCatalogDocumentWarningCode,
-  MINDCRAFT_CATALOG_FORMAT,
   parseCatalogMoveReference,
   parseExtensionCatalogDocument,
   validateExtensionCatalogDocument,
+  WENDOO_CATALOG_FORMAT,
 } from "./extension-catalog-document.js";
 export type {
   ExtensionFetchBranchResult,
@@ -88,8 +88,6 @@ export {
   GITHUB_API_BASE_URL,
   JSDELIVR_CDN_BASE_URL,
 } from "./jsdelivr-extension-transport.js";
-export { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
-export { diffMindcraftJsonToManifest, syncManifestToMindcraftJson } from "./mindcraft-json-sync.js";
 export type { ProjectCollection, ProjectCollectionPinVerifier } from "./project-collection.js";
 export {
   DEFAULT_PROJECT_COLLECTION_ID,
@@ -145,8 +143,8 @@ export type {
   ImportAppChunkResult,
   ImportDiagnostic,
   ImportResult,
-  MindcraftProjectDocument,
-  MindcraftProjectExtensions,
+  WendooProjectDocument,
+  WendooProjectExtensions,
 } from "./project-io.js";
 export {
   buildActiveProjectExportDocument,
@@ -187,3 +185,5 @@ export { registryTargetEntry, seedProjectTargets } from "./project-target-seed.j
 export type { UnpackedTree, UnpackRefusal } from "./project-unpack.js";
 export { buildUnpackedTree, isUnpackRefusal, UnpackErrorCode } from "./project-unpack.js";
 export { isSupportedVersionRange, satisfiesRange } from "./semver-range.js";
+export { WENDOO_JSON_PATH } from "./wendoo-json.js";
+export { diffWendooJsonToManifest, syncManifestToWendooJson } from "./wendoo-json-sync.js";

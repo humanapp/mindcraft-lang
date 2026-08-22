@@ -36,7 +36,7 @@ const { readFileSync, existsSync, readdirSync } = require("node:fs");
 const { join, resolve, relative, dirname } = require("node:path");
 
 const VALID_BUMPS = ["patch", "minor", "major"];
-const SCOPE = "@mindcraft-lang/";
+const SCOPE = "@wendoo-lang/";
 
 /** Prefix of a dependency specifier naming a package by its location on disk. */
 const localSpecifier = "file:";

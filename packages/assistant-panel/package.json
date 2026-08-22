@@ -1,5 +1,5 @@
 {
-  "name": "@mindcraft-lang/assistant-panel",
+  "name": "@wendoo-lang/assistant-panel",
   "description": "Assistant conversation provider: relay session lifecycle, per-brain conversation records, and client-side tool serving",
   "version": "0.1.0",
   "type": "module",
@@ -7,15 +7,15 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/humanapp/mindcraft-lang.git",
+    "url": "https://github.com/humanapp/wendoo-lang.git",
     "directory": "packages/assistant-panel"
   },
   "bugs": {
-    "url": "https://github.com/humanapp/mindcraft-lang/issues"
+    "url": "https://github.com/humanapp/wendoo-lang/issues"
   },
-  "homepage": "https://github.com/humanapp/mindcraft-lang/tree/main/packages/assistant-panel#readme",
+  "homepage": "https://github.com/humanapp/wendoo-lang/tree/main/packages/assistant-panel#readme",
   "keywords": [
-    "mindcraft",
+    "wendoo",
     "assistant",
     "visual-programming",
     "tile-based",
@@ -47,10 +47,10 @@
     "release:major": "node ../../scripts/release.js major"
   },
   "dependencies": {
-    "@mindcraft-lang/assistant-bridge": "file:../assistant-bridge",
-    "@mindcraft-lang/assistant-relay": "file:../assistant-relay",
-    "@mindcraft-lang/core": "file:../core",
-    "@mindcraft-lang/ui": "file:../ui"
+    "@wendoo-lang/assistant-bridge": "file:../assistant-bridge",
+    "@wendoo-lang/assistant-relay": "file:../assistant-relay",
+    "@wendoo-lang/core": "file:../core",
+    "@wendoo-lang/ui": "file:../ui"
   },
   "peerDependencies": {
     "react": "^19.0.0",

@@ -1,8 +1,8 @@
-import type { ReadonlyBitSet, ReadonlyList, UniqueSet } from "@mindcraft-lang/core";
-import type { BrainServices, IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
-import { RuleSide } from "@mindcraft-lang/core/brain";
-import { buildInsertionContext, suggestTiles, type TileSuggestion } from "@mindcraft-lang/core/brain/language-service";
-import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+import type { ReadonlyBitSet, ReadonlyList, UniqueSet } from "@wendoo-lang/core";
+import type { BrainServices, IBrainTileDef, ITileCatalog } from "@wendoo-lang/core/brain";
+import { RuleSide } from "@wendoo-lang/core/brain";
+import { buildInsertionContext, suggestTiles, type TileSuggestion } from "@wendoo-lang/core/brain/language-service";
+import type { BrainRuleDef } from "@wendoo-lang/core/brain/model";
 
 /** What {@link sideOffersAppendedTile} asks the suggestion oracle about. */
 export interface AppendedTileInputs {

@@ -5,9 +5,9 @@ import {
   type IBrainRuleDef,
   type IBrainTileSet,
   logger,
-  type MindcraftBrain,
   type Vector2,
-} from "@mindcraft-lang/core/app";
+  type WendooBrain,
+} from "@wendoo-lang/core/app";
 import { ARCHETYPES } from "./archetypes";
 import { Engine } from "./engine";
 import { Mover, type MoverConfig, type Steering, steerAvoidObstacles } from "./movement";
@@ -141,7 +141,7 @@ export class Actor {
   actorId: number;
   archetype: Archetype;
   brainDef: IBrainDef;
-  brain: MindcraftBrain;
+  brain: WendooBrain;
   mover: Mover;
   sprite: Phaser.Physics.Matter.Sprite;
   debugGraphics?: Phaser.GameObjects.Graphics; // For debug visualization
@@ -213,7 +213,7 @@ export class Actor {
    * and invalidated by the environment; the per-tick rebuild revives it once
    * the action becomes available.
    */
-  private createBrain(): MindcraftBrain {
+  private createBrain(): WendooBrain {
     const env = this.engine.env;
     const brainOptions: CreateBrainOptions = {
       context: this,

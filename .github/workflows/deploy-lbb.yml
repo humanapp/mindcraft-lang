@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 env:
-  S3_BUCKET: lbb.mindcraft-lang.org
+  S3_BUCKET: lbb.wendoo-lang.org
   AWS_REGION: us-east-1
 
 jobs:

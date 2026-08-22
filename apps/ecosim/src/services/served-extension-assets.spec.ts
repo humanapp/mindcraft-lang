@@ -9,17 +9,17 @@ import {
   type ProjectCollection,
   type ProjectFileSystem,
   type ProjectManager,
-} from "@mindcraft-lang/app-host";
+} from "@wendoo-lang/app-host";
 import {
   AppEnvironmentHost,
   CORE_LIB_COORDINATE,
   createVfsAssetUrlProvider,
   type EmbeddedExtension,
-} from "@mindcraft-lang/bridge-app";
-import { buildEmbeddedExtensionFromDir } from "@mindcraft-lang/bridge-app/node";
-import { coreModule, mkActuatorTileId, mkSensorTileId } from "@mindcraft-lang/core/app";
-import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
-import { isCompilerControlledPath, type Mount } from "@mindcraft-lang/ts-compiler";
+} from "@wendoo-lang/bridge-app";
+import { buildEmbeddedExtensionFromDir } from "@wendoo-lang/bridge-app/node";
+import { coreModule, mkActuatorTileId, mkSensorTileId } from "@wendoo-lang/core/app";
+import type { IBrainTileDef } from "@wendoo-lang/core/brain";
+import { isCompilerControlledPath, type Mount } from "@wendoo-lang/ts-compiler";
 import { createEcosimModule } from "../brain";
 import { createVfsAwareVisualProvider } from "../brain/editor/visual-provider";
 import {
@@ -44,7 +44,7 @@ function extensionDir(relativePath: string): string {
 const TELEPORT_ICON_SVG = readText("../../extensions/lib-ecosim-teleport/teleport.svg");
 
 /**
- * The sim embed record assembled from each extension's own `mindcraft.json`
+ * The sim embed record assembled from each extension's own `wendoo.json`
  * `files` list through the shared loader -- the single content-assembly path the
  * app's Vite provider also uses.
  */

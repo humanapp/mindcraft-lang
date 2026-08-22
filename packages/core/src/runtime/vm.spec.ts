@@ -13,9 +13,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
-import { Dict, List, type ReadonlyList } from "@mindcraft-lang/core";
-import { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { Dict, List, type ReadonlyList } from "@wendoo-lang/core";
+import { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
 import {
   type AsyncHandle,
   BrainActionRegistry,
@@ -60,8 +60,8 @@ import {
   type VmRunResult,
   VmStatus,
   VOID_VALUE,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 
 let services: BrainServices;
 

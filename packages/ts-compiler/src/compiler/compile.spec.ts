@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { expectDiagnostic } from "../testsupport/diag-coverage.js";
 import { compileUserTile } from "./compile.js";
@@ -9,7 +9,7 @@ import { CompileDiagCode, DescriptorDiagCode, LoweringDiagCode, ValidatorDiagCod
 import type { ExtractedOptional, ExtractedParam } from "./types.js";
 
 const VALID_SENSOR_SOURCE = `
-import { Sensor, type Context, param, optional } from "mindcraft";
+import { Sensor, type Context, param, optional } from "wendoo";
 
 export default Sensor({
   name: "is-close",
@@ -35,7 +35,7 @@ describe("compileUserTile", () => {
 
   test("calling nonexistent engine method produces a diagnostic", () => {
     const source = `
-import { type Context } from "mindcraft";
+import { type Context } from "wendoo";
 
 function doStuff(ctx: Context): void {
   ctx.engine.nonExistent();
@@ -49,7 +49,7 @@ function doStuff(ctx: Context): void {
 
   test("wrong argument type produces a diagnostic", () => {
     const source = `
-import { type Context } from "mindcraft";
+import { type Context } from "wendoo";
 
 function doStuff(ctx: Context): void {
   ctx.brain.setVariable(123, "value");
@@ -61,7 +61,7 @@ function doStuff(ctx: Context): void {
 
   test("diagnostics include line and column info", () => {
     const source = `
-import { type Context } from "mindcraft";
+import { type Context } from "wendoo";
 
 function doStuff(ctx: Context): void {
   ctx.engine.nonExistent();
@@ -91,7 +91,7 @@ describe("AST validation", () => {
 
   test("class expression produces diagnostic", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 const Foo = class {
   bar(): number { return 42; }
@@ -109,7 +109,7 @@ export default Sensor({
 
   test("var declaration produces diagnostic", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 var x = 1;
 
@@ -125,7 +125,7 @@ export default Sensor({
 
   test("for...in over anonymous object type produces lowering diagnostic", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function visit(obj: { a: number }): void {
   for (const k in obj) {}
@@ -145,7 +145,7 @@ export default Sensor({
 
   test("eval reference produces diagnostic", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -162,7 +162,7 @@ export default Sensor({
 
   test("computed property name produces diagnostic", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -180,7 +180,7 @@ export default Sensor({
 
   test("enum declaration passes validation", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 enum Direction {
   Up = "north",
@@ -200,7 +200,7 @@ export default Sensor({
 
   test("heterogeneous enum declaration produces diagnostic", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 enum Mixed {
   A = "a",
@@ -221,7 +221,7 @@ export default Sensor({
 
   test("enum object usage produces explicit diagnostic", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 enum Direction {
   Up = "north",
@@ -247,7 +247,7 @@ export default Sensor({
 
   test("switch statement passes validation", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -267,7 +267,7 @@ export default Sensor({
 
   test("unsupported type reference in annotation produces diagnostic", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function foo(x: Object): void {}
 
@@ -284,7 +284,7 @@ export default Sensor({
   for (const typeName of ["Object", "Function", "CallableFunction", "NewableFunction", "IArguments", "RegExp"]) {
     test(`type reference to ${typeName} produces diagnostic`, () => {
       const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 let x: ${typeName};
 
@@ -303,7 +303,7 @@ export default Sensor({
 
   test("unsupported type name used as variable name does not produce UnsupportedTypeReference", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 const IArguments = 42;
 
@@ -340,7 +340,7 @@ describe("descriptor extraction", () => {
 
   test("actuator with async exec extracts async flag", () => {
     const source = `
-import { Actuator, type Context, param, optional } from "mindcraft";
+import { Actuator, type Context, param, optional } from "wendoo";
 
 export default Actuator({
   name: "flee",
@@ -362,7 +362,7 @@ export default Actuator({
 
   test("onPageEntered inside descriptor is detected", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -378,7 +378,7 @@ export default Sensor({
 
   test("multiple params are extracted correctly", () => {
     const source = `
-import { Sensor, type Context, param, optional } from "mindcraft";
+import { Sensor, type Context, param, optional } from "wendoo";
 
 export default Sensor({
   name: "multi-param",
@@ -422,7 +422,7 @@ export default Sensor({
 
   test("missing name produces diagnostic", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   onExecute(ctx: Context): boolean { return true; },
@@ -435,7 +435,7 @@ export default Sensor({
 
   test("sensor missing return type annotation produces diagnostic", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -449,7 +449,7 @@ export default Sensor({
 
   test("missing onExecute produces diagnostic", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -462,7 +462,7 @@ export default Sensor({
 
   test("descriptor without onPageEntered has null node", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -477,7 +477,7 @@ export default Sensor({
 
   test("actuator with no args extracts empty args list", () => {
     const source = `
-import { Actuator, type Context } from "mindcraft";
+import { Actuator, type Context } from "wendoo";
 
 export default Actuator({
   name: "simple",
@@ -493,7 +493,7 @@ export default Actuator({
 
   test("anonymous param extracts anonymous flag", () => {
     const source = `
-import { Actuator, type Context, param, optional } from "mindcraft";
+import { Actuator, type Context, param, optional } from "wendoo";
 
 export default Actuator({
   name: "chase",
@@ -526,7 +526,7 @@ export default Actuator({
 
   test("omitted args produces empty args list", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "no-params",

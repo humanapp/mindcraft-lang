@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { coreModule, createMindcraftEnvironment, List } from "@mindcraft-lang/core";
+import { coreModule, createWendooEnvironment, List } from "@wendoo-lang/core";
 import {
   type BrainServices,
   CoreCapabilityBits,
@@ -8,12 +8,12 @@ import {
   mkOperatorTileId,
   RuleSide,
   TilePlacement,
-} from "@mindcraft-lang/core/brain";
-import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { parseTilesForSuggestions, suggestTiles } from "@mindcraft-lang/core/brain/language-service";
-import { BrainDef } from "@mindcraft-lang/core/brain/model";
-import { BrainTileLiteralDef } from "@mindcraft-lang/core/brain/tiles";
-import { CoreOpId, CoreTypeIds, mkActuatorTileId, mkSensorTileId } from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/brain";
+import { __test__appendTile, __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { parseTilesForSuggestions, suggestTiles } from "@wendoo-lang/core/brain/language-service";
+import { BrainDef } from "@wendoo-lang/core/brain/model";
+import { BrainTileLiteralDef } from "@wendoo-lang/core/brain/tiles";
+import { CoreOpId, CoreTypeIds, mkActuatorTileId, mkSensorTileId } from "@wendoo-lang/core/runtime";
 import { UserTileProject } from "../compiler/compile.js";
 import { CompileDiagCode, DescriptorDiagCode } from "../compiler/diag-codes.js";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
@@ -47,7 +47,7 @@ function compileOne(
 }
 
 const INLINE_NUMBER_SENSOR = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   id: "snstick",
@@ -60,7 +60,7 @@ export default Sensor({
 `;
 
 const PLAIN_NUMBER_SENSOR = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   id: "snplain",
@@ -115,7 +115,7 @@ describe("SensorConfig `inline`", () => {
 
   test("inline: true together with a non-empty args emits InlineSensorTakesNoArgs", () => {
     const source = `
-import { Sensor, param, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "bad-inline",
@@ -139,7 +139,7 @@ export default Sensor({
 
   test("a non-boolean-literal inline value emits InlineMustBeBoolean", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 const dynamic: boolean = 1 > 0;
 export default Sensor({
   name: "dyn-inline",
@@ -163,7 +163,7 @@ export default Sensor({
 describe("SensorConfig `presenceGated`", () => {
   test("presenceGated: true is extracted and sets the tile def's PresenceGated capability bit", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   id: "sngate",
@@ -207,7 +207,7 @@ export default Sensor({
 
   test("presenceGated: false is not presence-gated", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   id: "snoff",
@@ -235,7 +235,7 @@ export default Sensor({
 
   test("a non-boolean-literal presenceGated value emits PresenceGatedMustBeBoolean", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 const dynamic: boolean = 1 > 0;
 export default Sensor({
   name: "dyn-gate",
@@ -309,7 +309,7 @@ describe("inline sensor picker offering", () => {
     __test__appendTile(when, services.edit.tiles.get(mkOperatorTileId(CoreOpId.Add))!);
     __test__appendTile(when, inlineTile);
 
-    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule()] });
     environment.hydrateTileMetadata({ revision: bundle.revision, tiles: bundle.tiles });
     environment.replaceActionBundle(bundle);
 
@@ -321,7 +321,7 @@ describe("inline sensor picker offering", () => {
 describe("removed capabilities surface", () => {
   test("capabilities: [PresenceGated] no longer type-checks", () => {
     const source = `
-import { Sensor, PresenceGated, type Context } from "mindcraft";
+import { Sensor, PresenceGated, type Context } from "wendoo";
 
 export default Sensor({
   name: "old-surface",
@@ -339,7 +339,7 @@ export default Sensor({
 describe("actuators are unaffected by the sensor-only fields", () => {
   test("inline on an actuator is a TS error", () => {
     const source = `
-import { Actuator, type Context } from "mindcraft";
+import { Actuator, type Context } from "wendoo";
 
 export default Actuator({
   name: "act-inline",
@@ -353,7 +353,7 @@ export default Actuator({
 
   test("presenceGated on an actuator is a TS error", () => {
     const source = `
-import { Actuator, type Context } from "mindcraft";
+import { Actuator, type Context } from "wendoo";
 
 export default Actuator({
   name: "act-gate",
@@ -369,7 +369,7 @@ export default Actuator({
 describe("SensorConfig / ActuatorConfig `consumesWhenResult`", () => {
   test("consumesWhenResult on a sensor forwards the resolved type to the tile def", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   id: "snwhen",
@@ -398,7 +398,7 @@ export default Sensor({
 
   test("consumesWhenResult on an actuator forwards the resolved type to the tile def", () => {
     const source = `
-import { Actuator, type Context } from "mindcraft";
+import { Actuator, type Context } from "wendoo";
 
 export default Actuator({
   id: "acwhen",
@@ -426,7 +426,7 @@ export default Actuator({
 
   test("consumesWhenResult named by a TypeRef token resolves and forwards", () => {
     const source = `
-import { NumberType, Sensor, type Context } from "mindcraft";
+import { NumberType, Sensor, type Context } from "wendoo";
 
 export default Sensor({
   id: "snwhenref",
@@ -467,7 +467,7 @@ export default Sensor({
 
   test("a sensor whose consumesWhenResult resolves to the top type is rejected", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   id: "snwhenany",
@@ -491,7 +491,7 @@ export default Sensor({
 
   test("an actuator whose consumesWhenResult resolves to the top type is rejected", () => {
     const source = `
-import { Actuator, type Context } from "mindcraft";
+import { Actuator, type Context } from "wendoo";
 
 export default Actuator({
   id: "acwhenany",
@@ -514,7 +514,7 @@ export default Actuator({
 
   test("a concrete consumesWhenResult TypeRef token resolves and is not mistaken for the top type", () => {
     const source = `
-import { BufferType, Sensor, type Context } from "mindcraft";
+import { BufferType, Sensor, type Context } from "wendoo";
 
 export default Sensor({
   id: "snwhenbuf",
@@ -538,7 +538,7 @@ export default Sensor({
 
   test("a concrete required type with no producer in scope still compiles clean", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   id: "snwhennp",

@@ -3,8 +3,8 @@
 // and Vite-globbed content to the shared buildDocsRegistry() factory.
 // ---------------------------------------------------------------------------
 
-import type { DocsTileEntry } from "@mindcraft-lang/docs";
-import { buildDocsRegistry } from "@mindcraft-lang/docs";
+import type { DocsTileEntry } from "@wendoo-lang/docs";
+import { buildDocsRegistry } from "@wendoo-lang/docs";
 import { appPatternDocs, appTileDocs } from "./manifest";
 
 // -- App English content via Vite eager glob --------------------------------

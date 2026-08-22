@@ -3,7 +3,7 @@ import type {
   FilesystemChangeMessage,
   FilesystemSyncPayload,
   WsMessage,
-} from "@mindcraft-lang/bridge-protocol";
+} from "@wendoo-lang/bridge-protocol";
 import { ErrorCode, ProtocolError } from "../error-codes.js";
 import type { FileSystemSnapshot } from "../filesystem.js";
 import { ProjectFiles, type ProjectFilesOptions } from "./files.js";

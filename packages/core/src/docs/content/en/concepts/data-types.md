@@ -1,6 +1,6 @@
 # Data Types
 
-The Mindcraft language supports several data types:
+The Wendoo language supports several data types:
 
 ## Number
 
@@ -18,5 +18,5 @@ Text values used for display and identification.
 
 ## Other Types
 
-These are the basic data types common to all Mindcraft-enabled experiences. Applications
+These are the basic data types common to all Wendoo-enabled experiences. Applications
 may define their own data types in addition.

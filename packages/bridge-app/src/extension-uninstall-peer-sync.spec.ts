@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import { createInMemoryProjectFileSystem } from "@mindcraft-lang/app-host";
-import type { FileSystemSnapshotEntry } from "@mindcraft-lang/bridge-client";
-import type { WsMessage } from "@mindcraft-lang/bridge-protocol";
-import { coreModule, createMindcraftEnvironment } from "@mindcraft-lang/core";
+import { createInMemoryProjectFileSystem } from "@wendoo-lang/app-host";
+import type { FileSystemSnapshotEntry } from "@wendoo-lang/bridge-client";
+import type { WsMessage } from "@wendoo-lang/bridge-protocol";
+import { coreModule, createWendooEnvironment } from "@wendoo-lang/core";
 import {
   buildAmbientDeclarations,
   createWorkspaceCompiler,
@@ -11,7 +11,7 @@ import {
   declarationMount,
   isCompilerControlledPath,
   type Mount,
-} from "@mindcraft-lang/ts-compiler";
+} from "@wendoo-lang/ts-compiler";
 import { createAppBridge } from "./app-bridge.js";
 import { augmentProjectFileSystem } from "./compilation.js";
 
@@ -46,7 +46,7 @@ class MockWebSocket {
   }
 }
 
-const TELEPORT_COORDINATE = "mindcraft-lang/lib-ecosim-teleport";
+const TELEPORT_COORDINATE = "wendoo-lang/lib-ecosim-teleport";
 const TELEPORT_INDEX_PATH = `.libraries/${TELEPORT_COORDINATE}/index.ts`;
 
 const TELEPORT_MOUNT: DependencyMount = {
@@ -86,9 +86,9 @@ describe("extension uninstall peer sync", () => {
   });
 
   it("prunes the uninstalled extension's .libraries tree from the peer sync view", () => {
-    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule()] });
     const ambient = buildAmbientDeclarations(environment.brainServices.runtime.types);
-    const mounts: Mount[] = [declarationMount([{ path: "mindcraft.core.d.ts", content: ambient }])];
+    const mounts: Mount[] = [declarationMount([{ path: "wendoo.core.d.ts", content: ambient }])];
     const compiler = createWorkspaceCompiler({
       projectNamespace: "teleport-project",
       mounts,
@@ -99,7 +99,7 @@ describe("extension uninstall peer sync", () => {
     const filesystem = createInMemoryProjectFileSystem({
       shouldExclude: (path) => isCompilerControlledPath(path, mounts),
     });
-    filesystem.applyLocalChange({ action: "write", path: "mindcraft.json", content: "{}", newEtag: "e0" });
+    filesystem.applyLocalChange({ action: "write", path: "wendoo.json", content: "{}", newEtag: "e0" });
     filesystem.applyLocalChange({ action: "write", path: "src/main.ts", content: "export {};", newEtag: "e1" });
     compiler.replaceWorkspace(
       new Map([["src/main.ts", { kind: "file", content: "export {};", etag: "e1", isReadonly: false }]])

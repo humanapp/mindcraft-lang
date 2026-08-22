@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, runtime } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
+import { List, runtime } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { ExecutionContext } from "@wendoo-lang/core/runtime";
 import {
   type BooleanValue,
   ContextTypeIds,
@@ -31,8 +31,8 @@ import {
   type Value,
   ValueDict,
   VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";
@@ -106,7 +106,7 @@ describe("function references and CALL_INDIRECT", () => {
 
   test("passing a named function as argument and calling via indirect call", () => {
     const source = `
-import { Sensor, optional, param, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "wendoo";
 
 function double(n: number): number {
   return n * 2;
@@ -150,7 +150,7 @@ export default Sensor({
 
   test("function reference stored in local variable and called indirectly", () => {
     const source = `
-import { Sensor, optional, param, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "wendoo";
 
 function triple(n: number): number {
   return n * 3;
@@ -199,7 +199,7 @@ describe("closures", () => {
 
   test("simple closure: makeAdder pattern", () => {
     const source = `
-import { Sensor, optional, param, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "wendoo";
 
 function makeAdder(n: number): (x: number) => number {
   return (x: number): number => x + n;
@@ -240,7 +240,7 @@ export default Sensor({
 
   test("closure over multiple variables", () => {
     const source = `
-import { Sensor, optional, param, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "wendoo";
 
 function makeLinear(a: number, b: number): (x: number) => number {
   return (x: number): number => a * x + b;
@@ -281,7 +281,7 @@ export default Sensor({
 
   test("arrow function with no captures compiles as plain function ref", () => {
     const source = `
-import { Sensor, optional, param, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "wendoo";
 
 function apply(fn: (n: number) => number, x: number): number {
   return fn(x);
@@ -321,7 +321,7 @@ export default Sensor({
 
   test("closure captures local variable from enclosing scope", () => {
     const source = `
-import { Sensor, optional, param, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "test-capture-local",
@@ -359,7 +359,7 @@ export default Sensor({
 
   test("concise arrow function body (expression, not block)", () => {
     const source = `
-import { Sensor, optional, param, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "wendoo";
 
 function apply(fn: (n: number) => number, x: number): number {
   return fn(x);
@@ -406,7 +406,7 @@ describe("function type signatures", () => {
 
   test("callback parameter gets typed FunctionTypeDef TypeId", () => {
     const source = `
-import { Sensor, optional, param, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "wendoo";
 
 function apply(fn: (n: number) => number, x: number): number {
   return fn(x);
@@ -463,7 +463,7 @@ export default Sensor({
 
   test("closure with typed callback compiles and runs correctly", () => {
     const source = `
-import { Sensor, optional, param, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "wendoo";
 
 function makeTransformer(factor: number): (x: number) => number {
   return (x: number): number => x * factor;

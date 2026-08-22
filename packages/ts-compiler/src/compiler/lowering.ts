@@ -1,5 +1,5 @@
-import { assertUnreachable, List } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
+import { assertUnreachable, List } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
 import {
   ContextTypeIds,
   CoreOpId,
@@ -18,7 +18,7 @@ import {
   type TypeId,
   type UnionTypeDef,
   type Value,
-} from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
 import ts from "typescript";
 import { type ArgSlot, collectArgSlots } from "./arg-spec-utils.js";
 import { CompileDiagCode, LoweringDiagCode } from "./diag-codes.js";
@@ -28,7 +28,7 @@ import { type LocalMetadata, type ScopeMetadata, ScopeStack } from "./scope.js";
 import { scopedOutputName } from "./symbol-keys.js";
 import {
   ambientTypeTokenName,
-  isMindcraftModuleDeclaration,
+  isWendooModuleDeclaration,
   resolveTypeNameExpression,
   shorthandValueExpression,
   structTypeCallExpression,
@@ -11407,7 +11407,7 @@ function tryResolveEnumValue(expr: ts.StringLiteral, ctx: LowerContext): Value |
 /**
  * Resolve a TS type that is the instance type of a user `StructType({...})`
  * declaration to the declared struct's registered type id. An instance type
- * surfaces as a `StructValueOf<F>` instantiation of the ambient `mindcraft`
+ * surfaces as a `StructValueOf<F>` instantiation of the ambient `wendoo`
  * alias; `F`'s declaration site sits inside the declaring
  * `const X = StructType({...})`, which names the registered identity.
  * Returns undefined when the type is not such an instance type or the
@@ -11422,7 +11422,7 @@ function resolveDeclaredStructInstanceTypeId(
   if (!alias) return undefined;
   if (alias.getName() !== "StructValueOf") return undefined;
   const aliasDecl = alias.getDeclarations()?.[0];
-  if (!aliasDecl || !isMindcraftModuleDeclaration(aliasDecl)) return undefined;
+  if (!aliasDecl || !isWendooModuleDeclaration(aliasDecl)) return undefined;
   const argType =
     type.aliasTypeArguments && type.aliasTypeArguments.length > 0 ? type.aliasTypeArguments[0] : undefined;
   const argDecl = argType?.getSymbol()?.getDeclarations()?.[0];

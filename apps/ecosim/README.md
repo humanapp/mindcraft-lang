@@ -1,10 +1,10 @@
-[![Deploy mindcraft-sim](https://github.com/humanapp/mindcraft-lang/actions/workflows/deploy-sim.yml/badge.svg)](https://github.com/humanapp/mindcraft-lang/actions/workflows/deploy-sim.yml)
+[![Deploy wendoo-sim](https://github.com/humanapp/wendoo-lang/actions/workflows/deploy-sim.yml/badge.svg)](https://github.com/humanapp/wendoo-lang/actions/workflows/deploy-sim.yml)
 
 # Ecosystem Sim
 
-A demo application built with the [Mindcraft language](../../README.md). Carnivores, herbivores, and plants survive in a 2D physics world -- each driven by a brain you can program.
+A demo application built with the [Wendoo language](../../README.md). Carnivores, herbivores, and plants survive in a 2D physics world -- each driven by a brain you can program.
 
-**Live demo:** <https://sim.mindcraft-lang.org> | **Language docs:** <https://sim.mindcraft-lang.org/docs>
+**Live demo:** <https://sim.wendoo-lang.org> | **Language docs:** <https://sim.wendoo-lang.org/docs>
 
 <div align="center">
   <img src="./assets/2026-03-07_15-11-12.png" alt="Sim Screenshot 1" width="80%" />
@@ -14,7 +14,7 @@ A demo application built with the [Mindcraft language](../../README.md). Carnivo
   <img src="./assets/2026-03-11_15-25-31.png" alt="Sim Screenshot 2" width="80%" />
 </div>
 
-This app also serves as a reference integration for developers: it shows how to embed `@mindcraft-lang/core` and `@mindcraft-lang/ui` into a React application, and how to write custom sensors and actuators.
+This app also serves as a reference integration for developers: it shows how to embed `@wendoo-lang/core` and `@wendoo-lang/ui` into a React application, and how to write custom sensors and actuators.
 
 ## Tech Stack
 
@@ -23,9 +23,9 @@ This app also serves as a reference integration for developers: it shows how to 
 - **Phaser 3** -- game canvas with Matter.js physics
 - **Tailwind CSS v4** -- styling
 - **miniplex** -- ECS for actor management
-- **@mindcraft-lang/core** -- Mindcraft language runtime (local dependency)
-- **@mindcraft-lang/ui** -- shared React UI components and brain editor (local dependency)
-- **@mindcraft-lang/docs** -- documentation content and assets (local dependency)
+- **@wendoo-lang/core** -- Wendoo language runtime (local dependency)
+- **@wendoo-lang/ui** -- shared React UI components and brain editor (local dependency)
+- **@wendoo-lang/docs** -- documentation content and assets (local dependency)
 
 ## Getting Started
 
@@ -64,7 +64,7 @@ src/
   App.tsx               Root layout: Phaser canvas + sidebar + brain editor
   PhaserGame.tsx        React <-> Phaser bridge
   bootstrap.ts          Startup: logger, services, brain registration
-  brain-editor-config.tsx  BrainEditorConfig for @mindcraft-lang/ui provider
+  brain-editor-config.tsx  BrainEditorConfig for @wendoo-lang/ui provider
   globals.css           Tailwind, fonts, theme tokens
 
   brain/                Simulation engine + brain language integration
@@ -98,18 +98,18 @@ src/
 
 ## Brain Editor Integration
 
-The brain editor UI lives in `@mindcraft-lang/ui`. The sim provides app-specific configuration via `BrainEditorProvider`:
+The brain editor UI lives in `@wendoo-lang/ui`. The sim provides app-specific configuration via `BrainEditorProvider`:
 
 - `brain-editor-config.tsx` builds a `BrainEditorConfig` with data type icons, tile visuals, a Vector2 custom literal type, and an archetype-scoped `getDefaultBrain` factory
 - `App.tsx` wraps the `BrainEditorDialog` in a `<BrainEditorProvider>` with this config
 
-UI primitives (Button, Slider, etc.) are also imported from `@mindcraft-lang/ui` rather than local shadcn/ui copies.
+UI primitives (Button, Slider, etc.) are also imported from `@wendoo-lang/ui` rather than local shadcn/ui copies.
 
 ## Ambient Type Declarations
 
-The sim contributes a checked-in ambient declaration file at `lib/mindcraft.ecosim.d.ts`.
-It augments the core `"mindcraft"` module with the sim-specific user-code surface:
-`ActorRef`, `Vector2`, sim entries in `MindcraftTypeMap`, `Context.self`, and sim
+The sim contributes a checked-in ambient declaration file at `lib/wendoo.ecosim.d.ts`.
+It augments the core `"wendoo"` module with the sim-specific user-code surface:
+`ActorRef`, `Vector2`, sim entries in `WendooTypeMap`, `Context.self`, and sim
 methods on `BrainContext` and `EngineContext`.
 
 Generate it from `apps/ecosim/`:
@@ -119,13 +119,13 @@ npm run generate:ambient
 ```
 
 This command first runs core's ambient generator, then writes the sim augmentation. The
-core file remains owned by `@mindcraft-lang/core`; the sim reads it from the package
-export and pairs it with `lib/mindcraft.ecosim.d.ts` in `src/services/sim-ambient-files.ts`.
+core file remains owned by `@wendoo-lang/core`; the sim reads it from the package
+export and pairs it with `lib/wendoo.ecosim.d.ts` in `src/services/sim-ambient-files.ts`.
 The workspace compiler and VS Code bridge expose both files as readonly compiler-owned
-root files named `mindcraft.core.d.ts` and `mindcraft.ecosim.d.ts`.
+root files named `wendoo.core.d.ts` and `wendoo.ecosim.d.ts`.
 
 Regenerate the sim ambient file whenever the sim changes anything visible to user-authored
-Mindcraft TypeScript: registered sim types, context fields, sensors, actuators, host
+Wendoo TypeScript: registered sim types, context fields, sensors, actuators, host
 method signatures, or argument grammar metadata that affects callable types. The generated
 files should be checked in. The drift test in `src/services/sim-ambient-files.spec.ts`
 regenerates core and sim declarations and fails if the checked-in files differ.

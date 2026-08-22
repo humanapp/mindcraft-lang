@@ -1,6 +1,6 @@
-import type { ProjectCollection, ProjectCollectionState, ProjectManifest } from "@mindcraft-lang/app-host";
-import { AppHostError } from "@mindcraft-lang/app-host";
-import type { EditedBrainWorkspaces } from "@mindcraft-lang/assistant-panel";
+import type { ProjectCollection, ProjectCollectionState, ProjectManifest } from "@wendoo-lang/app-host";
+import { AppHostError } from "@wendoo-lang/app-host";
+import type { EditedBrainWorkspaces } from "@wendoo-lang/assistant-panel";
 import {
   AssistantProvider,
   assistantSessionUrl,
@@ -9,10 +9,10 @@ import {
   createPersonActivity,
   createWebSocketConnect,
   useAssistant,
-} from "@mindcraft-lang/assistant-panel";
-import type { BrainDef } from "@mindcraft-lang/core/app";
-import type { ITileCatalog } from "@mindcraft-lang/core/brain";
-import { DocsSidebar, DocsSidebarProvider, useDocsSidebar } from "@mindcraft-lang/docs";
+} from "@wendoo-lang/assistant-panel";
+import type { BrainDef } from "@wendoo-lang/core/app";
+import type { ITileCatalog } from "@wendoo-lang/core/brain";
+import { DocsSidebar, DocsSidebarProvider, useDocsSidebar } from "@wendoo-lang/docs";
 import {
   BrainEditorDialog,
   type BrainEditorDialogProps,
@@ -21,7 +21,7 @@ import {
   ProjectPickerDialog,
   type ProjectPickerItem,
   Toaster,
-} from "@mindcraft-lang/ui";
+} from "@wendoo-lang/ui";
 import { Lock, Menu, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
@@ -620,7 +620,7 @@ function App() {
             .replace(/[^a-zA-Z0-9]+/g, "-")
             .replace(/^-+|-+$/g, "")
             .toLowerCase() || "project";
-        downloadTextFile(json, `${safeName}.mindcraft`);
+        downloadTextFile(json, `${safeName}.wendoo`);
       } catch {
         toast.error("Failed to export project");
       }
@@ -628,7 +628,7 @@ function App() {
   }, [store]);
 
   const handleImportProject = useCallback(() => {
-    pickFile(".mindcraft,.json").then(
+    pickFile(".wendoo,.json").then(
       (file) => {
         if (!file) return;
         store.importProject(file).then(
@@ -816,7 +816,7 @@ function App() {
         resolveTileVisual={docsResolveTileVisual}
       >
         <div className="h-screen flex bg-background overflow-hidden">
-          <h1 className="sr-only">Mindcraft Simulation</h1>
+          <h1 className="sr-only">Wendoo Simulation</h1>
           {/* Game Canvas -- flex-1 lets the Phaser Scale.FIT fill available space */}
           <main className="flex-1 min-w-0 relative bg-canvas" aria-label="Game canvas">
             {activeWorkspaceLocked ? (

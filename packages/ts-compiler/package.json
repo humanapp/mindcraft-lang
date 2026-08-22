@@ -1,21 +1,21 @@
 {
-  "name": "@mindcraft-lang/ts-compiler",
+  "name": "@wendoo-lang/ts-compiler",
   "version": "0.2.2",
-  "description": "TypeScript-to-Mindcraft bytecode compiler for sensors and actuators implemented in TypeScript",
+  "description": "TypeScript-to-Wendoo bytecode compiler for sensors and actuators implemented in TypeScript",
   "license": "MIT",
   "type": "module",
   "author": "humanapp",
   "repository": {
     "type": "git",
-    "url": "https://github.com/humanapp/mindcraft-lang.git",
+    "url": "https://github.com/humanapp/wendoo-lang.git",
     "directory": "packages/ts-compiler"
   },
   "bugs": {
-    "url": "https://github.com/humanapp/mindcraft-lang/issues"
+    "url": "https://github.com/humanapp/wendoo-lang/issues"
   },
-  "homepage": "https://github.com/humanapp/mindcraft-lang/tree/main/packages/ts-compiler#readme",
+  "homepage": "https://github.com/humanapp/wendoo-lang/tree/main/packages/ts-compiler#readme",
   "keywords": [
-    "mindcraft",
+    "wendoo",
     "visual-programming",
     "tile-based",
     "typescript",
@@ -52,7 +52,7 @@
       "import": "./dist/testing/index.js"
     }
   },
-  "mindcraftBuild": {
+  "wendooBuild": {
     "script": "build:prod",
     "outputs": [
       "dist"
@@ -77,8 +77,8 @@
     "release:major": "node ../../scripts/release.js major"
   },
   "dependencies": {
-    "@mindcraft-lang/core": "file:../core",
-    "@mindcraft-lang/service-api": "file:../service-api",
+    "@wendoo-lang/core": "file:../core",
+    "@wendoo-lang/service-api": "file:../service-api",
     "typescript": "~5.9.3"
   },
   "devDependencies": {

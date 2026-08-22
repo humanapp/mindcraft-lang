@@ -1,7 +1,7 @@
-import type { MindcraftEnvironment, MindcraftModule } from "@mindcraft-lang/core/app";
-import { coreModule, createMindcraftEnvironment, Rng } from "@mindcraft-lang/core/app";
-import type { NumberPrecision } from "@mindcraft-lang/core/runtime";
-import { createProfileNumerics } from "@mindcraft-lang/core/runtime";
+import type { WendooEnvironment, WendooModule } from "@wendoo-lang/core/app";
+import { coreModule, createWendooEnvironment, Rng } from "@wendoo-lang/core/app";
+import type { NumberPrecision } from "@wendoo-lang/core/runtime";
+import { createProfileNumerics } from "@wendoo-lang/core/runtime";
 
 /**
  * A seeded pseudo-random generator producing values in `[0, 1)`. The same seed
@@ -16,7 +16,7 @@ export function createSeededRng(seed: number): () => number {
 /** How a rehearsal environment is built. */
 export interface RehearsalEnvironmentOptions {
   /** Modules to install beyond core's own. */
-  readonly modules: readonly MindcraftModule[];
+  readonly modules: readonly WendooModule[];
   /** The run's seeded random stream, shared with every brain in the environment. */
   readonly rng: () => number;
   /**
@@ -31,8 +31,8 @@ export interface RehearsalEnvironmentOptions {
  * target's, computing numbers at `options.precision` and drawing randomness
  * from `options.rng`.
  */
-export function createRehearsalEnvironment(options: RehearsalEnvironmentOptions): MindcraftEnvironment {
-  return createMindcraftEnvironment({
+export function createRehearsalEnvironment(options: RehearsalEnvironmentOptions): WendooEnvironment {
+  return createWendooEnvironment({
     modules: [coreModule(), ...options.modules],
     rng: { next: options.rng },
     numerics: createProfileNumerics(options.precision ?? "f64"),

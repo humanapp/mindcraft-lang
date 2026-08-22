@@ -1,21 +1,21 @@
 {
-  "name": "@mindcraft-lang/bridge-protocol",
+  "name": "@wendoo-lang/bridge-protocol",
   "version": "0.2.9",
-  "description": "WebSocket protocol types and schemas for the Mindcraft VS Code Bridge",
+  "description": "WebSocket protocol types and schemas for the Wendoo VS Code Bridge",
   "license": "MIT",
   "type": "module",
   "author": "humanapp",
   "repository": {
     "type": "git",
-    "url": "https://github.com/humanapp/mindcraft-lang.git",
+    "url": "https://github.com/humanapp/wendoo-lang.git",
     "directory": "packages/bridge-protocol"
   },
   "bugs": {
-    "url": "https://github.com/humanapp/mindcraft-lang/issues"
+    "url": "https://github.com/humanapp/wendoo-lang/issues"
   },
-  "homepage": "https://github.com/humanapp/mindcraft-lang/tree/main/packages/bridge-protocol#readme",
+  "homepage": "https://github.com/humanapp/wendoo-lang/tree/main/packages/bridge-protocol#readme",
   "keywords": [
-    "mindcraft",
+    "wendoo",
     "visual-programming",
     "tile-based",
     "typescript",
@@ -48,7 +48,7 @@
       "import": "./dist/index.js"
     }
   },
-  "mindcraftBuild": {
+  "wendooBuild": {
     "script": "build:prod",
     "outputs": [
       "dist"

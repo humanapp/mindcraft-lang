@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { isSupportedVersionRange, satisfiesRange } from "@mindcraft-lang/app-host";
+import { isSupportedVersionRange, satisfiesRange } from "@wendoo-lang/app-host";
 
 describe("satisfiesRange", () => {
   it("evaluates the supported comparator dialect", () => {

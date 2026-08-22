@@ -6,12 +6,12 @@
  * `npm run release-trg <patch|minor|major>`.
  *
  * The three steps mirror the manual release, each run from the app directory:
- *   1. mindcraft version <bump> --dir target-package  (bump the manifest)
+ *   1. wendoo version <bump> --dir target-package  (bump the manifest)
  *   2. npm run package                                 (rebuild dist + re-bake)
- *   3. mindcraft publish --dir target-package          (ship it verbatim)
+ *   3. wendoo publish --dir target-package          (ship it verbatim)
  * A nonzero exit from any step aborts the rest and becomes this script's exit
- * code. The `mindcraft` binary resolves from the app's node_modules/.bin,
- * provided by the mindcraft-cli file: devDependency.
+ * code. The `wendoo` binary resolves from the app's node_modules/.bin,
+ * provided by the wendoo-cli file: devDependency.
  */
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
@@ -34,7 +34,7 @@ if (!VERSION_BUMPS.includes(bump)) {
 
 const appDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 const targetPackageDir = "target-package";
-const mindcraftBin = join(appDir, "node_modules", ".bin", "mindcraft");
+const wendooBin = join(appDir, "node_modules", ".bin", "wendoo");
 
 /**
  * Runs one release step from the app directory with inherited stdio. Exits this
@@ -55,8 +55,8 @@ function runStep(command, args) {
   }
 }
 
-runStep(mindcraftBin, ["version", bump, "--dir", targetPackageDir]);
+runStep(wendooBin, ["version", bump, "--dir", targetPackageDir]);
 runStep("npm", ["run", "package"]);
-runStep(mindcraftBin, ["publish", "--dir", targetPackageDir]);
+runStep(wendooBin, ["publish", "--dir", targetPackageDir]);
 
 console.log(`release: ${bump} release complete.`);

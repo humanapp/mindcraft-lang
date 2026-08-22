@@ -11,7 +11,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { List, type ReadonlyList } from "@mindcraft-lang/core";
+import { List, type ReadonlyList } from "@wendoo-lang/core";
 
 describe("List.get -- out of range faults", () => {
   test("get(-1) faults, naming the index and the size", () => {

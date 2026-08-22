@@ -1,4 +1,4 @@
-name: Publish @mindcraft-lang/assistant-bridge
+name: Publish @wendoo-lang/assistant-bridge
 
 on:
   push:

@@ -5,20 +5,20 @@ import type {
   ExtensionFetchResult,
   ExtensionVersionListResult,
   FileContent,
-} from "@mindcraft-lang/app-host";
+} from "@wendoo-lang/app-host";
 import {
   applyCatalogMove,
   fileContentText,
   highestListedRelease,
-  MINDCRAFT_JSON_PATH,
   parseCatalogMoveReference,
   parseExtensionReference,
   parseProjectContentManifest,
-} from "@mindcraft-lang/app-host";
-import type { IBrainDef } from "@mindcraft-lang/core/app";
-import type { IBrainRuleDef } from "@mindcraft-lang/core/brain";
-import { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import type { WorkspaceDiagnosticEntry } from "@mindcraft-lang/ts-compiler";
+  WENDOO_JSON_PATH,
+} from "@wendoo-lang/app-host";
+import type { IBrainDef } from "@wendoo-lang/core/app";
+import type { IBrainRuleDef } from "@wendoo-lang/core/brain";
+import { BrainRuleDef } from "@wendoo-lang/core/brain/model";
+import type { WorkspaceDiagnosticEntry } from "@wendoo-lang/ts-compiler";
 import type { EmbeddedExtension, ExtensionResolutionWarning } from "./embedded-extensions.js";
 import { CatalogMoveWarningCode, createCatalogMoveVersionLookup } from "./embedded-extensions.js";
 import type { InstalledExtensionSnapshot, InstalledExtensionSnapshots } from "./fetched-extension-snapshots.js";
@@ -258,7 +258,7 @@ function ownExtensions(files: ReadonlyMap<string, FileContent>): Readonly<Record
 
 /**
  * Report whether a stored snapshot record holds usable content: its decoded
- * files carry a parseable `mindcraft.json`. Every fetched snapshot is written
+ * files carry a parseable `wendoo.json`. Every fetched snapshot is written
  * with one, so a record without it is corrupt and its content must be treated
  * as missing.
  */
@@ -268,9 +268,9 @@ function isUsableSnapshotRecord(record: InstalledExtensionSnapshot): boolean {
   return parseProjectContentManifest(manifestContent).ok;
 }
 
-/** The text of an origin's own `mindcraft.json`, at either path spelling. */
+/** The text of an origin's own `wendoo.json`, at either path spelling. */
 function manifestTextOf(files: ReadonlyMap<string, FileContent>): string | undefined {
-  const entry = files.get(`/${MINDCRAFT_JSON_PATH}`) ?? files.get(MINDCRAFT_JSON_PATH);
+  const entry = files.get(`/${WENDOO_JSON_PATH}`) ?? files.get(WENDOO_JSON_PATH);
   return entry === undefined ? undefined : fileContentText(entry);
 }
 
@@ -342,7 +342,7 @@ export function floatingPinsFromSnapshots(stored: InstalledExtensionSnapshots): 
  * rewrite changes. Root references are walked as written.
  *
  * A stored record is reused only when it is usable (its files carry a
- * parseable `mindcraft.json`); an unusable record counts as missing content in
+ * parseable `wendoo.json`); an unusable record counts as missing content in
  * both modes.
  *
  * In fetch mode (a `fetchSnapshot` callback present), content missing for a

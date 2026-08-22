@@ -1,6 +1,6 @@
-import { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
 import type { ProjectContentManifest } from "./project-content-manifest.js";
 import { parseExtensionReference, parseProjectContentManifest } from "./project-content-manifest.js";
+import { WENDOO_JSON_PATH } from "./wendoo-json.js";
 
 /** One file of a fetched extension snapshot, at its extension-relative path. */
 export interface FetchedExtensionFile {
@@ -152,7 +152,7 @@ export interface FetchedExtensionSnapshot {
   readonly specifier: string;
   /** The snapshot's parsed content manifest. */
   readonly manifest: ProjectContentManifest;
-  /** Every file of the snapshot: `mindcraft.json` first, then each manifest-listed file. */
+  /** Every file of the snapshot: `wendoo.json` first, then each manifest-listed file. */
   readonly files: readonly FetchedExtensionFile[];
 }
 
@@ -215,7 +215,7 @@ function transportFailure(
 
 /**
  * Fetch a complete extension snapshot for a `gh:` reference: resolve a
- * `#branch` reference to a commit SHA, fetch the snapshot's `mindcraft.json`,
+ * `#branch` reference to a commit SHA, fetch the snapshot's `wendoo.json`,
  * then fetch exactly the files its `files` list names. Content is
  * byte-faithful. A failure at any step yields an {@link ExtensionFetchError}
  * and no partial snapshot.
@@ -255,13 +255,13 @@ export async function fetchExtensionSnapshot(
     specifier = parsed.routing.pin;
   }
 
-  const manifestResult = await transport.fetchFile(owner, repo, specifier, MINDCRAFT_JSON_PATH);
+  const manifestResult = await transport.fetchFile(owner, repo, specifier, WENDOO_JSON_PATH);
   if (!manifestResult.ok) {
     return transportFailure(
       manifestResult,
       reference,
       ExtensionFetchErrorCode.MANIFEST_MISSING,
-      `${coordinate} at "${specifier}" has no ${MINDCRAFT_JSON_PATH}.`
+      `${coordinate} at "${specifier}" has no ${WENDOO_JSON_PATH}.`
     );
   }
 
@@ -272,15 +272,15 @@ export async function fetchExtensionSnapshot(
     return failure(
       ExtensionFetchErrorCode.MANIFEST_UNPARSEABLE,
       reference,
-      `${coordinate} at "${specifier}" carries an invalid ${MINDCRAFT_JSON_PATH}. ${details}`
+      `${coordinate} at "${specifier}" carries an invalid ${WENDOO_JSON_PATH}. ${details}`
     );
   }
 
-  const files: FetchedExtensionFile[] = [{ path: MINDCRAFT_JSON_PATH, content: manifestResult.content }];
+  const files: FetchedExtensionFile[] = [{ path: WENDOO_JSON_PATH, content: manifestResult.content }];
   for (const path of parsedManifest.manifest.files ?? []) {
     // The manifest itself is never listed by `files`; a listing that names it
     // anyway must not duplicate the entry already fetched above.
-    if (path === MINDCRAFT_JSON_PATH) continue;
+    if (path === WENDOO_JSON_PATH) continue;
     const fileResult = await transport.fetchFile(owner, repo, specifier, path);
     if (!fileResult.ok) {
       return transportFailure(

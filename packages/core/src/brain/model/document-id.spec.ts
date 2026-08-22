@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { BrainJson, BrainPageDef, RuleJson } from "@mindcraft-lang/core/brain/model";
-import { BrainDef } from "@mindcraft-lang/core/brain/model";
-import type { IRngServices } from "@mindcraft-lang/core/runtime";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { BrainJson, BrainPageDef, RuleJson } from "@wendoo-lang/core/brain/model";
+import { BrainDef } from "@wendoo-lang/core/brain/model";
+import type { IRngServices } from "@wendoo-lang/core/runtime";
 
 /** A linear-congruential [0,1) stream, so a run started from `seed` repeats exactly. */
 function seededRng(seed: number): IRngServices {

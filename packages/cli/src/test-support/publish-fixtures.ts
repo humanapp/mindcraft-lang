@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-/** Absolute path of the built `mindcraft` bin under test. */
+/** Absolute path of the built `wendoo` bin under test. */
 export const CLI_BIN = fileURLToPath(new URL("../../dist/main.js", import.meta.url));
 
 /**
@@ -16,9 +16,9 @@ export const GIT_TEST_ENV: NodeJS.ProcessEnv = {
   ...process.env,
   GIT_CONFIG_GLOBAL: "/dev/null",
   GIT_CONFIG_SYSTEM: "/dev/null",
-  GIT_AUTHOR_NAME: "Mindcraft Test",
+  GIT_AUTHOR_NAME: "Wendoo Test",
   GIT_AUTHOR_EMAIL: "test@example.invalid",
-  GIT_COMMITTER_NAME: "Mindcraft Test",
+  GIT_COMMITTER_NAME: "Wendoo Test",
   GIT_COMMITTER_EMAIL: "test@example.invalid",
 };
 
@@ -45,13 +45,13 @@ export function runGit(cwd: string, ...args: string[]): Promise<string> {
   });
 }
 
-/** Run the built `mindcraft` bin with `args` in `cwd` and capture its outcome. */
+/** Run the built `wendoo` bin with `args` in `cwd` and capture its outcome. */
 export function runCliBin(cwd: string, ...args: string[]): Promise<CliRunResult> {
   return runCliBinWithEnv(cwd, {}, ...args);
 }
 
 /**
- * Run the built `mindcraft` bin with `args` in `cwd`, layering `env` entries
+ * Run the built `wendoo` bin with `args` in `cwd`, layering `env` entries
  * over the test git environment, and capture its outcome.
  */
 export function runCliBinWithEnv(cwd: string, env: NodeJS.ProcessEnv, ...args: string[]): Promise<CliRunResult> {
@@ -87,7 +87,7 @@ export function githubRewriteEnv(root: string): NodeJS.ProcessEnv {
 
 /** Create a fresh scratch directory under the OS temp dir. */
 export function makeScratchDir(): Promise<string> {
-  return mkdtemp(path.join(tmpdir(), "mindcraft-cli-test-"));
+  return mkdtemp(path.join(tmpdir(), "wendoo-cli-test-"));
 }
 
 /** Initialize a bare git repository with default branch `main` and return its path. */

@@ -12,8 +12,8 @@
     "types": ["node"],
     "baseUrl": ".",
     "paths": {
-      "@mindcraft-lang/core/app": ["../../../packages/core/dist/node/app/index"],
-      "@mindcraft-lang/ui/asset-url": ["./stubs/asset-url.ts"],
+      "@wendoo-lang/core/app": ["../../../packages/core/dist/node/app/index"],
+      "@wendoo-lang/ui/asset-url": ["./stubs/asset-url.ts"],
       "@/*": ["../../ecosim/src/*"]
     }
   },

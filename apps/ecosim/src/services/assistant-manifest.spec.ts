@@ -6,15 +6,10 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import {
-  catalogDigest,
-  createAuthoringWorkspace,
-  readCatalog,
-  toolDefinitions,
-} from "@mindcraft-lang/assistant-bridge";
-import { assistantToolManifest } from "@mindcraft-lang/assistant-panel";
-import { List } from "@mindcraft-lang/core/app";
-import type { ITileCatalog } from "@mindcraft-lang/core/brain";
+import { catalogDigest, createAuthoringWorkspace, readCatalog, toolDefinitions } from "@wendoo-lang/assistant-bridge";
+import { assistantToolManifest } from "@wendoo-lang/assistant-panel";
+import { List } from "@wendoo-lang/core/app";
+import type { ITileCatalog } from "@wendoo-lang/core/brain";
 import { createTargetAdapter } from "@/rehearsal/adapter";
 import { sourceRehearsalContent } from "@/rehearsal/source-content";
 

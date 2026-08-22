@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { List } from "@mindcraft-lang/core";
-import type { MindcraftEnvironment } from "@mindcraft-lang/core/app";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
+import { List } from "@wendoo-lang/core";
+import type { WendooEnvironment } from "@wendoo-lang/core/app";
+import type { BrainServices } from "@wendoo-lang/core/brain";
 import type {
   BrainSyncFunctionEntry,
   ExecutionContext,
   IBrainRuntime,
   NumberPrecision,
   Value,
-} from "@mindcraft-lang/core/runtime";
-import { CoreFuncId, extractNumberValue } from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
+import { CoreFuncId, extractNumberValue } from "@wendoo-lang/core/runtime";
 import { createFakeModule } from "../testing/fake-module.js";
 import { FAKE_SUBJECT, FAKE_TARGET_IDENTITY } from "../testing/index.js";
 import { createAuthoringWorkspace } from "../tools/workspace.js";
@@ -28,7 +28,7 @@ const SAMPLE = 0.1;
 const SAMPLE_AT_F32 = Math.fround(SAMPLE);
 
 /** The rounding an environment applies to every numeric operator result. */
-function roundingOf(environment: MindcraftEnvironment): number {
+function roundingOf(environment: WendooEnvironment): number {
   return environment.appServices.numerics.round(SAMPLE);
 }
 
@@ -61,9 +61,9 @@ function stageOneParticipant(staging: WorldStaging): RehearsalWorld {
  */
 function recordingDriver(precision?: NumberPrecision): {
   readonly driver: WorldDriver;
-  staged(): MindcraftEnvironment;
+  staged(): WendooEnvironment;
 } {
-  let environment: MindcraftEnvironment | undefined;
+  let environment: WendooEnvironment | undefined;
   const driver: WorldDriver = {
     modules: () => [createFakeModule()],
     subjects: () => [FAKE_SUBJECT],
@@ -95,7 +95,7 @@ async function rehearseOver(driver: WorldDriver, seed = 1): Promise<void> {
 }
 
 /** Draws `$$math_random` from `environment` `count` times, as a brain's compiled `Math.random()` does. */
-function mathRandomDraws(environment: MindcraftEnvironment, count: number): number[] {
+function mathRandomDraws(environment: WendooEnvironment, count: number): number[] {
   const services: BrainServices = environment.withServices((brainServices) => brainServices);
   const entry = services.runtime.functions.getSyncById(CoreFuncId.MathRandom) as BrainSyncFunctionEntry | undefined;
   assert.ok(entry, "the core module registers $$math_random");

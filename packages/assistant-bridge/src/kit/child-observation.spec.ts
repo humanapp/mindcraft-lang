@@ -6,7 +6,7 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { IndentRuleCommand, InsertRuleCommand } from "@mindcraft-lang/core/brain/model";
+import { IndentRuleCommand, InsertRuleCommand } from "@wendoo-lang/core/brain/model";
 import { summarizeRun } from "../simulate/summarizer.js";
 import type { SimulationRun } from "../target/adapter.js";
 import { FakeActionKeys } from "../testing/fake-module.js";

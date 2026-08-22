@@ -17,10 +17,10 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { List, runtime } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext, Scheduler } from "@mindcraft-lang/core/runtime";
+import { List, runtime } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { ExecutionContext, Scheduler } from "@wendoo-lang/core/runtime";
 import {
   type EnumValue,
   HandleTable,
@@ -34,8 +34,8 @@ import {
   type NumberValue,
   type Value,
   VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { BLOCKED, QUARANTINED, WORKS } from "../testsupport/ts-equivalence-manifest.js";
 import { buildAmbientDeclarations } from "./ambient.js";
@@ -203,7 +203,7 @@ function nums(...values: number[]): Value[] {
   return values.map((n) => mkNumberValue(n));
 }
 
-const SENSOR_IMPORT = `import { Sensor, type Context } from "mindcraft";\n`;
+const SENSOR_IMPORT = `import { Sensor, type Context } from "wendoo";\n`;
 
 /** A no-arg number sensor whose onExecute body is `body`; `above` precedes the declaration. */
 function numberSensor(body: string, above = ""): string {
@@ -220,7 +220,7 @@ export default Sensor({
 
 /** A sensor with two number args `a` and `b`, whose onExecute body is `body`. */
 function twoArgSensor(body: string): string {
-  return `import { Sensor, type Context, param } from "mindcraft";
+  return `import { Sensor, type Context, param } from "wendoo";
 
 export default Sensor({
   name: "conformance probe",
@@ -238,7 +238,7 @@ const MODE_ENUM = `export enum Mode {
 }
 `;
 
-const CORPUS_POSITION_SOURCE = `import { NumberType, StructType, type StructOf } from "mindcraft";
+const CORPUS_POSITION_SOURCE = `import { NumberType, StructType, type StructOf } from "wendoo";
 
 export const Position = StructType({
   name: "position",
@@ -247,7 +247,7 @@ export const Position = StructType({
 export type Position = StructOf<typeof Position>;
 `;
 
-const CORPUS_STICK_SOURCE = `import { Sensor, type Context } from "mindcraft";
+const CORPUS_STICK_SOURCE = `import { Sensor, type Context } from "wendoo";
 import { Position } from "./position";
 
 export default Sensor({
@@ -319,7 +319,7 @@ export default Sensor({
 });
 `;
 
-const POSITION_STRUCT = `import { NumberType, StructType, type StructOf } from "mindcraft";
+const POSITION_STRUCT = `import { NumberType, StructType, type StructOf } from "wendoo";
 
 export const Position = StructType({
   name: "position",
@@ -812,7 +812,7 @@ export default Sensor({
     name: "sensor-param-typed-by-imported-enum-ref",
     files: {
       "defs.ts": MODE_ENUM,
-      "entry.ts": `import { Sensor, type Context, param } from "mindcraft";
+      "entry.ts": `import { Sensor, type Context, param } from "wendoo";
 import { Mode } from "./defs";
 
 export default Sensor({
@@ -839,7 +839,7 @@ export default Sensor({
     name: "sensor-output-typed-by-imported-enum-ref",
     files: {
       "defs.ts": MODE_ENUM,
-      "entry.ts": `import { Sensor, setOutput, type Context } from "mindcraft";
+      "entry.ts": `import { Sensor, setOutput, type Context } from "wendoo";
 import { Mode } from "./defs";
 
 export default Sensor({
@@ -949,7 +949,7 @@ export default Sensor({
     name: "system-state-typed-by-imported-enum",
     files: {
       "defs.ts": MODE_ENUM,
-      "sys.ts": `import { System } from "mindcraft";
+      "sys.ts": `import { System } from "wendoo";
 import { Mode } from "./defs";
 
 export const Motion = System({
@@ -984,7 +984,7 @@ export default Sensor({
     name: "actuator-param-imported-enum-by-name",
     files: {
       "defs.ts": MODE_ENUM,
-      "entry.ts": `import { Actuator, type Context, param } from "mindcraft";
+      "entry.ts": `import { Actuator, type Context, param } from "wendoo";
 import { Mode } from "./defs";
 
 export default Actuator({
@@ -1035,7 +1035,7 @@ export default Sensor({
   {
     name: "sensor-returns-imported-struct-instance-alias",
     files: {
-      "point.ts": `import { NumberType, StructType, type StructOf } from "mindcraft";
+      "point.ts": `import { NumberType, StructType, type StructOf } from "wendoo";
 
 export const Point = StructType({
   name: "point",
@@ -1059,7 +1059,7 @@ export default Sensor({
     name: "conversion-from-enum-ref",
     files: {
       "defs.ts": MODE_ENUM,
-      "entry.ts": `import { Conversion, NumberType } from "mindcraft";
+      "entry.ts": `import { Conversion, NumberType } from "wendoo";
 import { Mode } from "./defs";
 
 export default Conversion({
@@ -1078,7 +1078,7 @@ export default Conversion({
   {
     name: "struct-field-typed-by-enum-binding",
     files: {
-      "entry.ts": `${SENSOR_IMPORT}import { NumberType, StructType } from "mindcraft";
+      "entry.ts": `${SENSOR_IMPORT}import { NumberType, StructType } from "wendoo";
 
 enum Mode {
   Stop = 0,
@@ -1101,7 +1101,7 @@ export default Sensor({
   {
     name: "struct-type-factory-and-field-read",
     files: {
-      "entry.ts": `import { NumberType, Sensor, StructType, type StructOf, type Context } from "mindcraft";
+      "entry.ts": `import { NumberType, Sensor, StructType, type StructOf, type Context } from "wendoo";
 
 export const Position = StructType({
   name: "position",
@@ -1129,7 +1129,7 @@ export default Sensor({
     name: "nested-struct-across-modules",
     files: {
       "position.ts": POSITION_STRUCT,
-      "sprite.ts": `import { StructType, type StructOf } from "mindcraft";
+      "sprite.ts": `import { StructType, type StructOf } from "wendoo";
 import { Position } from "./position";
 
 export const Sprite = StructType({
@@ -1156,7 +1156,7 @@ export default Sensor({
   {
     name: "module-private-same-name-structs-coexist",
     files: {
-      "a.ts": `import { NumberType, StructType, type StructOf } from "mindcraft";
+      "a.ts": `import { NumberType, StructType, type StructOf } from "wendoo";
 
 const Vec = StructType({
   name: "vec-a",
@@ -1169,7 +1169,7 @@ export function makeA(): number {
   return v.x;
 }
 `,
-      "b.ts": `import { NumberType, StructType, type StructOf } from "mindcraft";
+      "b.ts": `import { NumberType, StructType, type StructOf } from "wendoo";
 
 const Vec = StructType({
   name: "vec-b",
@@ -1246,7 +1246,7 @@ export default Sensor({
   {
     name: "optional-buffer-arg-presence-guard",
     files: {
-      "entry.ts": `import { Sensor, type Context, optional, param } from "mindcraft";
+      "entry.ts": `import { Sensor, type Context, optional, param } from "wendoo";
 
 export default Sensor({
   name: "presence probe",
@@ -1488,7 +1488,7 @@ interface Ent {
   {
     name: "conversion-declaration-resolves-pair",
     files: {
-      "entry.ts": `import { BufferType, Conversion, NumberType } from "mindcraft";
+      "entry.ts": `import { BufferType, Conversion, NumberType } from "wendoo";
 
 export default Conversion({
   from: NumberType,
@@ -1532,7 +1532,7 @@ export default Conversion({
   }
 }
 `,
-      "entry.ts": `import { Sensor, System, type Context } from "mindcraft";
+      "entry.ts": `import { Sensor, System, type Context } from "wendoo";
 import { Pt } from "./defs";
 
 const Track = System({
@@ -1675,7 +1675,7 @@ function last(): number {
   {
     name: "helper-declared-below-enum-struct-and-system",
     files: {
-      "entry.ts": `import { NumberType, Sensor, StructType, System, type Context, type StructOf } from "mindcraft";
+      "entry.ts": `import { NumberType, Sensor, StructType, System, type Context, type StructOf } from "wendoo";
 
 enum Gear {
   Low = 1,
@@ -2029,7 +2029,7 @@ class Sub extends Base {}
   {
     name: "not-on-nullable-primitive-arg",
     files: {
-      "entry.ts": `import { Sensor, type Context, optional, param } from "mindcraft";
+      "entry.ts": `import { Sensor, type Context, optional, param } from "wendoo";
 
 export default Sensor({
   name: "presence probe",
@@ -2049,7 +2049,7 @@ export default Sensor({
   {
     name: "struct-type-config-not-inline-literal",
     files: {
-      "position.ts": `import { StructType, type StructOf } from "mindcraft";
+      "position.ts": `import { StructType, type StructOf } from "wendoo";
 
 const config = {
   name: "position",
@@ -2074,7 +2074,7 @@ export default Sensor({
   {
     name: "struct-type-recursive-field",
     files: {
-      "node.ts": `import { StructType, type StructTypeBinding } from "mindcraft";
+      "node.ts": `import { StructType, type StructTypeBinding } from "wendoo";
 import { NodeRef } from "./node-ref";
 
 type NodeValue = { next: NodeValue };
@@ -2103,7 +2103,7 @@ export default Sensor({
   {
     name: "conversion-same-type",
     files: {
-      "entry.ts": `import { Conversion, NumberType } from "mindcraft";
+      "entry.ts": `import { Conversion, NumberType } from "wendoo";
 
 export default Conversion({
   from: NumberType,
@@ -2136,7 +2136,7 @@ export default Sensor({
   {
     name: "destructured-onexecute-args-param",
     files: {
-      "entry.ts": `import { Sensor, type Context, param } from "mindcraft";
+      "entry.ts": `import { Sensor, type Context, param } from "wendoo";
 
 export default Sensor({
   name: "destructured args",
@@ -2244,7 +2244,7 @@ export default Sensor({
   {
     name: "shared-modifier-label-conflict",
     files: {
-      "a.ts": `import { Sensor, modifier, optional, type Context } from "mindcraft";
+      "a.ts": `import { Sensor, modifier, optional, type Context } from "wendoo";
 
 export default Sensor({
   name: "first label",
@@ -2255,7 +2255,7 @@ export default Sensor({
   },
 });
 `,
-      "b.ts": `import { Sensor, modifier, optional, type Context } from "mindcraft";
+      "b.ts": `import { Sensor, modifier, optional, type Context } from "wendoo";
 
 export default Sensor({
   name: "second label",
@@ -2304,7 +2304,7 @@ export default Sensor({
         files: new Map([
           [
             "types.ts",
-            `import { NumberType, StructType } from "mindcraft";
+            `import { NumberType, StructType } from "wendoo";
 
 const Inner = StructType({
   name: "inner",
@@ -2340,7 +2340,7 @@ export const Outer = StructType({
         files: new Map([
           [
             "main.ts",
-            `import { Sensor, type Context } from "mindcraft";
+            `import { Sensor, type Context } from "wendoo";
 import { Position } from "@lib/corpus/deep-lib/position";
 
 export default Sensor({

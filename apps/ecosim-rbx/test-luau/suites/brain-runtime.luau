@@ -114,7 +114,7 @@ function Suite.run(world, expect)
 		table.insert(diagnostics.warnings, tostring(message))
 	end
 
-	local environment = app.createMindcraftEnvironment({
+	local environment = app.createWendooEnvironment({
 		modules = { app.coreModule(), brainModule.createEcosimModule() },
 	})
 

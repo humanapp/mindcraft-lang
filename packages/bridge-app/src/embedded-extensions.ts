@@ -3,19 +3,19 @@ import type {
   ExtensionCatalogMoves,
   ExtensionTarget,
   FileContent,
-} from "@mindcraft-lang/app-host";
+} from "@wendoo-lang/app-host";
 import {
   applyCatalogMove,
   CatalogMoveApplyErrorCode,
   fileContentText,
   isAbbreviatedCommitPin,
   LOWEST_CONTENT_VERSION,
-  MINDCRAFT_JSON_PATH,
   parseCatalogMoveReference,
   parseExtensionReference,
   parseProjectContentManifest,
-} from "@mindcraft-lang/app-host";
-import type { DependencyMount, ProjectDependency } from "@mindcraft-lang/ts-compiler";
+  WENDOO_JSON_PATH,
+} from "@wendoo-lang/app-host";
+import type { DependencyMount, ProjectDependency } from "@wendoo-lang/ts-compiler";
 
 /** An extensions list keyed by `<owner>/<repo>` coordinate; each value is an extension reference string. */
 type ExtensionsMap = Readonly<Record<string, string>>;
@@ -286,7 +286,7 @@ function embeddedFiles(extension: EmbeddedExtension): Map<string, FileContent> {
 
 /**
  * Read an extension's own display name, version, extensions list, declared
- * ambient `.d.ts` paths, and declared identity from the `mindcraft.json`
+ * ambient `.d.ts` paths, and declared identity from the `wendoo.json`
  * carried in its content. An extension without a manifest, or with an
  * unparseable one, contributes no dependencies and no ambient files, compares
  * as `0.0.0`, and displays as its coordinate.
@@ -302,7 +302,7 @@ function readOwnManifest(
   ambient: readonly string[];
   identity?: string;
 } {
-  const manifestEntry = files.get(`/${MINDCRAFT_JSON_PATH}`) ?? files.get(MINDCRAFT_JSON_PATH);
+  const manifestEntry = files.get(`/${WENDOO_JSON_PATH}`) ?? files.get(WENDOO_JSON_PATH);
   const manifestContent = manifestEntry === undefined ? undefined : fileContentText(manifestEntry);
   if (manifestContent === undefined) {
     return { name: origin, version: LOWEST_CONTENT_VERSION, extensions: {}, targets: [], ambient: [] };
@@ -361,7 +361,7 @@ export function createCatalogMoveVersionLookup(options: {
   const byCoordinate = new Map(options.embedded.map((extension) => [extension.canonicalOrigin, extension]));
   const cache = new Map<string, string>();
   const manifestVersion = (files: ReadonlyMap<string, FileContent>): string | undefined => {
-    const entry = files.get(`/${MINDCRAFT_JSON_PATH}`) ?? files.get(MINDCRAFT_JSON_PATH);
+    const entry = files.get(`/${WENDOO_JSON_PATH}`) ?? files.get(WENDOO_JSON_PATH);
     const manifestContent = entry === undefined ? undefined : fileContentText(entry);
     if (manifestContent === undefined) {
       return undefined;
@@ -497,7 +497,7 @@ export function unifyOriginCandidate(incoming: OriginCandidate, incumbent: Origi
 /**
  * Resolve a project's extensions list against its content sources into
  * compiler dependency inputs. Resolution is transitive: an extension's own
- * `mindcraft.json` extensions resolve recursively. Each origin appears once in
+ * `wendoo.json` extensions resolve recursively. Each origin appears once in
  * the closure regardless of how many dependents reference it, so references to
  * an origin's published types across a diamond unify on one registration.
  *

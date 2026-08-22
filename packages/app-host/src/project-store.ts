@@ -75,14 +75,14 @@ export interface ProjectStore {
   loadProjectFiles(id: string): Promise<ProjectFileSnapshot | undefined>;
   /**
    * Persist `snapshot` as the project file contents of `id`. The
-   * `mindcraft.json` entry is not persisted; that file is derived from the
+   * `wendoo.json` entry is not persisted; that file is derived from the
    * project manifest when the project is opened.
    */
   saveProjectFiles(id: string, snapshot: ProjectFileSnapshot): Promise<void>;
   /**
    * Apply an ordered batch of changes to the stored project files of `id`.
    * Equivalent to loading the stored snapshot, applying each change in order,
-   * and saving the result. Changes to the `mindcraft.json` entry are not
+   * and saving the result. Changes to the `wendoo.json` entry are not
    * persisted; that file is derived from the project manifest.
    */
   applyProjectFileChanges(id: string, changes: readonly ProjectFileChange[]): Promise<void>;

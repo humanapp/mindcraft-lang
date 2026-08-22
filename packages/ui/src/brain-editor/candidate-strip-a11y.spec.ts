@@ -13,7 +13,7 @@
 
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import type { BrainServices, IBrainTileDef } from "@mindcraft-lang/core/brain";
+import type { BrainServices, IBrainTileDef } from "@wendoo-lang/core/brain";
 import {
   CoreLiteralFactoryId,
   CoreVariableFactoryId,
@@ -21,10 +21,10 @@ import {
   mkOperatorTileId,
   mkVariableFactoryTileId,
   RuleSide,
-} from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { BrainDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { BrainTileSensorDef } from "@mindcraft-lang/core/brain/tiles";
+} from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { BrainDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
+import { BrainTileSensorDef } from "@wendoo-lang/core/brain/tiles";
 import {
   bag,
   CoreHostActions,
@@ -35,7 +35,7 @@ import {
   mkCallDef,
   mkSensorTileId,
   VOID_VALUE,
-} from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ArmedTileTarget } from "./ArmedTargetContext";

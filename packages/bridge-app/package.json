@@ -1,21 +1,21 @@
 {
-  "name": "@mindcraft-lang/bridge-app",
+  "name": "@wendoo-lang/bridge-app",
   "version": "0.2.1",
-  "description": "App-side client for the Mindcraft bridge",
+  "description": "App-side client for the Wendoo bridge",
   "license": "MIT",
   "type": "module",
   "author": "humanapp",
   "repository": {
     "type": "git",
-    "url": "https://github.com/humanapp/mindcraft-lang.git",
+    "url": "https://github.com/humanapp/wendoo-lang.git",
     "directory": "packages/bridge-app"
   },
   "bugs": {
-    "url": "https://github.com/humanapp/mindcraft-lang/issues"
+    "url": "https://github.com/humanapp/wendoo-lang/issues"
   },
-  "homepage": "https://github.com/humanapp/mindcraft-lang/tree/main/packages/bridge-app#readme",
+  "homepage": "https://github.com/humanapp/wendoo-lang/tree/main/packages/bridge-app#readme",
   "keywords": [
-    "mindcraft",
+    "wendoo",
     "visual-programming",
     "tile-based",
     "typescript",
@@ -62,7 +62,7 @@
       "import": "./dist/node.js"
     }
   },
-  "mindcraftBuild": {
+  "wendooBuild": {
     "script": "build:prod",
     "outputs": [
       "dist"
@@ -88,11 +88,11 @@
     "release:major": "node ../../scripts/release.js major"
   },
   "dependencies": {
-    "@mindcraft-lang/app-host": "file:../app-host",
-    "@mindcraft-lang/bridge-client": "file:../bridge-client",
-    "@mindcraft-lang/bridge-protocol": "file:../bridge-protocol",
-    "@mindcraft-lang/core": "file:../core",
-    "@mindcraft-lang/ts-compiler": "file:../ts-compiler"
+    "@wendoo-lang/app-host": "file:../app-host",
+    "@wendoo-lang/bridge-client": "file:../bridge-client",
+    "@wendoo-lang/bridge-protocol": "file:../bridge-protocol",
+    "@wendoo-lang/core": "file:../core",
+    "@wendoo-lang/ts-compiler": "file:../ts-compiler"
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.15",

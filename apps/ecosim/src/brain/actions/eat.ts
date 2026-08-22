@@ -15,7 +15,7 @@ import {
   TRUE_VALUE,
   type Value,
   VOID_VALUE,
-} from "@mindcraft-lang/core/app";
+} from "@wendoo-lang/core/app";
 import { EcosimHostActions } from "@/brain/abi-ids";
 import { ARCHETYPES } from "@/brain/archetypes";
 import { getSelf } from "@/brain/execution-context-types";

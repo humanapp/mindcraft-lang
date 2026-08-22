@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { after, describe, it } from "node:test";
-import { MINDCRAFT_PROJECT_FORMAT } from "@mindcraft-lang/service-api";
+import { WENDOO_PROJECT_FORMAT } from "@wendoo-lang/service-api";
 import { listProjectFiles, makeScratchDir, runCliBin, writeProjectFiles } from "./test-support/publish-fixtures.js";
 
 const scratchDirs: string[] = [];
@@ -20,13 +20,13 @@ after(async () => {
   }
 });
 
-const TILE_SOURCE = 'import { Sensor } from "mindcraft";\nexport default Sensor({ name: "probe" });\n';
+const TILE_SOURCE = 'import { Sensor } from "wendoo";\nexport default Sensor({ name: "probe" });\n';
 const SVG_ASSET = '<svg xmlns="http://www.w3.org/2000/svg"><rect width="4" height="4"/></svg>\n';
 
 /** An export document whose embedded manifest carries brains, an app chunk, and extensions. */
 function sampleDocument(): Record<string, unknown> {
   return {
-    format: MINDCRAFT_PROJECT_FORMAT,
+    format: WENDOO_PROJECT_FORMAT,
     manifest: {
       name: "Rover",
       version: "0.2.0",
@@ -44,16 +44,16 @@ function sampleDocument(): Record<string, unknown> {
 }
 
 async function writeDocument(dir: string, document: unknown): Promise<string> {
-  const file = path.join(dir, "rover.mindcraft");
-  await writeProjectFiles(dir, { "rover.mindcraft": JSON.stringify(document, null, 2) });
+  const file = path.join(dir, "rover.wendoo");
+  await writeProjectFiles(dir, { "rover.wendoo": JSON.stringify(document, null, 2) });
   return file;
 }
 
 async function readManifest(dir: string): Promise<Record<string, unknown>> {
-  return JSON.parse(await readFile(path.join(dir, "mindcraft.json"), "utf8")) as Record<string, unknown>;
+  return JSON.parse(await readFile(path.join(dir, "wendoo.json"), "utf8")) as Record<string, unknown>;
 }
 
-describe("mindcraft unpack", () => {
+describe("wendoo unpack", () => {
   it("writes the document contents and the embedded manifest with a synthesized files list", async () => {
     const root = await scratch();
     const document = sampleDocument();
@@ -64,12 +64,7 @@ describe("mindcraft unpack", () => {
 
     assert.equal(result.code, 0, result.stderr);
 
-    assert.deepEqual(await listProjectFiles(target), [
-      "assets/logo.svg",
-      "mindcraft.json",
-      "notes.txt",
-      "tiles/probe.ts",
-    ]);
+    assert.deepEqual(await listProjectFiles(target), ["assets/logo.svg", "notes.txt", "tiles/probe.ts", "wendoo.json"]);
     assert.equal(await readFile(path.join(target, "tiles/probe.ts"), "utf8"), TILE_SOURCE);
     assert.equal(await readFile(path.join(target, "assets/logo.svg"), "utf8"), SVG_ASSET);
 
@@ -90,7 +85,7 @@ describe("mindcraft unpack", () => {
     const root = await scratch();
     const document = sampleDocument();
     (document.manifest as Record<string, unknown>).extensions = {
-      "mindcraft-lang/trg-ecosim": "embedded:mindcraft-lang/trg-ecosim",
+      "wendoo-lang/trg-ecosim": "embedded:wendoo-lang/trg-ecosim",
     };
     const file = await writeDocument(root, document);
     const target = path.join(root, "unpacked");
@@ -99,7 +94,7 @@ describe("mindcraft unpack", () => {
 
     assert.equal(result.code, 0, result.stderr);
     const manifest = await readManifest(target);
-    assert.deepEqual(manifest.targets, { "mindcraft-lang/trg-ecosim": { packageVersion: "^0.1.0" } });
+    assert.deepEqual(manifest.targets, { "wendoo-lang/trg-ecosim": { packageVersion: "^0.1.0" } });
   });
 
   it("writes no targets section when the manifest declares no registry target", async () => {
@@ -123,7 +118,7 @@ describe("mindcraft unpack", () => {
     const result = await runCliBin(root, "unpack", file, target);
 
     assert.equal(result.code, 0, result.stderr);
-    assert.doesNotMatch(result.stdout, /prune mindcraft\.json/);
+    assert.doesNotMatch(result.stdout, /prune wendoo\.json/);
     const manifest = await readManifest(target);
     assert.deepEqual(manifest.files, ["tiles/probe.ts"]);
   });
@@ -147,7 +142,7 @@ describe("mindcraft unpack", () => {
     const root = await scratch();
     await writeDocument(root, sampleDocument());
 
-    const result = await runCliBin(root, "unpack", "rover.mindcraft");
+    const result = await runCliBin(root, "unpack", "rover.wendoo");
 
     assert.equal(result.code, 0, result.stderr);
     assert.equal((await readManifest(path.join(root, "rover"))).name, "Rover");
@@ -155,31 +150,31 @@ describe("mindcraft unpack", () => {
 
   it("refuses a missing or unreadable document", async () => {
     const root = await scratch();
-    const result = await runCliBin(root, "unpack", path.join(root, "ghost.mindcraft"));
+    const result = await runCliBin(root, "unpack", path.join(root, "ghost.wendoo"));
     assert.equal(result.code, 1);
     assert.match(result.stderr, /UNPACK_DOCUMENT_MISSING/);
   });
 
   it("refuses a document that is not valid JSON or not in the current format", async () => {
     const root = await scratch();
-    await writeProjectFiles(root, { "broken.mindcraft": "{not json" });
-    const notJson = await runCliBin(root, "unpack", path.join(root, "broken.mindcraft"));
+    await writeProjectFiles(root, { "broken.wendoo": "{not json" });
+    const notJson = await runCliBin(root, "unpack", path.join(root, "broken.wendoo"));
     assert.equal(notJson.code, 1);
     assert.match(notJson.stderr, /UNPACK_DOCUMENT_INVALID/);
 
     const retired = {
-      format: "mindcraft.project",
+      format: "wendoo.project",
       name: "Rover",
       description: "",
       files: [{ path: "tiles/probe.ts", content: TILE_SOURCE }],
       brains: {},
       targets: {},
     };
-    await writeProjectFiles(root, { "retired.mindcraft": JSON.stringify(retired) });
-    const invalid = await runCliBin(root, "unpack", path.join(root, "retired.mindcraft"));
+    await writeProjectFiles(root, { "retired.wendoo": JSON.stringify(retired) });
+    const invalid = await runCliBin(root, "unpack", path.join(root, "retired.wendoo"));
     assert.equal(invalid.code, 1);
     assert.match(invalid.stderr, /UNPACK_DOCUMENT_INVALID/);
-    assert.match(invalid.stderr, /MINDCRAFT_PROJECT_INVALID_FORMAT/);
+    assert.match(invalid.stderr, /WENDOO_PROJECT_INVALID_FORMAT/);
   });
 
   it("refuses a document whose embedded manifest is not a valid content manifest", async () => {

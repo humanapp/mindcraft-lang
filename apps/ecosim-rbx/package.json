@@ -1,11 +1,11 @@
 {
   "name": "ecosim-rbx",
-  "description": "Roblox projection of the Ecosystem Simulation App for Mindcraft",
+  "description": "Roblox projection of the Ecosystem Simulation App for Wendoo",
   "version": "0.1.0",
   "private": true,
   "author": "humanapp",
   "license": "MIT",
-  "mindcraftBuild": {
+  "wendooBuild": {
     "needs": [
       "rbx"
     ]
@@ -29,7 +29,7 @@
     "format": "biome format ./src ./test --write"
   },
   "dependencies": {
-    "@mindcraft-lang/core": "file:../../packages/core",
+    "@wendoo-lang/core": "file:../../packages/core",
     "@rbxts/services": "^1.6.0"
   },
   "devDependencies": {

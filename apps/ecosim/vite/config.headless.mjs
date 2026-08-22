@@ -1,4 +1,4 @@
-import { assertDependencyDistsFresh } from "@mindcraft-lang/assistant-bridge/kit/node";
+import { assertDependencyDistsFresh } from "@wendoo-lang/assistant-bridge/kit/node";
 import path from "path";
 import { defineConfig } from "vite";
 import { rehearsalDefines } from "../src/rehearsal/source-content.ts";
@@ -19,8 +19,8 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(appDir, "./src"),
-      "@mindcraft-lang/docs": path.resolve(appDir, "../../packages/docs/src"),
-      "@mindcraft-lang/ui": path.resolve(appDir, "../../packages/ui/src"),
+      "@wendoo-lang/docs": path.resolve(appDir, "../../packages/docs/src"),
+      "@wendoo-lang/ui": path.resolve(appDir, "../../packages/ui/src"),
     },
   },
   ssr: {

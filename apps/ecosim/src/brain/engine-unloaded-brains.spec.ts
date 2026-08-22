@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { BrainDef } from "@mindcraft-lang/core/app";
+import type { BrainDef } from "@wendoo-lang/core/app";
 import type { Playground } from "../game/scenes/Playground";
 import type { EcosimEnvironmentStore } from "../services/ecosim-environment-store";
 import { Engine } from "./engine";

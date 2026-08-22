@@ -1,5 +1,5 @@
-import type { BrainServices, DiagnosticSeverity, ITileLanguageMetadata } from "@mindcraft-lang/core/brain";
-import type { ActionKind, ConstantOffsets, TypeId, UserActionArtifact } from "@mindcraft-lang/core/runtime";
+import type { BrainServices, DiagnosticSeverity, ITileLanguageMetadata } from "@wendoo-lang/core/brain";
+import type { ActionKind, ConstantOffsets, TypeId, UserActionArtifact } from "@wendoo-lang/core/runtime";
 import type ts from "typescript";
 import type { TsDiagCode } from "./diag-codes.js";
 import type { DependencyMount, ProjectDependency } from "./extension-mounts.js";
@@ -121,8 +121,8 @@ export interface AmbientFile {
 export interface StdlibSourceFile {
   /**
    * Virtual `.ts` path at which the source is mounted. User code imports it by
-   * this path minus the `.ts` extension (path `mindcraft/microbit.ts` is
-   * imported as `"mindcraft/microbit"`).
+   * this path minus the `.ts` extension (path `wendoo/microbit.ts` is
+   * imported as `"wendoo/microbit"`).
    */
   path: string;
   /** Full TypeScript source. */

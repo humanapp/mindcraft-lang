@@ -8,22 +8,22 @@ import {
   type ProjectCollection,
   type ProjectFileSystem,
   type ProjectManager,
-} from "@mindcraft-lang/app-host";
+} from "@wendoo-lang/app-host";
 import {
   AppEnvironmentHost,
   collectBrainErrorDiagnostics,
   collectBrainTileCompileDiagnostics,
   type EmbeddedExtension,
   type TileCompileDiagnosticsLookup,
-} from "@mindcraft-lang/bridge-app";
-import { BrainDef, coreModule } from "@mindcraft-lang/core/app";
-import type { IBrainActionTileDef, IBrainTileDef } from "@mindcraft-lang/core/brain";
-import { type CompileDiagnostic, declarationMount, type WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
+} from "@wendoo-lang/bridge-app";
+import { BrainDef, coreModule } from "@wendoo-lang/core/app";
+import type { IBrainActionTileDef, IBrainTileDef } from "@wendoo-lang/core/brain";
+import { type CompileDiagnostic, declarationMount, type WorkspaceCompileResult } from "@wendoo-lang/ts-compiler";
 import { createEcosimModule } from "../brain";
 
 // `EcosimEnvironmentStore` cannot be value-imported in this test process: the
 // module unconditionally imports `ecosim-embedded-extensions.ts`, which imports
-// the Vite-only `virtual:mindcraft-embedded-extensions` module. That import
+// the Vite-only `virtual:wendoo-embedded-extensions` module. That import
 // throws under the plain node:test runner (confirmed: `ERR_UNSUPPORTED_ESM_URL_SCHEME`
 // on the `virtual:` protocol), so every other spec that needs the class's shape
 // (see `engine-recompile-brains.spec.ts`) uses a type-only import and a fake
@@ -33,11 +33,11 @@ import { createEcosimModule } from "../brain";
 // `AppEnvironmentHost`, a real compile, and a real broken user tile.
 
 const CORE_AMBIENT = readFileSync(
-  fileURLToPath(new URL("../../../../packages/core/lib/mindcraft.core.d.ts", import.meta.url)),
+  fileURLToPath(new URL("../../../../packages/core/lib/wendoo.core.d.ts", import.meta.url)),
   "utf8"
 );
 
-const DEMO_COORDINATE = "mindcraft-lang/demo-lib";
+const DEMO_COORDINATE = "wendoo-lang/demo-lib";
 
 /** A minimal embedded extension whose entry re-exports a pure helper. */
 const DEMO_EXTENSION: EmbeddedExtension = {
@@ -50,8 +50,8 @@ const DEMO_EXTENSION: EmbeddedExtension = {
 
 const BROKEN_TILE_PATH = "tiles/broken.ts";
 /** A sensor whose value comes from the embedded extension's helper, imported via `@lib`, uninstalled here. */
-const BROKEN_TILE_SOURCE = `import { Sensor, type Context } from "mindcraft";
-import { level } from "@lib/mindcraft-lang/demo-lib";
+const BROKEN_TILE_SOURCE = `import { Sensor, type Context } from "wendoo";
+import { level } from "@lib/wendoo-lang/demo-lib";
 
 export default Sensor({
   id: "brokenSensor0001",
@@ -63,7 +63,7 @@ export default Sensor({
 `;
 
 /** `BROKEN_TILE_SOURCE` rewritten without the `@lib` import, so it compiles cleanly. */
-const FIXED_TILE_SOURCE = `import { Sensor, type Context } from "mindcraft";
+const FIXED_TILE_SOURCE = `import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   id: "brokenSensor0001",
@@ -172,7 +172,7 @@ describe("sim per-brain diagnostics feed: broken user-tile compile diagnostics",
     const host = new AppEnvironmentHost({
       projectManager: stubProjectManager(filesystem),
       modules: [coreModule(), createEcosimModule()],
-      mounts: [declarationMount([{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }])],
+      mounts: [declarationMount([{ path: "wendoo.core.d.ts", content: CORE_AMBIENT }])],
       embeddedExtensions: [DEMO_EXTENSION],
       onDidCompile: (result) => {
         latest = result;

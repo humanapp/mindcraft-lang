@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { List } from "@mindcraft-lang/core";
-import { BYTECODE_VERSION, NIL_VALUE, Op, type Program, VM, VmStatus, VOID_VALUE } from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+import { List } from "@wendoo-lang/core";
+import { BYTECODE_VERSION, NIL_VALUE, Op, type Program, VM, VmStatus, VOID_VALUE } from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 
 test("VM terminates cleanly from a runtime-only program with no event observer", () => {
   const program: Program = {

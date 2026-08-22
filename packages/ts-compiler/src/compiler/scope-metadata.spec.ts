@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { compileUserTile } from "./compile.js";
 
@@ -14,7 +14,7 @@ describe("scope and variable metadata", () => {
 
   test("function with nested blocks -> correct scope tree", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -61,7 +61,7 @@ export default Sensor({
 
   test("variable declared in block -> lifetime matches block PC range", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -102,7 +102,7 @@ export default Sensor({
 
   test("parameters have storageKind parameter", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -126,7 +126,7 @@ export default Sensor({
 
   test("callsite vars appear in module scope", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 let counter = 0;
 
@@ -152,7 +152,7 @@ export default Sensor({
 
   test("closure captures have storageKind capture", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -177,7 +177,7 @@ export default Sensor({
 
   test("compiler-generated temporaries are not in locals list", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -211,7 +211,7 @@ export default Sensor({
 
   test("helper function parameters are tracked", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function add(a: number, b: number): number {
   return a + b;
@@ -243,7 +243,7 @@ export default Sensor({
 
   test("for loop creates a block scope for its variables", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -274,7 +274,7 @@ export default Sensor({
 
   test("for...in creates a block scope for its variables", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -306,7 +306,7 @@ export default Sensor({
 
   test("switch cases share one block scope", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -346,7 +346,7 @@ export default Sensor({
 
   test("scope IDs are unique within a function", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -374,7 +374,7 @@ export default Sensor({
 
   test("onExecute with params tracks all parameter locals", () => {
     const source = `
-import { Actuator, optional, param, type Context } from "mindcraft";
+import { Actuator, optional, param, type Context } from "wendoo";
 
 export default Actuator({
   name: "test",

@@ -1,26 +1,26 @@
-import { fileContentText } from "@mindcraft-lang/app-host";
-import { addManifestFilesEntry, removeManifestFilesEntry } from "@mindcraft-lang/bridge-app/manifest-files";
+import { fileContentText } from "@wendoo-lang/app-host";
+import { addManifestFilesEntry, removeManifestFilesEntry } from "@wendoo-lang/bridge-app/manifest-files";
 import * as vscode from "vscode";
-import { MINDCRAFT_JSON } from "../mindcraft-json";
 import { isBuildMembershipPath } from "../services/build-membership-tracker";
-import { MINDCRAFT_SCHEME } from "../services/mindcraft-fs-provider";
 import type { ProjectManager } from "../services/project-manager";
 import { ACTUATOR_SCAFFOLD, findUniqueFolderName, SENSOR_SCAFFOLD, type TileScaffold } from "../services/tile-scaffold";
-import { isMindcraftEnabled, setMindcraftEnabled } from "../state/context";
+import { WENDOO_SCHEME } from "../services/wendoo-fs-provider";
+import { isWendooEnabled, setWendooEnabled } from "../state/context";
+import { WENDOO_JSON } from "../wendoo-json";
 
 export function registerCommands(context: vscode.ExtensionContext, projectManager: ProjectManager): void {
   context.subscriptions.push(
-    vscode.commands.registerCommand("mindcraft.show", () => {
-      setMindcraftEnabled(true);
-      vscode.commands.executeCommand("mindcraft.sessions.focus");
+    vscode.commands.registerCommand("wendoo.show", () => {
+      setWendooEnabled(true);
+      vscode.commands.executeCommand("wendoo.sessions.focus");
       if (!projectManager.project) {
-        vscode.commands.executeCommand("mindcraft.connect");
+        vscode.commands.executeCommand("wendoo.connect");
       }
     }),
 
-    vscode.commands.registerCommand("mindcraft.connect", async () => {
+    vscode.commands.registerCommand("wendoo.connect", async () => {
       const raw = await vscode.window.showInputBox({
-        prompt: "Enter the join code from Mindcraft",
+        prompt: "Enter the join code from Wendoo",
         placeHolder: "e.g. lumpy-space-unicorn",
       });
 
@@ -36,21 +36,21 @@ export function registerCommands(context: vscode.ExtensionContext, projectManage
 
       try {
         projectManager.connect(code);
-        await setMindcraftEnabled(true);
-        vscode.commands.executeCommand("mindcraft.sessions.focus");
+        await setWendooEnabled(true);
+        vscode.commands.executeCommand("wendoo.sessions.focus");
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         vscode.window.showErrorMessage(`Failed to connect: ${msg}`);
       }
     }),
 
-    vscode.commands.registerCommand("mindcraft.disconnect", () => {
+    vscode.commands.registerCommand("wendoo.disconnect", () => {
       projectManager.disconnect();
     }),
 
-    vscode.commands.registerCommand("mindcraft.confirmDisconnect", async () => {
+    vscode.commands.registerCommand("wendoo.confirmDisconnect", async () => {
       const choice = await vscode.window.showWarningMessage(
-        "Are you sure you want to disconnect from the Mindcraft session?",
+        "Are you sure you want to disconnect from the Wendoo session?",
         { modal: true },
         "Disconnect"
       );
@@ -59,33 +59,33 @@ export function registerCommands(context: vscode.ExtensionContext, projectManage
       }
     }),
 
-    vscode.commands.registerCommand("mindcraft.createSensor", async () => {
+    vscode.commands.registerCommand("wendoo.createSensor", async () => {
       await createFileFromScaffold(projectManager, SENSOR_SCAFFOLD);
     }),
 
-    vscode.commands.registerCommand("mindcraft.createActuator", async () => {
+    vscode.commands.registerCommand("wendoo.createActuator", async () => {
       await createFileFromScaffold(projectManager, ACTUATOR_SCAFFOLD);
     }),
 
-    vscode.commands.registerCommand("mindcraft.sync", async () => {
+    vscode.commands.registerCommand("wendoo.sync", async () => {
       if (!projectManager.project) {
-        vscode.window.showWarningMessage("Not connected to a Mindcraft session.");
+        vscode.window.showWarningMessage("Not connected to a Wendoo session.");
         return;
       }
       await projectManager.sync();
-      vscode.window.showInformationMessage("Mindcraft files synced.");
+      vscode.window.showInformationMessage("Wendoo files synced.");
     }),
 
-    vscode.commands.registerCommand("mindcraft.hide", () => {
-      setMindcraftEnabled(false);
-      vscode.window.showInformationMessage("Mindcraft view hidden.");
+    vscode.commands.registerCommand("wendoo.hide", () => {
+      setWendooEnabled(false);
+      vscode.window.showInformationMessage("Wendoo view hidden.");
     }),
 
-    vscode.commands.registerCommand("mindcraft.unlockMindcraftJson", () => {
-      projectManager.fsProvider.unlockMindcraftJson();
+    vscode.commands.registerCommand("wendoo.unlockWendooJson", () => {
+      projectManager.fsProvider.unlockWendooJson();
     }),
 
-    vscode.commands.registerCommand("mindcraft.toggleFileInBuild", (uri: vscode.Uri) => {
+    vscode.commands.registerCommand("wendoo.toggleFileInBuild", (uri: vscode.Uri) => {
       toggleFileInBuild(projectManager, uri);
     })
   );
@@ -94,12 +94,12 @@ export function registerCommands(context: vscode.ExtensionContext, projectManage
 /**
  * Toggle `uri`'s membership in the manifest `files` list: add the file when
  * it is not listed, remove it when it is. Applies a conservative text edit to
- * mindcraft.json through the project filesystem.
+ * wendoo.json through the project filesystem.
  */
 function toggleFileInBuild(projectManager: ProjectManager, uri: vscode.Uri): void {
   const project = projectManager.project;
   if (!project) {
-    vscode.window.showWarningMessage("Not connected to a Mindcraft session.");
+    vscode.window.showWarningMessage("Not connected to a Wendoo session.");
     return;
   }
 
@@ -110,12 +110,12 @@ function toggleFileInBuild(projectManager: ProjectManager, uri: vscode.Uri): voi
 
   let manifestText: string | undefined;
   try {
-    manifestText = fileContentText(project.files.raw.read(MINDCRAFT_JSON));
+    manifestText = fileContentText(project.files.raw.read(WENDOO_JSON));
   } catch {
     manifestText = undefined;
   }
   if (manifestText === undefined) {
-    vscode.window.showWarningMessage("mindcraft.json could not be read.");
+    vscode.window.showWarningMessage("wendoo.json could not be read.");
     return;
   }
 
@@ -124,21 +124,21 @@ function toggleFileInBuild(projectManager: ProjectManager, uri: vscode.Uri): voi
     ? removeManifestFilesEntry(manifestText, path)
     : addManifestFilesEntry(manifestText, path);
   if (edited === undefined) {
-    vscode.window.showWarningMessage(`Could not update the "files" list in mindcraft.json for ${path}.`);
+    vscode.window.showWarningMessage(`Could not update the "files" list in wendoo.json for ${path}.`);
     return;
   }
 
-  project.files.toRemote.write(MINDCRAFT_JSON, edited);
-  projectManager.notifyLocalWrite([MINDCRAFT_JSON]);
+  project.files.toRemote.write(WENDOO_JSON, edited);
+  projectManager.notifyLocalWrite([WENDOO_JSON]);
 }
 
 async function createFileFromScaffold(projectManager: ProjectManager, scaffold: TileScaffold): Promise<void> {
   if (!projectManager.project) {
-    vscode.window.showWarningMessage("Not connected to a Mindcraft session.");
+    vscode.window.showWarningMessage("Not connected to a Wendoo session.");
     return;
   }
 
-  const rootUri = vscode.Uri.from({ scheme: MINDCRAFT_SCHEME, path: "/" });
+  const rootUri = vscode.Uri.from({ scheme: WENDOO_SCHEME, path: "/" });
   let existingEntries: [string, vscode.FileType][];
   try {
     existingEntries = await vscode.workspace.fs.readDirectory(rootUri);
@@ -155,6 +155,6 @@ async function createFileFromScaffold(projectManager: ProjectManager, scaffold: 
   writeFs.write(`${targetFolder}/${fileName}`, scaffold.content);
   projectManager.notifyLocalCreate([targetFolder, `${targetFolder}/${fileName}`]);
 
-  const fileUri = vscode.Uri.from({ scheme: MINDCRAFT_SCHEME, path: `/${targetFolder}/${fileName}` });
+  const fileUri = vscode.Uri.from({ scheme: WENDOO_SCHEME, path: `/${targetFolder}/${fileName}` });
   await vscode.commands.executeCommand("vscode.open", fileUri);
 }

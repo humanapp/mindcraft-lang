@@ -1,0 +1,12 @@
+{
+  "name": "Ecosystem Simulation Library",
+  "version": "0.1.0",
+  "description": "Wendoo library for the ecosystem simulation platform.",
+  "files": ["index.ts", "wendoo.ecosim.d.ts"],
+  "ambient": ["wendoo.ecosim.d.ts"],
+  "targets": {
+    "wendoo-lang/lib-core": {
+      "packageVersion": "^0.2.0"
+    }
+  }
+}

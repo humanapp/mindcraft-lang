@@ -11,8 +11,8 @@ import {
   Dict,
   type IBrainTileDef,
   List,
-  type MindcraftEnvironment,
-} from "@mindcraft-lang/core/app";
+  type WendooEnvironment,
+} from "@wendoo-lang/core/app";
 
 /**
  * Plain, comparable form of a registered artifact. Every snapshot this module
@@ -240,10 +240,10 @@ export function snapshotTile(tile: IBrainTileDef): JsonValue {
 /**
  * Snapshots every tile catalog the environment exposes.
  *
- * @param env - A built Mindcraft environment.
+ * @param env - A built Wendoo environment.
  * @returns One tile-id-keyed map per catalog, in `tileCatalogs()` order.
  */
-export function snapshotTileCatalogs(env: MindcraftEnvironment): SnapshotMap[] {
+export function snapshotTileCatalogs(env: WendooEnvironment): SnapshotMap[] {
   return env.tileCatalogs().map((catalog) => {
     const map: SnapshotMap = new Map();
     for (const tile of catalog.getAll().toArray()) {
@@ -258,12 +258,12 @@ export function snapshotTileCatalogs(env: MindcraftEnvironment): SnapshotMap[] {
  * descriptor, its backing host function's stable funcId, and the resolved slot
  * layout of its call definition.
  *
- * @param env - A built Mindcraft environment.
+ * @param env - A built Wendoo environment.
  * @param key - The action key, for example `"sensor.see"`.
  * @returns The action's comparable form, or `null` when nothing is registered
  *   under `key`.
  */
-export function snapshotAction(env: MindcraftEnvironment, key: string): JsonValue {
+export function snapshotAction(env: WendooEnvironment, key: string): JsonValue {
   const registry = env.brainServices.runtime.actions;
   const resolved = registry.getByKey(key) as ResolvedActionLike | undefined;
   if (resolved === undefined) return null;
@@ -302,10 +302,10 @@ export function snapshotAction(env: MindcraftEnvironment, key: string): JsonValu
  * and values, list/map/nullable/union/function members). Enum symbol labels
  * are excluded.
  *
- * @param env - A built Mindcraft environment.
+ * @param env - A built Wendoo environment.
  * @returns Type-id-keyed snapshots.
  */
-export function snapshotTypes(env: MindcraftEnvironment): SnapshotMap {
+export function snapshotTypes(env: WendooEnvironment): SnapshotMap {
   const map: SnapshotMap = new Map();
   for (const [typeId, def] of env.brainServices.runtime.types.entries()) {
     const typeDef = def as unknown as TypeDefLike;
@@ -369,12 +369,12 @@ export function snapshotTypes(env: MindcraftEnvironment): SnapshotMap {
 /**
  * Snapshots the host functions registered under `funcIds`.
  *
- * @param env - A built Mindcraft environment.
+ * @param env - A built Wendoo environment.
  * @param funcIds - Stable funcIds to look up.
  * @returns Funcid-keyed snapshots; a funcId with no registration maps to
  *   `null`.
  */
-export function snapshotFunctions(env: MindcraftEnvironment, funcIds: readonly number[]): SnapshotMap {
+export function snapshotFunctions(env: WendooEnvironment, funcIds: readonly number[]): SnapshotMap {
   const registry = env.brainServices.runtime.functions;
   const map: SnapshotMap = new Map();
   for (const funcId of funcIds) {
@@ -389,11 +389,11 @@ export function snapshotFunctions(env: MindcraftEnvironment, funcIds: readonly n
  * its registered overloads (argument types, result type, and the stable funcId
  * of the implementing host function).
  *
- * @param env - A built Mindcraft environment.
+ * @param env - A built Wendoo environment.
  * @param opIds - Operator ids to look up.
  * @returns Opid-keyed snapshots; an unregistered operator maps to `null`.
  */
-export function snapshotOperators(env: MindcraftEnvironment, opIds: readonly string[]): SnapshotMap {
+export function snapshotOperators(env: WendooEnvironment, opIds: readonly string[]): SnapshotMap {
   const table = env.brainServices.runtime.operatorTable;
   const map: SnapshotMap = new Map();
   for (const opId of opIds) {
@@ -422,10 +422,10 @@ export function snapshotOperators(env: MindcraftEnvironment, opIds: readonly str
 /**
  * Snapshots the implicit-conversion registry.
  *
- * @param env - A built Mindcraft environment.
+ * @param env - A built Wendoo environment.
  * @returns Snapshots keyed by `"<fromType> -> <toType>"`.
  */
-export function snapshotConversions(env: MindcraftEnvironment): SnapshotMap {
+export function snapshotConversions(env: WendooEnvironment): SnapshotMap {
   const map: SnapshotMap = new Map();
   env.brainServices.shared.conversions.forEach((conv) => {
     const conversion = conv as unknown as ConversionLike;

@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { FolderSessionErrorCode } from "@mindcraft-lang/bridge-protocol";
+import { FolderSessionErrorCode } from "@wendoo-lang/bridge-protocol";
 import type { ExternalDocumentAccess } from "./external-document";
 import { openExternalHtmlDocument } from "./external-document";
 
-const DOCUMENT_URI = "file:///workspace/project/.mindcraft/print.html";
+const DOCUMENT_URI = "file:///workspace/project/.wendoo/print.html";
 
 /**
  * In-memory external-document access recording the written document and the

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { coreModule, createMindcraftEnvironment } from "@mindcraft-lang/core";
-import type { IBrainDef } from "@mindcraft-lang/core/app";
-import { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+import { coreModule, createWendooEnvironment } from "@wendoo-lang/core";
+import type { IBrainDef } from "@wendoo-lang/core/app";
+import { BrainRuleDef } from "@wendoo-lang/core/brain/model";
 import { collectBrainErrorDiagnostics } from "./brain-diagnostics.js";
 import { typecheckBrainProblems } from "./extension-install.js";
 
@@ -54,7 +54,7 @@ function emptyBrainJson(): Record<string, unknown> {
 
 /** Deserialize a persisted brain and establish its stored typecheck state, as the host's load path does. */
 function loadTypecheckedBrain(json: Record<string, unknown>): IBrainDef {
-  const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+  const environment = createWendooEnvironment({ modules: [coreModule()] });
   const brain = environment.deserializeBrainJsonFromPlain(json, PROJECT_ID);
   typecheckBrainProblems(brain);
   return brain;

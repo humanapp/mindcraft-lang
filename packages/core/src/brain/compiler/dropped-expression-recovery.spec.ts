@@ -11,23 +11,23 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import type { ReadonlyList } from "@mindcraft-lang/core";
+import type { ReadonlyList } from "@wendoo-lang/core";
 import {
   coreModule,
   createHostActuator,
   createHostSensor,
-  createMindcraftEnvironment,
-  type MindcraftEnvironment,
-  type MindcraftModule,
-} from "@mindcraft-lang/core";
-import type { IBrainDef, IBrainTileDef } from "@mindcraft-lang/core/brain";
-import { CoreControlFlowId, mkControlFlowTileId, mkOperatorTileId, RuleSide } from "@mindcraft-lang/core/brain";
-import { __test__appendTile } from "@mindcraft-lang/core/brain/__test__";
-import type { BrainBuildDiagnostic, DiagCode } from "@mindcraft-lang/core/brain/compiler";
-import { CompilationDiagCode, ParseDiagCode, TypeDiagCode } from "@mindcraft-lang/core/brain/compiler";
-import type { BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { BrainDef } from "@mindcraft-lang/core/brain/model";
-import { BrainTileLiteralDef, BrainTileModifierDef, BrainTileParameterDef } from "@mindcraft-lang/core/brain/tiles";
+  createWendooEnvironment,
+  type WendooEnvironment,
+  type WendooModule,
+} from "@wendoo-lang/core";
+import type { IBrainDef, IBrainTileDef } from "@wendoo-lang/core/brain";
+import { CoreControlFlowId, mkControlFlowTileId, mkOperatorTileId, RuleSide } from "@wendoo-lang/core/brain";
+import { __test__appendTile } from "@wendoo-lang/core/brain/__test__";
+import type { BrainBuildDiagnostic, DiagCode } from "@wendoo-lang/core/brain/compiler";
+import { CompilationDiagCode, ParseDiagCode, TypeDiagCode } from "@wendoo-lang/core/brain/compiler";
+import type { BrainPageDef, BrainRuleDef } from "@wendoo-lang/core/brain/model";
+import { BrainDef } from "@wendoo-lang/core/brain/model";
+import { BrainTileLiteralDef, BrainTileModifierDef, BrainTileParameterDef } from "@wendoo-lang/core/brain/tiles";
 import {
   bag,
   CoreOpId,
@@ -43,7 +43,7 @@ import {
   TARGET_FUNC_ID_BASE,
   type Value,
   VOID_VALUE,
-} from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
 
 const kSteerKey = "droppedspec.steer";
 const kMarkKey = "droppedspec.mark";
@@ -60,7 +60,7 @@ type SteerArgTags = Value["t"][];
 
 /** Tiles and observations the fixture module contributes to a test environment. */
 interface Fixture {
-  readonly module: MindcraftModule;
+  readonly module: WendooModule;
   /** Actuator with two modifier slots and a trailing named number-parameter slot. */
   readonly steerTile: IBrainTileDef;
   /** No-argument actuator, used to observe that a rule ran. */
@@ -159,12 +159,12 @@ function createFixture(): Fixture {
 
 /** An environment carrying `fixture`, and an empty single-rule brain in it. */
 function newBrain(fixture: Fixture): {
-  environment: MindcraftEnvironment;
+  environment: WendooEnvironment;
   brainDef: BrainDef;
   page: BrainPageDef;
   rule: BrainRuleDef;
 } {
-  const environment = createMindcraftEnvironment({ modules: [coreModule(), fixture.module] });
+  const environment = createWendooEnvironment({ modules: [coreModule(), fixture.module] });
   const brainDef = BrainDef.emptyBrainDef(environment.brainServices, "Dropped Expression Brain");
   const page = brainDef.pages().get(0) as BrainPageDef;
   return { environment, brainDef, page, rule: page.children().get(0) as BrainRuleDef };
@@ -183,7 +183,7 @@ interface RunOutcome {
 }
 
 /** Links `def`, then runs `thinks` think steps of it, collecting diagnostics, faults, and WHEN gates. */
-function buildAndRun(environment: MindcraftEnvironment, def: IBrainDef, thinks = 2): RunOutcome {
+function buildAndRun(environment: WendooEnvironment, def: IBrainDef, thinks = 2): RunOutcome {
   const build = environment.linkBrain(def);
   const faults: ErrorValue[] = [];
   const gates = new Map<number, boolean>();

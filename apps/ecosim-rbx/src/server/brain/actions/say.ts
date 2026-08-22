@@ -15,7 +15,7 @@ import {
   type ReadonlyList,
   type Value,
   VOID_VALUE,
-} from "@mindcraft-lang/core/app";
+} from "@wendoo-lang/core/app";
 import { EcosimHostActions } from "../abi-ids";
 import { getSelf } from "../execution-context-types";
 import { TileIds } from "../tileids";

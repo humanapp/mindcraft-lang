@@ -1,5 +1,5 @@
-import { coreTileDocs } from "@mindcraft-lang/core/docs";
-import { tileContent } from "@mindcraft-lang/core/docs/en";
+import { coreTileDocs } from "@wendoo-lang/core/docs";
+import { tileContent } from "@wendoo-lang/core/docs/en";
 
 /**
  * The author's one-paragraph description of a tile, taken from its

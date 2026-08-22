@@ -9,11 +9,11 @@ import {
   CoreFuncId,
   CoreOpId,
   coreModule,
-  createMindcraftEnvironment,
+  createWendooEnvironment,
   type IBrainDef,
   type IBrainRuleDef,
-  type MindcraftEnvironment,
-} from "@mindcraft-lang/core/app";
+  type WendooEnvironment,
+} from "@wendoo-lang/core/app";
 import { createEcosimModule as createWebEcosimModule } from "@/brain/index";
 import { EcosimFuncId, EcosimHostActions, EcosimTypeAtomId } from "../src/server/brain/abi-ids";
 import { ECOSIM_RBX_NAMESPACE } from "../src/server/brain/engine-constants";
@@ -70,10 +70,10 @@ function describeByteDivergence(web: Buffer, rbx: Buffer): string | undefined {
   return undefined;
 }
 
-function buildEnvironments(): { web: MindcraftEnvironment; rbx: MindcraftEnvironment } {
+function buildEnvironments(): { web: WendooEnvironment; rbx: WendooEnvironment } {
   return {
-    web: createMindcraftEnvironment({ modules: [coreModule(), createWebEcosimModule()] }),
-    rbx: createMindcraftEnvironment({ modules: [coreModule(), createRbxEcosimModule()] }),
+    web: createWendooEnvironment({ modules: [coreModule(), createWebEcosimModule()] }),
+    rbx: createWendooEnvironment({ modules: [coreModule(), createRbxEcosimModule()] }),
   };
 }
 
@@ -157,7 +157,7 @@ function legacyBrainJson(): unknown {
   };
 }
 
-function loadBrain(env: MindcraftEnvironment, archetype: string, namespace: string): IBrainDef {
+function loadBrain(env: WendooEnvironment, archetype: string, namespace: string): IBrainDef {
   const assetPath = path.join(RBX_APP_ROOT, "src/shared/brains", `default-${archetype}.json`);
   const plain: unknown = JSON.parse(readFileSync(assetPath, "utf8"));
   return env.deserializeBrainJsonFromPlain(plain, namespace);
@@ -175,7 +175,7 @@ describe("ecosim-rbx mirrors ecosim's brain source files byte for byte", () => {
 });
 
 describe("ecosim and ecosim-rbx register the same ABI", () => {
-  it("shares one @mindcraft-lang/core instance across both registrations", () => {
+  it("shares one @wendoo-lang/core instance across both registrations", () => {
     assert.equal(
       webEnv.brainServices.constructor,
       rbxEnv.brainServices.constructor,

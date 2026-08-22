@@ -29,14 +29,14 @@ describe("splitExtensionSpecifier", () => {
   });
 
   test("exactly two segments is the coordinate, with no deep path", () => {
-    assert.deepEqual(splitExtensionSpecifier("mindcraft-lang/codal"), {
-      coordinate: "mindcraft-lang/codal",
+    assert.deepEqual(splitExtensionSpecifier("wendoo-lang/codal"), {
+      coordinate: "wendoo-lang/codal",
     });
   });
 
   test("a third segment is a deep path past the two-segment coordinate", () => {
-    assert.deepEqual(splitExtensionSpecifier("mindcraft-lang/codal/image"), {
-      coordinate: "mindcraft-lang/codal",
+    assert.deepEqual(splitExtensionSpecifier("wendoo-lang/codal/image"), {
+      coordinate: "wendoo-lang/codal",
       deepPath: "/image",
     });
   });

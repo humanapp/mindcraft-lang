@@ -1,11 +1,11 @@
-import type { AuthoringWorkspace, BrainEditHistory, TargetAdapter } from "@mindcraft-lang/assistant-bridge";
-import { sessionTileDescriptions } from "@mindcraft-lang/assistant-bridge";
-import type { MindcraftEnvironment } from "@mindcraft-lang/core/app";
-import { List } from "@mindcraft-lang/core/app";
-import type { ITileCatalog } from "@mindcraft-lang/core/brain";
-import type { BrainCommandHistory } from "@mindcraft-lang/core/brain/model";
-import { BrainEditOrigin } from "@mindcraft-lang/core/brain/model";
-import type { EditedBrain } from "@mindcraft-lang/ui/brain-editor/EditedBrainContext";
+import type { AuthoringWorkspace, BrainEditHistory, TargetAdapter } from "@wendoo-lang/assistant-bridge";
+import { sessionTileDescriptions } from "@wendoo-lang/assistant-bridge";
+import type { WendooEnvironment } from "@wendoo-lang/core/app";
+import { List } from "@wendoo-lang/core/app";
+import type { ITileCatalog } from "@wendoo-lang/core/brain";
+import type { BrainCommandHistory } from "@wendoo-lang/core/brain/model";
+import { BrainEditOrigin } from "@wendoo-lang/core/brain/model";
+import type { EditedBrain } from "@wendoo-lang/ui/brain-editor/EditedBrainContext";
 import type { PersonActivity } from "./person-activity";
 import { watchPersonInteraction } from "./person-activity";
 
@@ -38,7 +38,7 @@ export class NoEditedBrain extends Error {
 /** What the workspaces are built over. */
 export interface EditedBrainWorkspacesOptions {
   /** The environment the edited brains belong to, whose catalogs the workspaces resolve tiles against. */
-  readonly environment: MindcraftEnvironment;
+  readonly environment: WendooEnvironment;
   /** The target the workspaces rehearse through. */
   readonly adapter: TargetAdapter;
   /**

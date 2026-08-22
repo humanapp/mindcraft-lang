@@ -1,8 +1,8 @@
-import type { ReadonlyList } from "@mindcraft-lang/core";
-import { type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
-import { parseBrainTiles } from "@mindcraft-lang/core/brain/compiler";
-import type { SentenceSegment } from "@mindcraft-lang/core/brain/language-service";
-import type { Localizer } from "@mindcraft-lang/core/localization";
+import type { ReadonlyList } from "@wendoo-lang/core";
+import { type IBrainTileDef, RuleSide } from "@wendoo-lang/core/brain";
+import { parseBrainTiles } from "@wendoo-lang/core/brain/compiler";
+import type { SentenceSegment } from "@wendoo-lang/core/brain/language-service";
+import type { Localizer } from "@wendoo-lang/core/localization";
 import { isOperatorSymbolPrefix } from "./candidate-strip-model";
 
 /**

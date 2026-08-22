@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
-import type { IBrainDef } from "@mindcraft-lang/core/app";
+import type { IBrainDef } from "@wendoo-lang/core/app";
 import { summarizeRun } from "../simulate/summarizer.js";
 import type { AdapterExpectation, SimulationRun, SimulationScenario, TargetAdapter } from "../target/adapter.js";
 import {
@@ -333,7 +333,7 @@ export async function checkArtifactSelfContained(
   artifactPath: string,
   expectation: AdapterExpectation
 ): Promise<ConformanceCheck> {
-  const copyRoot = await mkdtemp(join(tmpdir(), "mindcraft-artifact-"));
+  const copyRoot = await mkdtemp(join(tmpdir(), "wendoo-artifact-"));
   try {
     const copied = join(copyRoot, basename(artifactPath));
     await copyFile(artifactPath, copied);

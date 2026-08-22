@@ -9,10 +9,10 @@
 
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, runtime } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext, Scheduler } from "@mindcraft-lang/core/runtime";
+import { List, runtime } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { ExecutionContext, Scheduler } from "@wendoo-lang/core/runtime";
 import {
   CoreTypeIds,
   HandleTable,
@@ -23,8 +23,8 @@ import {
   type StructTypeDef,
   type Value,
   VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";
@@ -134,7 +134,7 @@ describe("optional struct fields: host addStructType declaration", () => {
 
   test("an object literal may omit the optional field, and it reads as nil", () => {
     const source = `
-import { Sensor, type Context, type Opts } from "mindcraft";
+import { Sensor, type Context, type Opts } from "wendoo";
 export default Sensor({
   name: "omit-opt",
   onExecute(ctx: Context): number {
@@ -148,7 +148,7 @@ export default Sensor({
 
   test("a present optional field carries its value", () => {
     const source = `
-import { Sensor, type Context, type Opts } from "mindcraft";
+import { Sensor, type Context, type Opts } from "wendoo";
 export default Sensor({
   name: "present-opt",
   onExecute(ctx: Context): number {
@@ -162,7 +162,7 @@ export default Sensor({
 
   test("an optional field explicitly set to undefined reads as nil", () => {
     const source = `
-import { Sensor, type Context, type Opts } from "mindcraft";
+import { Sensor, type Context, type Opts } from "wendoo";
 export default Sensor({
   name: "undef-opt",
   onExecute(ctx: Context): number {
@@ -184,7 +184,7 @@ export default Sensor({
       new Map([
         [
           "bad.ts",
-          `import { Sensor, type Context, type Opts } from "mindcraft";
+          `import { Sensor, type Context, type Opts } from "wendoo";
 export default Sensor({
   name: "bad",
   onExecute(ctx: Context): number { const o: Opts = { count: 1 }; return 0; },
@@ -193,7 +193,7 @@ export default Sensor({
         ],
         [
           "ok.ts",
-          `import { Sensor, type Context, type Opts } from "mindcraft";
+          `import { Sensor, type Context, type Opts } from "wendoo";
 export default Sensor({
   name: "ok",
   onExecute(ctx: Context): number { const o: Opts = { label: "x", note: null }; return 0; },
@@ -220,7 +220,7 @@ describe("optional struct fields: user TypeScript declarations", () => {
 
   test("an interface `field?: T` registers the field as optional with a nullable value type", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 interface Cfg { a: number; b?: number; }
 export default Sensor({
   name: "iface",
@@ -243,7 +243,7 @@ export default Sensor({
 
   test("a supplied interface optional field carries its value", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 interface Cfg2 { a: number; b?: number; }
 export default Sensor({
   name: "iface2",
@@ -259,7 +259,7 @@ export default Sensor({
 
   test("a type alias `field?: T` registers the field as optional", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 type Cfg3 = { a: number; b?: number; };
 export default Sensor({
   name: "alias",
@@ -275,7 +275,7 @@ export default Sensor({
 
   test("a named intersection type carries the optional flag and reads nil when omitted", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 type Cfg5 = { a: number } & { b?: number };
 export default Sensor({
   name: "inter",
@@ -291,7 +291,7 @@ export default Sensor({
 
   test("a class `field?: T` registers the field as optional", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 class Cfg6 { a: number = 0; b?: number; }
 export default Sensor({
   name: "cls",
@@ -307,7 +307,7 @@ export default Sensor({
 
   test("a non-optional field with a nullable value type is not marked optional", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 interface Cfg7 { a: number; b: number | null; }
 export default Sensor({
   name: "nullable-required",
@@ -324,7 +324,7 @@ export default Sensor({
 
   test("a nested struct optional field reads nil when omitted", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 interface Inner { x: number; }
 interface Outer { a: number; inner?: Inner; }
 export default Sensor({
@@ -348,7 +348,7 @@ describe("optional struct fields: generic instantiation", () => {
   test("a generic interface instantiation carries the optional flag on its optional field", () => {
     const ambient = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 interface Box<T> { value: T; extra?: T; }
 export default Sensor({
   name: "box",
@@ -390,7 +390,7 @@ describe("optional struct fields: cross-module", () => {
         ["shared.ts", `export interface Shared { a: number; b?: number; }\n`],
         [
           "use.ts",
-          `import { Sensor, type Context } from "mindcraft";
+          `import { Sensor, type Context } from "wendoo";
 import type { Shared } from "./shared";
 export default Sensor({
   name: "use",

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
-import type { FileContent } from "@mindcraft-lang/app-host";
-import type { DiagnosticEntry } from "@mindcraft-lang/bridge-app";
+import type { FileContent } from "@wendoo-lang/app-host";
+import type { DiagnosticEntry } from "@wendoo-lang/bridge-app";
 import {
   type AppBridgeFeature,
   type AppBridgeSnapshot,
@@ -9,9 +9,9 @@ import {
   type ProjectFileChange,
   type ProjectFileSnapshot,
   type ProjectFileSystem,
-} from "@mindcraft-lang/bridge-app";
-import { FileSystem, type FileSystemNotification, type FileSystemSnapshot } from "@mindcraft-lang/bridge-client";
-import type { WsMessage } from "@mindcraft-lang/bridge-protocol";
+} from "@wendoo-lang/bridge-app";
+import { FileSystem, type FileSystemNotification, type FileSystemSnapshot } from "@wendoo-lang/bridge-client";
+import type { WsMessage } from "@wendoo-lang/bridge-protocol";
 
 type WsCallback = ((...args: unknown[]) => void) | null;
 

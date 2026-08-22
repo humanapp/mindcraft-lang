@@ -1,4 +1,4 @@
-import { RuleSide } from "@mindcraft-lang/core/brain";
+import { RuleSide } from "@wendoo-lang/core/brain";
 import type { ArmedTargetEntry } from "./ArmedTargetContext";
 import {
   decideStripEscape,

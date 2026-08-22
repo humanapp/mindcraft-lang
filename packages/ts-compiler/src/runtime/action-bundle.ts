@@ -1,5 +1,5 @@
-import { assertUnreachable, type CompiledActionBundle, Dict } from "@mindcraft-lang/core";
-import type { BrainServices, IBrainTileDef } from "@mindcraft-lang/core/brain";
+import { assertUnreachable, type CompiledActionBundle, Dict } from "@wendoo-lang/core";
+import type { BrainServices, IBrainTileDef } from "@wendoo-lang/core/brain";
 import type { CompileResult, ProjectCompileResult } from "../compiler/compile.js";
 import type { UserAuthoredProgram, UserTileDefinition } from "../compiler/types.js";
 import { buildStructTypeTiles, buildUserTileMetadata, type UserTileTypeResolver } from "./user-tile-metadata.js";

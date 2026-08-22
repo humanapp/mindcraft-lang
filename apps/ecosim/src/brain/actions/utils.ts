@@ -1,4 +1,4 @@
-import type { ExecutionContext, NumberValue, StructValue } from "@mindcraft-lang/core/app";
+import type { ExecutionContext, NumberValue, StructValue } from "@wendoo-lang/core/app";
 import {
   CoreTypeIds,
   getRuleVariable,
@@ -6,7 +6,7 @@ import {
   type ReadonlyList,
   type Value,
   Vector2,
-} from "@mindcraft-lang/core/app";
+} from "@wendoo-lang/core/app";
 import type { Actor } from "@/brain/actor";
 import { getActor } from "@/brain/execution-context-types";
 import { EcosimTypeIds, extractVector2, resolveActor } from "@/brain/type-system";

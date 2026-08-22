@@ -1,6 +1,6 @@
-import type { CompileDiagnosticsPayload } from "@mindcraft-lang/bridge-protocol";
+import type { CompileDiagnosticsPayload } from "@wendoo-lang/bridge-protocol";
 import * as vscode from "vscode";
-import { MINDCRAFT_SCHEME } from "./mindcraft-fs-provider";
+import { WENDOO_SCHEME } from "./wendoo-fs-provider";
 
 const SEVERITY_MAP: Record<string, vscode.DiagnosticSeverity> = {
   error: vscode.DiagnosticSeverity.Error,
@@ -22,11 +22,11 @@ export class DiagnosticsManager implements vscode.Disposable {
 
   /**
    * @param toUri - Maps a project-relative file path to the URI diagnostics
-   *   are published on. Defaults to the virtual `mindcraft:` scheme.
+   *   are published on. Defaults to the virtual `wendoo:` scheme.
    */
   constructor(toUri?: (file: string) => vscode.Uri) {
-    this._toUri = toUri ?? ((file) => vscode.Uri.from({ scheme: MINDCRAFT_SCHEME, path: `/${file}` }));
-    this._collection = vscode.languages.createDiagnosticCollection("mindcraft");
+    this._toUri = toUri ?? ((file) => vscode.Uri.from({ scheme: WENDOO_SCHEME, path: `/${file}` }));
+    this._collection = vscode.languages.createDiagnosticCollection("wendoo");
     this._collection.clear();
   }
 
@@ -56,7 +56,7 @@ export class DiagnosticsManager implements vscode.Disposable {
         SEVERITY_MAP[entry.severity] ?? vscode.DiagnosticSeverity.Error
       );
       diag.code = entry.code;
-      diag.source = "mindcraft";
+      diag.source = "wendoo";
       return diag;
     });
 

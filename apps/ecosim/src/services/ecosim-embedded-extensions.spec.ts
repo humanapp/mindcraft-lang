@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { fileContentText } from "@mindcraft-lang/app-host";
-import type { EmbeddedExtension } from "@mindcraft-lang/bridge-app";
-import { CORE_LIB_COORDINATE, resolveProjectExtensions } from "@mindcraft-lang/bridge-app";
-import { buildEmbeddedExtensionFromDir } from "@mindcraft-lang/bridge-app/node";
-import { coreModule, createMindcraftEnvironment } from "@mindcraft-lang/core/app";
-import { createWorkspaceCompiler, type Mount, type WorkspaceSnapshot } from "@mindcraft-lang/ts-compiler";
+import { fileContentText } from "@wendoo-lang/app-host";
+import type { EmbeddedExtension } from "@wendoo-lang/bridge-app";
+import { CORE_LIB_COORDINATE, resolveProjectExtensions } from "@wendoo-lang/bridge-app";
+import { buildEmbeddedExtensionFromDir } from "@wendoo-lang/bridge-app/node";
+import { coreModule, createWendooEnvironment } from "@wendoo-lang/core/app";
+import { createWorkspaceCompiler, type Mount, type WorkspaceSnapshot } from "@wendoo-lang/ts-compiler";
 import { createEcosimModule } from "../brain";
 import { ECOSIM_LIB_COORDINATE, ECOSIM_LIB_REFERENCE } from "./ecosim-extension-coordinates";
 
@@ -16,7 +16,7 @@ function extensionDir(relativePath: string): string {
 }
 
 /**
- * The two embedded layers assembled from each extension's own `mindcraft.json`
+ * The two embedded layers assembled from each extension's own `wendoo.json`
  * `files` list through the shared loader -- the single content-assembly path the
  * app's Vite provider also uses. The layer stack is core <- sim.
  */
@@ -48,14 +48,14 @@ describe("sim embedded layers -- transitive resolution of the core <- sim stack"
     assert.deepEqual(mountFor(CORE_LIB_COORDINATE).dependencies, []);
 
     // Each layer carries its own ambient `.d.ts` as extension content and declares it in its manifest.
-    assert.deepEqual(mountFor(CORE_LIB_COORDINATE).ambient, ["mindcraft.core.d.ts"]);
-    assert.deepEqual(mountFor(ECOSIM_LIB_COORDINATE).ambient, ["mindcraft.ecosim.d.ts"]);
+    assert.deepEqual(mountFor(CORE_LIB_COORDINATE).ambient, ["wendoo.core.d.ts"]);
+    assert.deepEqual(mountFor(ECOSIM_LIB_COORDINATE).ambient, ["wendoo.ecosim.d.ts"]);
     assert.match(
-      fileContentText(mountFor(CORE_LIB_COORDINATE).files.get("/mindcraft.core.d.ts") ?? "") ?? "",
+      fileContentText(mountFor(CORE_LIB_COORDINATE).files.get("/wendoo.core.d.ts") ?? "") ?? "",
       /declare var Buffer/
     );
     assert.match(
-      fileContentText(mountFor(ECOSIM_LIB_COORDINATE).files.get("/mindcraft.ecosim.d.ts") ?? "") ?? "",
+      fileContentText(mountFor(ECOSIM_LIB_COORDINATE).files.get("/wendoo.ecosim.d.ts") ?? "") ?? "",
       /interface Vector2/
     );
   });
@@ -67,7 +67,7 @@ describe("sim embedded layers -- ambient declarations arrive through the resolve
       { [ECOSIM_LIB_COORDINATE]: ECOSIM_LIB_REFERENCE },
       { embedded: embeddedLayers() }
     );
-    const environment = createMindcraftEnvironment({ modules: [coreModule(), createEcosimModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule(), createEcosimModule()] });
 
     // No root ambient mounts; platform types resolve entirely through the
     // resolved layer extensions' ambient `.d.ts`.
@@ -80,7 +80,7 @@ describe("sim embedded layers -- ambient declarations arrive through the resolve
       dependencyMounts: resolved.dependencyMounts,
     });
 
-    const crossLayer = `import { type ActorRef, type Context, Sensor, type Vector2 } from "mindcraft";
+    const crossLayer = `import { type ActorRef, type Context, Sensor, type Vector2 } from "wendoo";
 
 export default Sensor({
   name: "cross layer",
@@ -111,11 +111,11 @@ export default Sensor({
     // each layer's `.libraries/<owner>/<repo>/` subtree.
     const controlled = compiler.getCompilerControlledFiles();
     assert.ok(
-      controlled.has(".libraries/mindcraft-lang/lib-core/mindcraft.core.d.ts"),
+      controlled.has(".libraries/wendoo-lang/lib-core/wendoo.core.d.ts"),
       "the core ambient materializes under .libraries/"
     );
     assert.ok(
-      controlled.has(".libraries/mindcraft-lang/lib-ecosim/mindcraft.ecosim.d.ts"),
+      controlled.has(".libraries/wendoo-lang/lib-ecosim/wendoo.ecosim.d.ts"),
       "the sim ambient materializes under .libraries/"
     );
   });
@@ -127,8 +127,8 @@ describe("sim embedded layers -- the manifest-driven bundle matches the hand-ass
     const read = (rel: string) => readFileSync(extensionDir(rel), "utf8");
     const handAssembled = new Map([
       ["index.ts", read("../../../../packages/core/lib/index.ts")],
-      ["mindcraft.core.d.ts", read("../../../../packages/core/lib/mindcraft.core.d.ts")],
-      ["mindcraft.json", read("../../../../packages/core/lib/mindcraft.json")],
+      ["wendoo.core.d.ts", read("../../../../packages/core/lib/wendoo.core.d.ts")],
+      ["wendoo.json", read("../../../../packages/core/lib/wendoo.json")],
     ]);
     const builtByPath = new Map(built.files.map((f) => [f.path, f.content]));
     assert.deepEqual(builtByPath, handAssembled);

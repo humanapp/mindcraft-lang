@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { IBrainActionTileDef } from "@mindcraft-lang/core/brain";
-import { BrainTileActuatorDef } from "@mindcraft-lang/core/brain/tiles";
-import { createDefaultLocalizer } from "@mindcraft-lang/core/localization";
-import { bag, mkCallDef } from "@mindcraft-lang/core/runtime";
+import type { IBrainActionTileDef } from "@wendoo-lang/core/brain";
+import { BrainTileActuatorDef } from "@wendoo-lang/core/brain/tiles";
+import { createDefaultLocalizer } from "@wendoo-lang/core/localization";
+import { bag, mkCallDef } from "@wendoo-lang/core/runtime";
 import type { EcosimEnvironmentStore } from "../../services/ecosim-environment-store";
 import { buildBrainEditorConfig } from "./config";
 

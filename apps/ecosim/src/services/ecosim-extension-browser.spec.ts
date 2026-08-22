@@ -1,12 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import {
-  ExtensionAddInputErrorCode,
-  ExtensionFetchErrorCode,
-  resolveExtensionAddInput,
-} from "@mindcraft-lang/app-host";
-import type { EmbeddedExtension, ExtensionCatalogEntry } from "@mindcraft-lang/bridge-app";
-import { ExtensionActionResultCode } from "@mindcraft-lang/bridge-app";
+import { ExtensionAddInputErrorCode, ExtensionFetchErrorCode, resolveExtensionAddInput } from "@wendoo-lang/app-host";
+import type { EmbeddedExtension, ExtensionCatalogEntry } from "@wendoo-lang/bridge-app";
+import { ExtensionActionResultCode } from "@wendoo-lang/bridge-app";
 import {
   buildEcosimExtensionEntries,
   checkSimExtensionUpdates,
@@ -22,7 +18,7 @@ import {
 } from "./ecosim-extension-browser";
 import { CORE_LIB_COORDINATE, ECOSIM_LIB_COORDINATE, ECOSIM_LIB_REFERENCE } from "./ecosim-extension-coordinates";
 
-/** Build an embedded extension whose bundled `mindcraft.json` declares the given manifest fields. */
+/** Build an embedded extension whose bundled `wendoo.json` declares the given manifest fields. */
 function ext(
   coordinate: string,
   manifest: {
@@ -38,7 +34,7 @@ function ext(
     files: [
       { path: "index.ts", content: "export {};" },
       {
-        path: "mindcraft.json",
+        path: "wendoo.json",
         content: JSON.stringify({
           name: manifest.name ?? coordinate,
           version: manifest.version ?? "1.0.0",
@@ -51,8 +47,8 @@ function ext(
   };
 }
 
-const FLOCK = "mindcraft-lang/lib-ecosim-flock";
-const MICROBIT_ONLY = "mindcraft-lang/microbit-position";
+const FLOCK = "wendoo-lang/lib-ecosim-flock";
+const MICROBIT_ONLY = "wendoo-lang/microbit-position";
 
 const coreLib = ext(CORE_LIB_COORDINATE, { name: "Core", version: "0.2.1" });
 const ecosimLib = ext(ECOSIM_LIB_COORDINATE, {
@@ -71,7 +67,7 @@ const flockAddon = ext(FLOCK, {
 const microbitAddon = ext(MICROBIT_ONLY, {
   name: "Position",
   version: "1.0.0",
-  targets: { "mindcraft-lang/microbit-v2": { packageVersion: "^0.2.0" } },
+  targets: { "wendoo-lang/microbit-v2": { packageVersion: "^0.2.0" } },
 });
 
 const embedRecord: readonly EmbeddedExtension[] = [ecosimLib, coreLib, flockAddon, microbitAddon];
@@ -214,7 +210,7 @@ describe("uninstallEcosimExtension -- round-trips through the host", () => {
   test("uninstalling a coordinate a still-installed add-on depends on is rejected and does not persist", async () => {
     const persistence = capturingPersistence();
     // A depending add-on that requires Flock; both installed.
-    const HERD = "mindcraft-lang/lib-ecosim-herd";
+    const HERD = "wendoo-lang/lib-ecosim-herd";
     const herdAddon = ext(HERD, {
       name: "Herd",
       version: "1.0.0",

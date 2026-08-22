@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { ConversationToolCall } from "@mindcraft-lang/assistant-relay";
-import { CONVERSATION_RECORD_VERSION, ConversationTurnFailureCode } from "@mindcraft-lang/assistant-relay";
+import type { ConversationToolCall } from "@wendoo-lang/assistant-relay";
+import { CONVERSATION_RECORD_VERSION, ConversationTurnFailureCode } from "@wendoo-lang/assistant-relay";
 import { activeRecord, emptyConversationStore, recordFor, withActiveBrain, withUpdate } from "./store";
 
 /** One served call, for the shape of a recorded tool call. */

@@ -1,4 +1,4 @@
-import type { BrainDef, MindcraftEnvironment, Vector2 } from "@mindcraft-lang/core/app";
+import type { BrainDef, Vector2, WendooEnvironment } from "@wendoo-lang/core/app";
 import * as ECS from "miniplex";
 import type { Playground } from "@/game/scenes/Playground";
 import { heatColor } from "@/lib/color";
@@ -25,7 +25,7 @@ export class Engine {
     return this.scene.time;
   }
 
-  get env(): MindcraftEnvironment {
+  get env(): WendooEnvironment {
     return this.store.env;
   }
 

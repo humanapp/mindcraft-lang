@@ -1,16 +1,16 @@
-import { List } from "@mindcraft-lang/core";
-import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
-import { RuleSide } from "@mindcraft-lang/core/brain";
-import type { InsertionContext, TileSuggestion } from "@mindcraft-lang/core/brain/language-service";
+import { List } from "@wendoo-lang/core";
+import type { IBrainTileDef } from "@wendoo-lang/core/brain";
+import { RuleSide } from "@wendoo-lang/core/brain";
+import type { InsertionContext, TileSuggestion } from "@wendoo-lang/core/brain/language-service";
 import {
   buildInsertionContext,
   collectRuleHierarchyCapabilities,
   collectRuleHierarchyOutputKeys,
   suggestTiles as coreSuggestTiles,
   tileSentenceWord,
-} from "@mindcraft-lang/core/brain/language-service";
-import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import type { Localizer } from "@mindcraft-lang/core/localization";
+} from "@wendoo-lang/core/brain/language-service";
+import type { BrainRuleDef } from "@wendoo-lang/core/brain/model";
+import type { Localizer } from "@wendoo-lang/core/localization";
 import type { ToolInput } from "./tool-schemas.js";
 import { type AuthoringWorkspace, findRule, toRuleSide } from "./workspace.js";
 

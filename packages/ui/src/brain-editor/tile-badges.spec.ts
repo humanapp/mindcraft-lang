@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { IBrainActionTileDef, IBrainTileDef } from "@mindcraft-lang/core/brain";
-import { BrainTileActuatorDef, BrainTileParameterDef } from "@mindcraft-lang/core/brain/tiles";
-import { bag, CoreTypeIds, mkCallDef } from "@mindcraft-lang/core/runtime";
+import type { IBrainActionTileDef, IBrainTileDef } from "@wendoo-lang/core/brain";
+import { BrainTileActuatorDef, BrainTileParameterDef } from "@wendoo-lang/core/brain/tiles";
+import { bag, CoreTypeIds, mkCallDef } from "@wendoo-lang/core/runtime";
 import { applyBrokenTileBadges, BROKEN_TILE_BADGE_MESSAGE, type TileBadge } from "./tile-badges";
 
 /** An action (actuator) tile keyed by `id`; carries an `action` descriptor. */

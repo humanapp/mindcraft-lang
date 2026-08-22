@@ -1,9 +1,9 @@
-name: Publish mindcraft-cli
+name: Publish wendoo-cli
 
 on:
   push:
     tags:
-      - "mindcraft-cli-v*"
+      - "wendoo-cli-v*"
 
 permissions:
   contents: write
@@ -45,7 +45,7 @@ jobs:
 
       - name: Verify package version matches tag
         run: |
-          PACKAGE_VERSION="mindcraft-cli-v$(node -p "require('./package.json').version")"
+          PACKAGE_VERSION="wendoo-cli-v$(node -p "require('./package.json').version")"
           if [ "$PACKAGE_VERSION" != "${{ github.ref_name }}" ]; then
             echo "Tag ${{ github.ref_name }} does not match package.json version $PACKAGE_VERSION"
             exit 1

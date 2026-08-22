@@ -21,7 +21,7 @@ import {
   TRUE_VALUE,
   type Value,
   Vector2,
-} from "@mindcraft-lang/core/app";
+} from "@wendoo-lang/core/app";
 import { EcosimHostActions } from "../abi-ids";
 import type { Archetype } from "../actor";
 import { getSelf } from "../execution-context-types";

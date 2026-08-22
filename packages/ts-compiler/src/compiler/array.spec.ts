@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, runtime } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext, Scheduler } from "@mindcraft-lang/core/runtime";
+import { List, runtime } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { ExecutionContext, Scheduler } from "@wendoo-lang/core/runtime";
 import {
   type BooleanValue,
   CoreTypeIds,
@@ -20,8 +20,8 @@ import {
   type StringValue,
   type Value,
   VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";
@@ -74,7 +74,7 @@ function mkScheduler(): Scheduler {
 
 function sensorReturningNumber(body: string): string {
   return `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "arr-test",
@@ -87,7 +87,7 @@ export default Sensor({
 
 function sensorReturningString(body: string): string {
   return `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "arr-test",
@@ -100,7 +100,7 @@ export default Sensor({
 
 function sensorReturningBoolean(body: string): string {
   return `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "arr-test",
@@ -113,7 +113,7 @@ export default Sensor({
 
 function sensorReturningNumberList(body: string): string {
   return `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 export default Sensor({
   name: "arr-test",
@@ -785,7 +785,7 @@ describe("Array method diagnostics", () => {
 
   test("unknown method produces unsupported diagnostic", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "arr-test",
@@ -1044,7 +1044,7 @@ describe("Generic function body - list operations", () => {
 
   test("generic identity returns list unchanged", () => {
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 function identity<T>(items: T[]): T[] {
   return items;
@@ -1068,7 +1068,7 @@ export default Sensor({
 
   test("generic element access via index", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function first<T>(items: T[]): T {
   return items[0];
@@ -1092,7 +1092,7 @@ export default Sensor({
 
   test("generic list length", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function count<T>(items: T[]): number {
   return items.length;
@@ -1116,7 +1116,7 @@ export default Sensor({
 
   test("generic for-of iteration", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function countItems<T>(items: T[]): number {
   let n = 0;
@@ -1144,7 +1144,7 @@ export default Sensor({
 
   test("generic push appends element", () => {
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 function appendValue<T>(items: T[], value: T): T[] {
   items.push(value);
@@ -1175,7 +1175,7 @@ describe("Generic function body - coercion and runtime", () => {
 
   test("generic identity executes correctly at runtime", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function identity<T>(value: T): T {
   return value;
@@ -1208,7 +1208,7 @@ export default Sensor({
 
   test("generic first-element executes correctly at runtime", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function first<T>(items: T[]): T {
   return items[0];
@@ -1242,7 +1242,7 @@ export default Sensor({
 
   test("generic local variable assignment compiles without coercion errors", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function swapFirst<T>(items: T[], replacement: T): T {
   const original: T = items[0];
@@ -1298,7 +1298,7 @@ describe("Generic function body - struct field access", () => {
 
   test("generic function reads struct field via constrained T", () => {
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Vector2 } from "wendoo";
 
 function getX<T extends Vector2>(obj: T): number {
   return obj.x;
@@ -1332,7 +1332,7 @@ export default Sensor({
 
   test("generic function reads multiple struct fields", () => {
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
+import { Sensor, type Context, type Vector2 } from "wendoo";
 
 function sum<T extends Vector2>(obj: T): number {
   return obj.x + obj.y;
@@ -1372,7 +1372,7 @@ describe("Generic function - multiple type parameters", () => {
 
   test("two type params <A, B> with different concrete types at call site", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function pickFirst<A, B>(a: A, b: B): A {
   return a;
@@ -1405,7 +1405,7 @@ export default Sensor({
 
   test("two type params <A, B> returning second param", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function pickSecond<A, B>(a: A, b: B): B {
   return b;
@@ -1444,7 +1444,7 @@ describe("Generic function - higher-order / callbacks", () => {
 
   test("generic function accepting a callback", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function apply<T>(value: T, fn: (x: T) => T): T {
   return fn(value);
@@ -1481,7 +1481,7 @@ export default Sensor({
 
   test("generic function with arrow callback at call site", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function transform<T>(value: T, fn: (x: T) => T): T {
   return fn(value);
@@ -1520,7 +1520,7 @@ describe("Generic function - call site resolution", () => {
 
   test("same generic function called with different concrete types", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function identity<T>(value: T): T {
   return value;
@@ -1555,7 +1555,7 @@ export default Sensor({
 
   test("generic function returning list preserves element type at call site", () => {
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, type Context, type NumberList } from "wendoo";
 
 function wrap<T>(value: T): T[] {
   const arr: T[] = [];
@@ -1591,7 +1591,7 @@ export default Sensor({
 
   test("chained generic calls", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function identity<T>(value: T): T {
   return value;
@@ -1638,7 +1638,7 @@ describe("Generic function - Map operations", () => {
 
   test("generic function with concrete Map operations", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function identity<T>(value: T): T {
   return value;
@@ -1673,7 +1673,7 @@ export default Sensor({
 
   test("generic identity preserves Map type at call site", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function passThrough<T>(value: T): T {
   return value;
@@ -1714,7 +1714,7 @@ describe("rest parameters", () => {
 
   function restTestSource(helperFns: string, callBody: string): string {
     return `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 ${helperFns}
 
@@ -1900,7 +1900,7 @@ describe("spread in function calls", () => {
 
   function compileAndRunSpreadCall(helperFns: string, callBody: string): number {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 ${helperFns}
 

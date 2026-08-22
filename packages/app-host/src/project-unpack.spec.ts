@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { MINDCRAFT_PROJECT_FORMAT } from "@mindcraft-lang/service-api";
-import type { MindcraftProjectDocument } from "./project-io.js";
+import { WENDOO_PROJECT_FORMAT } from "@wendoo-lang/service-api";
+import type { WendooProjectDocument } from "./project-io.js";
 import { buildUnpackedTree, isUnpackRefusal, UnpackErrorCode } from "./project-unpack.js";
 
-const TILE_SOURCE = 'import { Sensor } from "mindcraft";\nexport default Sensor({ name: "probe" });\n';
+const TILE_SOURCE = 'import { Sensor } from "wendoo";\nexport default Sensor({ name: "probe" });\n';
 
 /** A document whose embedded manifest carries brains and an app chunk but declares no files list. */
-function sampleDocument(manifestOverrides: Record<string, unknown> = {}): MindcraftProjectDocument {
+function sampleDocument(manifestOverrides: Record<string, unknown> = {}): WendooProjectDocument {
   return {
-    format: MINDCRAFT_PROJECT_FORMAT,
+    format: WENDOO_PROJECT_FORMAT,
     manifest: {
       name: "Rover",
       version: "0.2.0",
@@ -20,14 +20,14 @@ function sampleDocument(manifestOverrides: Record<string, unknown> = {}): Mindcr
       ...manifestOverrides,
     },
     contents: {
-      "mindcraft.json": "{ stale generated file that must be dropped }",
+      "wendoo.json": "{ stale generated file that must be dropped }",
       "tiles/probe.ts": TILE_SOURCE,
       "notes.txt": "scratch notes\n",
     },
   };
 }
 
-function unpackedManifest(document: MindcraftProjectDocument, coordinate?: string): Record<string, unknown> {
+function unpackedManifest(document: WendooProjectDocument, coordinate?: string): Record<string, unknown> {
   const tree = buildUnpackedTree(document, coordinate);
   assert.equal(isUnpackRefusal(tree), false);
   if (isUnpackRefusal(tree)) {
@@ -37,7 +37,7 @@ function unpackedManifest(document: MindcraftProjectDocument, coordinate?: strin
 }
 
 describe("buildUnpackedTree", () => {
-  it("drops mindcraft.json from the contents and synthesizes a files list when none is declared", () => {
+  it("drops wendoo.json from the contents and synthesizes a files list when none is declared", () => {
     const document = sampleDocument();
     const tree = buildUnpackedTree(document, undefined);
     assert.equal(isUnpackRefusal(tree), false);

@@ -8,17 +8,17 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { AuthoringWorkspace, ProposeEditInput } from "@mindcraft-lang/assistant-bridge";
+import type { AuthoringWorkspace, ProposeEditInput } from "@wendoo-lang/assistant-bridge";
 import {
   batchReplayStepMs,
   createAuthoringWorkspace,
   proposeEditBatch,
   readProject,
-} from "@mindcraft-lang/assistant-bridge";
-import { createTargetAdapter } from "@mindcraft-lang/assistant-bridge/testing";
-import type { BrainEditOrigin } from "@mindcraft-lang/core/brain/model";
-import { BrainCommandHistory, BrainEditOrigin as EditOrigin } from "@mindcraft-lang/core/brain/model";
-import { releaseHeldRule } from "@mindcraft-lang/ui/brain-editor/rule-pickup-release";
+} from "@wendoo-lang/assistant-bridge";
+import { createTargetAdapter } from "@wendoo-lang/assistant-bridge/testing";
+import type { BrainEditOrigin } from "@wendoo-lang/core/brain/model";
+import { BrainCommandHistory, BrainEditOrigin as EditOrigin } from "@wendoo-lang/core/brain/model";
+import { releaseHeldRule } from "@wendoo-lang/ui/brain-editor/rule-pickup-release";
 import { createEditedBrainWorkspaces } from "./edited-brain-workspaces";
 
 /** Tiles the fake target's brains are authored from. */

@@ -2,26 +2,23 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import type { FileContent } from "@mindcraft-lang/app-host";
+import type { FileContent } from "@wendoo-lang/app-host";
 import {
   type ActiveProject,
   createInMemoryProjectFileSystem,
   type ProjectCollection,
   type ProjectFileSystem,
   type ProjectManager,
-} from "@mindcraft-lang/app-host";
-import { coreModule } from "@mindcraft-lang/core/app";
-import { declarationMount, isCompilerControlledPath } from "@mindcraft-lang/ts-compiler";
+} from "@wendoo-lang/app-host";
+import { coreModule } from "@wendoo-lang/core/app";
+import { declarationMount, isCompilerControlledPath } from "@wendoo-lang/ts-compiler";
 import { AppEnvironmentHost } from "./app-environment-host.js";
 import type { EmbeddedExtension } from "./embedded-extensions.js";
 
-const CORE_AMBIENT = readFileSync(
-  fileURLToPath(new URL("../../core/lib/mindcraft.core.d.ts", import.meta.url)),
-  "utf8"
-);
+const CORE_AMBIENT = readFileSync(fileURLToPath(new URL("../../core/lib/wendoo.core.d.ts", import.meta.url)), "utf8");
 
 const BEAM_REPO = "beam-lib";
-const BEAM_COORDINATE = `mindcraft-lang/${BEAM_REPO}`;
+const BEAM_COORDINATE = `wendoo-lang/${BEAM_REPO}`;
 const BEAM_REFERENCE = `embedded:${BEAM_COORDINATE}`;
 const BEAM_ICON_PATH = `.libraries/${BEAM_COORDINATE}/beam.svg`;
 const BEAM_DOCS_PATH = `.libraries/${BEAM_COORDINATE}/beam.md`;
@@ -29,7 +26,7 @@ const BEAM_ICON_SVG = '<svg id="beam"></svg>';
 const BEAM_DOCS_MD = "# Beam\nDocs.";
 
 /** The extension's default-exported tile references its own bundled icon and docs assets. */
-const BEAM_EXTENSION_ENTRY = `import { Sensor, type Context } from "mindcraft";
+const BEAM_EXTENSION_ENTRY = `import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   id: "beamSensor000001",
@@ -49,7 +46,7 @@ const BEAM_EXTENSION: EmbeddedExtension = {
     { path: "beam.svg", content: BEAM_ICON_SVG },
     { path: "beam.md", content: BEAM_DOCS_MD },
     {
-      path: "mindcraft.json",
+      path: "wendoo.json",
       content: JSON.stringify({ name: "Beam", version: "0.1.0", entry: "beam.ts" }),
     },
   ],
@@ -137,7 +134,7 @@ function createHost(filesystem: ProjectFileSystem): AppEnvironmentHost {
   return new AppEnvironmentHost({
     projectManager: stubProjectManagerWithLiveExtensions(filesystem, {}),
     modules: [coreModule()],
-    mounts: [declarationMount([{ path: "mindcraft.core.d.ts", content: CORE_AMBIENT }])],
+    mounts: [declarationMount([{ path: "wendoo.core.d.ts", content: CORE_AMBIENT }])],
     embeddedExtensions: [BEAM_EXTENSION],
   });
 }
@@ -271,7 +268,7 @@ describe("AppEnvironmentHost served file system", () => {
 
       // The app wires `projectFileSystem.onLocalChange` to `bumpVfsRevision`,
       // which starts a fresh asset-url generation. Installing an extension
-      // rewrites mindcraft.json through the raw fs; that write fires the
+      // rewrites wendoo.json through the raw fs; that write fires the
       // listener, and the newly materialized icon resolves without a reload.
       let localChanges = 0;
       const unsubscribe = host.projectFileSystem.onLocalChange(() => {

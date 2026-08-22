@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
-import { mkVariableFactoryTileId } from "@mindcraft-lang/core/brain";
+import type { IBrainTileDef } from "@wendoo-lang/core/brain";
+import { mkVariableFactoryTileId } from "@wendoo-lang/core/brain";
 import {
   BrainTileActuatorDef,
   BrainTileModifierDef,
   BrainTileParameterDef,
   BrainTileSensorDef,
-} from "@mindcraft-lang/core/brain/tiles";
-import type { BrainActionCallSpec } from "@mindcraft-lang/core/runtime";
-import { bag, CoreTypeIds, choice, mkCallDef, mod, optional, param, repeated, seq } from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/brain/tiles";
+import type { BrainActionCallSpec } from "@wendoo-lang/core/runtime";
+import { bag, CoreTypeIds, choice, mkCallDef, mod, optional, param, repeated, seq } from "@wendoo-lang/core/runtime";
 import { type ActionArgEntry, getActionArgEntries, resolveTypeDisplayName } from "./action-arg-tiles";
 
 function actuator(callSpec: BrainActionCallSpec): BrainTileActuatorDef {

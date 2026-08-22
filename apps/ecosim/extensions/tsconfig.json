@@ -10,7 +10,7 @@
   },
   "include": ["**/*.ts"],
   "files": [
-    "../../../packages/core/lib/mindcraft.core.d.ts",
-    "../lib/mindcraft.ecosim.d.ts"
+    "../../../packages/core/lib/wendoo.core.d.ts",
+    "../lib/wendoo.ecosim.d.ts"
   ]
 }

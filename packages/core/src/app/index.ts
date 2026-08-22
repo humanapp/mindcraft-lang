@@ -1,7 +1,7 @@
 // Curated barrel for app integrators.
 // Provides the symbols apps typically need from a single import path
-// (`@mindcraft-lang/core/app`) instead of spreading imports across
-// `@mindcraft-lang/core`, `/brain`, `/brain/model`, and `/brain/tiles`.
+// (`@wendoo-lang/core/app`) instead of spreading imports across
+// `@wendoo-lang/core`, `/brain`, `/brain/model`, and `/brain/tiles`.
 
 // -- Environment & module API ---------------------------------------------------
 
@@ -13,15 +13,15 @@ export type {
   CreateHostActuatorOptions,
   CreateHostSensorOptions,
   HydratedTileMetadataSnapshot,
-  MindcraftBrain,
-  MindcraftEnvironment,
-  MindcraftModule,
-  MindcraftModuleApi,
   ModifierTileInput,
   ParameterTileInput,
   TileDefinitionInput,
-} from "../mindcraft";
-export { coreModule, createHostActuator, createHostSensor, createMindcraftEnvironment } from "../mindcraft";
+  WendooBrain,
+  WendooEnvironment,
+  WendooModule,
+  WendooModuleApi,
+} from "../wendoo";
+export { coreModule, createHostActuator, createHostSensor, createWendooEnvironment } from "../wendoo";
 
 // -- Brain model ----------------------------------------------------------------
 

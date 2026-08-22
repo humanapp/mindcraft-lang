@@ -3,8 +3,8 @@ import type {
   FetchedExtensionContentMap,
   LibraryUninstallImpact,
   UninstallGuardBrain,
-} from "@mindcraft-lang/bridge-app";
-import { collectLibraryUninstallImpact } from "@mindcraft-lang/bridge-app";
+} from "@wendoo-lang/bridge-app";
+import { collectLibraryUninstallImpact } from "@wendoo-lang/bridge-app";
 
 /** The slice of a cached brain the guard reads. */
 export interface GuardedBrain {

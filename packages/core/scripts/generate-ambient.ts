@@ -4,7 +4,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 type CoreAppModule = {
   coreModule: () => unknown;
-  createMindcraftEnvironment: (options: { modules: readonly unknown[] }) => {
+  createWendooEnvironment: (options: { modules: readonly unknown[] }) => {
     readonly brainServices: { readonly runtime: { readonly types: unknown } };
   };
 };
@@ -14,7 +14,7 @@ type AmbientGeneratorModule = {
 };
 
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const ambientPath = resolve(packageDir, "lib/mindcraft.core.d.ts");
+const ambientPath = resolve(packageDir, "lib/wendoo.core.d.ts");
 
 async function main(): Promise<void> {
   const coreApp = (await import(
@@ -24,7 +24,7 @@ async function main(): Promise<void> {
     pathToFileURL(resolve(packageDir, "../ts-compiler/dist/index.js")).toString()
   )) as AmbientGeneratorModule;
 
-  const environment = coreApp.createMindcraftEnvironment({ modules: [coreApp.coreModule()] });
+  const environment = coreApp.createWendooEnvironment({ modules: [coreApp.coreModule()] });
   const ambient = ambientGenerator.buildCoreAmbientDeclarations(environment.brainServices.runtime.types);
 
   writeFileSync(ambientPath, ambient, "utf8");

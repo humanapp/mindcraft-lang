@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { Dict, List } from "@mindcraft-lang/core";
+import { Dict, List } from "@wendoo-lang/core";
 import {
   brainValueFromJson,
   brainValueToJson,
@@ -23,7 +23,7 @@ import {
   type Value,
   ValueDict,
   VOID_VALUE,
-} from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
 
 describe("linked brain program JSON payload", () => {
   it("defines the JSON-safe linked brain payload shape", () => {

@@ -1,5 +1,5 @@
-import type { CompileDiagnosticsMessage, CompileStatusMessage } from "@mindcraft-lang/bridge-protocol";
-import { compileDiagnosticsPayloadSchema, compileStatusPayloadSchema } from "@mindcraft-lang/bridge-protocol";
+import type { CompileDiagnosticsMessage, CompileStatusMessage } from "@wendoo-lang/bridge-protocol";
+import { compileDiagnosticsPayloadSchema, compileStatusPayloadSchema } from "@wendoo-lang/bridge-protocol";
 import { logger } from "#core/logging/logger.js";
 import { getAppSession, getExtensionsByAppSessionId } from "#core/session-registry.js";
 import { safeSend } from "#transport/ws/safe-send.js";

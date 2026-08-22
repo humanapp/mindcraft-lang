@@ -1,26 +1,26 @@
 import type { Stats } from "node:fs";
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { UnpackRefusal } from "@mindcraft-lang/app-host";
+import type { UnpackRefusal } from "@wendoo-lang/app-host";
 import {
   buildUnpackedTree,
   fileContentToBytes,
   isExtensionCoordinate,
   isUnpackRefusal,
-  MINDCRAFT_JSON_PATH,
   seedProjectTargets,
   UnpackErrorCode,
-} from "@mindcraft-lang/app-host";
-import { parseMindcraftProjectDocument } from "@mindcraft-lang/service-api";
+  WENDOO_JSON_PATH,
+} from "@wendoo-lang/app-host";
+import { parseWendooProjectDocument } from "@wendoo-lang/service-api";
 import { loadTargetRegistry } from "./target-registry.js";
 
-const UNPACK_USAGE = `usage: mindcraft unpack <file.mindcraft> [dir] [--coordinate <owner/repo>] [--force]
+const UNPACK_USAGE = `usage: wendoo unpack <file.wendoo> [dir] [--coordinate <owner/repo>] [--force]
 
-Converts a .mindcraft export document into a publishable project directory:
-the document's embedded manifest is written as mindcraft.json and every file
+Converts a .wendoo export document into a publishable project directory:
+the document's embedded manifest is written as wendoo.json and every file
 in its contents is written to disk. A manifest that declares no files list
 gets one naming every unpacked file, including scratch files that happened to
-be in the exported workspace; prune mindcraft.json before publishing.
+be in the exported workspace; prune wendoo.json before publishing.
 
   dir                          target directory (default: the document's base
                                name, in the current directory)
@@ -60,7 +60,7 @@ function parseUnpackArguments(args: readonly string[]): UnpackArguments | string
   }
 
   if (positional.length === 0) {
-    return "expected a .mindcraft document to unpack";
+    return "expected a .wendoo document to unpack";
   }
   if (positional.length > 2) {
     return `unexpected argument "${positional[2]}"`;
@@ -98,18 +98,18 @@ async function checkTargetDir(dir: string, force: boolean): Promise<UnpackRefusa
 }
 
 /**
- * Run `mindcraft unpack` with the arguments following the subcommand name.
+ * Run `wendoo unpack` with the arguments following the subcommand name.
  * Returns the process exit code.
  */
 export async function runUnpackCommand(args: readonly string[]): Promise<number> {
   const parsed = parseUnpackArguments(args);
   if (typeof parsed === "string") {
-    process.stderr.write(`mindcraft unpack: ${parsed}\n${UNPACK_USAGE}`);
+    process.stderr.write(`wendoo unpack: ${parsed}\n${UNPACK_USAGE}`);
     return 1;
   }
 
   const refuse = (refusal: UnpackRefusal): number => {
-    process.stderr.write(`mindcraft unpack: ${refusal.code}: ${refusal.message}\n`);
+    process.stderr.write(`wendoo unpack: ${refusal.code}: ${refusal.message}\n`);
     return 1;
   };
 
@@ -131,12 +131,12 @@ export async function runUnpackCommand(args: readonly string[]): Promise<number>
     });
   }
 
-  const documentResult = parseMindcraftProjectDocument(text);
+  const documentResult = parseWendooProjectDocument(text);
   if (!documentResult.ok) {
     const details = documentResult.errors.map((error) => `${error.code} at ${error.path}: ${error.message}`).join(" ");
     return refuse({
       code: UnpackErrorCode.DOCUMENT_INVALID,
-      message: `"${parsed.file}" is not a valid .mindcraft project document. ${details}`,
+      message: `"${parsed.file}" is not a valid .wendoo project document. ${details}`,
     });
   }
 
@@ -157,13 +157,13 @@ export async function runUnpackCommand(args: readonly string[]): Promise<number>
     await writeFile(target, fileContentToBytes(file.content));
   }
   const manifestText = seedProjectTargets(tree.manifestText, loadTargetRegistry().entries);
-  await writeFile(path.join(parsed.dir, MINDCRAFT_JSON_PATH), manifestText, "utf8");
+  await writeFile(path.join(parsed.dir, WENDOO_JSON_PATH), manifestText, "utf8");
 
-  process.stdout.write(`unpacked ${tree.files.length} project files and ${MINDCRAFT_JSON_PATH} into ${parsed.dir}\n`);
+  process.stdout.write(`unpacked ${tree.files.length} project files and ${WENDOO_JSON_PATH} into ${parsed.dir}\n`);
   if (!tree.declaredFilesList && tree.files.length > 0) {
     process.stdout.write(
       "note: the manifest's files list names everything the export carried, including scratch\n" +
-        "files; prune mindcraft.json before publishing.\n"
+        "files; prune wendoo.json before publishing.\n"
     );
   }
   return 0;

@@ -1,12 +1,12 @@
-import { List } from "@mindcraft-lang/core";
+import { List } from "@wendoo-lang/core";
 import type {
   ConstantOffsets,
   FunctionBytecode,
   Instr,
   ProgramTypeEntry,
   UnlinkedBrainProgram,
-} from "@mindcraft-lang/core/runtime";
-import { isFunctionValue, NativeType, Op, remapProgramTypeEntry, type Value } from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
+import { isFunctionValue, NativeType, Op, remapProgramTypeEntry, type Value } from "@wendoo-lang/core/runtime";
 import type { DebugMetadata, LinkedUserProgram, UserAuthoredProgram } from "../compiler/types.js";
 
 /** Output of {@link linkUserPrograms}: the merged brain program and per-program offset metadata. */

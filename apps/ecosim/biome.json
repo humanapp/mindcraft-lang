@@ -26,6 +26,6 @@
     }
   },
   "files": {
-    "includes": ["**", "!lib/mindcraft.ecosim.d.ts"]
+    "includes": ["**", "!lib/wendoo.ecosim.d.ts"]
   }
 }

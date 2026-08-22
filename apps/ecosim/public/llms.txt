@@ -1,13 +1,13 @@
-# Mindcraft - Ecosystem Simulator
+# Wendoo - Ecosystem Simulator
 
-> An interactive 2D ecosystem simulator where carnivores, herbivores, and plants compete for survival. Each species is driven by a user-programmable brain built with Mindcraft -- a tile-based visual programming language.
+> An interactive 2D ecosystem simulator where carnivores, herbivores, and plants compete for survival. Each species is driven by a user-programmable brain built with Wendoo -- a tile-based visual programming language.
 
-Mindcraft programs are written by arranging tiles into rules. Each rule has a WHEN condition and a DO action. A collection of rules forms a brain that drives an autonomous actor. Three species -- carnivores, herbivores, and plants -- each run their own brain, which you can edit live in the browser.
+Wendoo programs are written by arranging tiles into rules. Each rule has a WHEN condition and a DO action. A collection of rules forms a brain that drives an autonomous actor. Three species -- carnivores, herbivores, and plants -- each run their own brain, which you can edit live in the browser.
 
 ## Pages
 
-- [Ecosystem Simulator](https://sim.mindcraft-lang.org/): Live simulation with editable brains for carnivores, herbivores, and plants
-- [Language Documentation](https://sim.mindcraft-lang.org/docs): Full tile reference, sensors, actuators, and programming guide
+- [Ecosystem Simulator](https://sim.wendoo-lang.org/): Live simulation with editable brains for carnivores, herbivores, and plants
+- [Language Documentation](https://sim.wendoo-lang.org/docs): Full tile reference, sensors, actuators, and programming guide
 
 ## Language Features
 
@@ -16,7 +16,7 @@ Mindcraft programs are written by arranging tiles into rules. Each rule has a WH
 - Sensors: See (vision cone), Bump (contact detection), Random, Timeout, Current Page, and more
 - Actuators: Move, Turn, Eat, Shoot, Say, Switch Page
 - Multi-page brains: state machines using numbered pages
-- TypeScript compilation: write brains in TypeScript, compile to Mindcraft bytecode via the VS Code Web extension
+- TypeScript compilation: write brains in TypeScript, compile to Wendoo bytecode via the VS Code Web extension
 
 ## Ecosystem Mechanics
 
@@ -33,11 +33,11 @@ Mindcraft programs are written by arranging tiles into rules. Each rule has a WH
 - Phaser 3 with Matter.js -- game canvas and physics
 - Vite -- build tooling
 - Tailwind CSS v4 -- styling
-- @mindcraft-lang/core -- Mindcraft language runtime (tiles, compiler, VM)
-- @mindcraft-lang/ui -- shared brain editor React components
+- @wendoo-lang/core -- Wendoo language runtime (tiles, compiler, VM)
+- @wendoo-lang/ui -- shared brain editor React components
 
 ## Links
 
-- Main product site: https://mindcraft-lang.org
-- Language documentation: https://sim.mindcraft-lang.org/docs
-- Open source on GitHub: https://github.com/humanapp/mindcraft-lang
+- Main product site: https://wendoo-lang.org
+- Language documentation: https://sim.wendoo-lang.org/docs
+- Open source on GitHub: https://github.com/humanapp/wendoo-lang

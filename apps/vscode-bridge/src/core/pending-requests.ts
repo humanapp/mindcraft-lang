@@ -1,4 +1,4 @@
-import type { FileSystemNotification } from "@mindcraft-lang/bridge-protocol";
+import type { FileSystemNotification } from "@wendoo-lang/bridge-protocol";
 import type { WSContext } from "hono/ws";
 import { safeSend } from "#transport/ws/safe-send.js";
 

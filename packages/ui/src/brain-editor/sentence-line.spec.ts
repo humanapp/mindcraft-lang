@@ -10,17 +10,17 @@
 
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import type { BrainServices, IBrainTileDef } from "@mindcraft-lang/core/brain";
-import { mkVariableTileId, RuleSide } from "@mindcraft-lang/core/brain";
-import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { BrainCommandHistory, BrainDef, type BrainPageDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+import type { BrainServices, IBrainTileDef } from "@wendoo-lang/core/brain";
+import { mkVariableTileId, RuleSide } from "@wendoo-lang/core/brain";
+import { __test__appendTile, __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { BrainCommandHistory, BrainDef, type BrainPageDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
 import {
   BrainTileActuatorDef,
   BrainTileLiteralDef,
   BrainTileSensorDef,
   BrainTileVariableDef,
-} from "@mindcraft-lang/core/brain/tiles";
-import { bag, CoreTypeIds, mkActionDescriptor, mkCallDef, NIL_VALUE } from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/brain/tiles";
+import { bag, CoreTypeIds, mkActionDescriptor, mkCallDef, NIL_VALUE } from "@wendoo-lang/core/runtime";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { type BrainEditorConfig, BrainEditorProvider } from "./BrainEditorContext";

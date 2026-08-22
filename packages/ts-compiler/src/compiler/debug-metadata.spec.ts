@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { Dict, List } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { PageMetadata, UnlinkedBrainProgram } from "@mindcraft-lang/core/runtime";
-import { BYTECODE_VERSION, type FunctionBytecode, mkNumberValue, Op, type Value } from "@mindcraft-lang/core/runtime";
+import { Dict, List } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { PageMetadata, UnlinkedBrainProgram } from "@wendoo-lang/core/runtime";
+import { BYTECODE_VERSION, type FunctionBytecode, mkNumberValue, Op, type Value } from "@wendoo-lang/core/runtime";
 import { linkUserPrograms } from "../linker/linker.js";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
@@ -55,7 +55,7 @@ describe("debug metadata assembly", () => {
 
   test("compiled program has debugMetadata with correct file and function counts", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -80,7 +80,7 @@ export default Sensor({
 
   test("compiledFuncId matches index in program functions", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function helper(): number { return 42; }
 
@@ -109,7 +109,7 @@ export default Sensor({
 
   test("generated functions have isGenerated true", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 let counter = 0;
 
@@ -135,7 +135,7 @@ export default Sensor({
 
   test("user-authored functions have isGenerated false", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function helper(): number { return 42; }
 
@@ -161,7 +161,7 @@ export default Sensor({
 
   test("class methods and constructors have distinct debugFunctionId values", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 class Point {
   x: number;
@@ -210,7 +210,7 @@ export function add(a: number, b: number): number {
 }
 `,
       "sensors/calc.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 import { add } from "../helpers/math";
 
 export default Sensor({
@@ -244,7 +244,7 @@ export default Sensor({
 
   test("linked program debug metadata has correctly offset compiledFuncId values", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -298,7 +298,7 @@ export default Sensor({
 
   test("closure functions have parentName in debugFunctionId", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -327,7 +327,7 @@ export default Sensor({
 
   test("debugFunctionId values are unique across all functions", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function helper(): number { return 1; }
 
@@ -352,7 +352,7 @@ export default Sensor({
 
   test("revisionId is populated", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -369,7 +369,7 @@ export default Sensor({
 
   test("function sourceSpan is populated for user functions", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function helper(): number { return 42; }
 
@@ -396,7 +396,7 @@ export default Sensor({
 
   test("callSites and suspendSites arrays are present on all functions", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function helper(): number { return 42; }
 

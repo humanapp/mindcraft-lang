@@ -11,16 +11,16 @@
 
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import type { BrainServices, IBrainTileDef } from "@mindcraft-lang/core/brain";
-import { RuleSide } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import type { BrainServices, IBrainTileDef } from "@wendoo-lang/core/brain";
+import { RuleSide } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
 import {
   flattenRuleTiles,
   projectRuleSentence,
   type SentenceSegment,
   type SentenceTileRef,
-} from "@mindcraft-lang/core/brain/language-service";
-import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+} from "@wendoo-lang/core/brain/language-service";
+import type { BrainRuleDef } from "@wendoo-lang/core/brain/model";
 import {
   type CaretPosition,
   caretDeletionTarget,

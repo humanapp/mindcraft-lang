@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { BrainDiagnosticEntry } from "@mindcraft-lang/bridge-app";
+import type { BrainDiagnosticEntry } from "@wendoo-lang/bridge-app";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { BrainDiagnosticsList, BrainErrorBadge, toggledBrainKey } from "./BrainDiagnostics";

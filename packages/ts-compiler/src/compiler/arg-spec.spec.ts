@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, runtime } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { BrainTileModifierDef } from "@mindcraft-lang/core/brain/tiles";
-import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
+import { List, runtime } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { BrainTileModifierDef } from "@wendoo-lang/core/brain/tiles";
+import type { ExecutionContext } from "@wendoo-lang/core/runtime";
 import {
   type BooleanValue,
   type BrainActionCallArgSpec,
@@ -26,8 +26,8 @@ import {
   type Value,
   ValueDict,
   VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildCallDef } from "./call-def-builder.js";
 import { compileUserTile } from "./compile.js";
@@ -57,7 +57,7 @@ describe("descriptor arg spec extraction", () => {
 
   test("modifier is extracted with id, label, and icon", () => {
     const source = `
-import { Actuator, type Context, modifier } from "mindcraft";
+import { Actuator, type Context, modifier } from "wendoo";
 
 export default Actuator({
   name: "walk",
@@ -80,7 +80,7 @@ export default Actuator({
 
   test("modifier without icon omits icon", () => {
     const source = `
-import { Actuator, type Context, modifier } from "mindcraft";
+import { Actuator, type Context, modifier } from "wendoo";
 
 export default Actuator({
   name: "walk",
@@ -101,7 +101,7 @@ export default Actuator({
 
   test("param extracts name, type, and anonymous flag", () => {
     const source = `
-import { Actuator, type Context, param } from "mindcraft";
+import { Actuator, type Context, param } from "wendoo";
 
 export default Actuator({
   name: "chase",
@@ -123,7 +123,7 @@ export default Actuator({
 
   test("param with default value", () => {
     const source = `
-import { Actuator, type Context, param } from "mindcraft";
+import { Actuator, type Context, param } from "wendoo";
 
 export default Actuator({
   name: "chase",
@@ -141,7 +141,7 @@ export default Actuator({
 
   test("param with string default", () => {
     const source = `
-import { Actuator, type Context, param } from "mindcraft";
+import { Actuator, type Context, param } from "wendoo";
 
 export default Actuator({
   name: "greet",
@@ -159,7 +159,7 @@ export default Actuator({
 
   test("param with boolean default", () => {
     const source = `
-import { Actuator, type Context, param } from "mindcraft";
+import { Actuator, type Context, param } from "wendoo";
 
 export default Actuator({
   name: "toggle",
@@ -177,7 +177,7 @@ export default Actuator({
 
   test("param with null default", () => {
     const source = `
-import { Actuator, type Context, param } from "mindcraft";
+import { Actuator, type Context, param } from "wendoo";
 
 export default Actuator({
   name: "test",
@@ -195,7 +195,7 @@ export default Actuator({
 
   test("anonymous param", () => {
     const source = `
-import { Actuator, type Context, param } from "mindcraft";
+import { Actuator, type Context, param } from "wendoo";
 
 export default Actuator({
   name: "chase",
@@ -213,7 +213,7 @@ export default Actuator({
 
   test("choice with named group", () => {
     const source = `
-import { Actuator, type Context, choice, param } from "mindcraft";
+import { Actuator, type Context, choice, param } from "wendoo";
 
 export default Actuator({
   name: "move",
@@ -238,7 +238,7 @@ export default Actuator({
 
   test("choice without name", () => {
     const source = `
-import { Actuator, type Context, choice, param } from "mindcraft";
+import { Actuator, type Context, choice, param } from "wendoo";
 
 export default Actuator({
   name: "move",
@@ -261,7 +261,7 @@ export default Actuator({
 
   test("optional wraps inner spec", () => {
     const source = `
-import { Actuator, type Context, optional, param } from "mindcraft";
+import { Actuator, type Context, optional, param } from "wendoo";
 
 export default Actuator({
   name: "fly",
@@ -283,7 +283,7 @@ export default Actuator({
 
   test("repeated with min and max", () => {
     const source = `
-import { Actuator, type Context, repeated, modifier } from "mindcraft";
+import { Actuator, type Context, repeated, modifier } from "wendoo";
 
 export default Actuator({
   name: "patrol",
@@ -306,7 +306,7 @@ export default Actuator({
 
   test("repeated without bounds", () => {
     const source = `
-import { Actuator, type Context, repeated, modifier } from "mindcraft";
+import { Actuator, type Context, repeated, modifier } from "wendoo";
 
 export default Actuator({
   name: "patrol",
@@ -326,7 +326,7 @@ export default Actuator({
 
   test("conditional extracts condition and thenItem", () => {
     const source = `
-import { Actuator, type Context, conditional, param } from "mindcraft";
+import { Actuator, type Context, conditional, param } from "wendoo";
 
 export default Actuator({
   name: "react",
@@ -349,7 +349,7 @@ export default Actuator({
 
   test("conditional extracts else branch when provided", () => {
     const source = `
-import { Actuator, type Context, conditional, param } from "mindcraft";
+import { Actuator, type Context, conditional, param } from "wendoo";
 
 export default Actuator({
   name: "react",
@@ -373,7 +373,7 @@ export default Actuator({
 
   test("seq wraps multiple items in order", () => {
     const source = `
-import { Actuator, type Context, seq, param, modifier } from "mindcraft";
+import { Actuator, type Context, seq, param, modifier } from "wendoo";
 
 export default Actuator({
   name: "combo",
@@ -397,7 +397,7 @@ export default Actuator({
 
   test("nested: choice inside optional", () => {
     const source = `
-import { Actuator, type Context, optional, choice, param } from "mindcraft";
+import { Actuator, type Context, optional, choice, param } from "wendoo";
 
 export default Actuator({
   name: "steer",
@@ -422,7 +422,7 @@ export default Actuator({
 
   test("nested: conditional inside seq", () => {
     const source = `
-import { Actuator, type Context, seq, conditional, modifier, param } from "mindcraft";
+import { Actuator, type Context, seq, conditional, modifier, param } from "wendoo";
 
 export default Actuator({
   name: "complex",
@@ -448,7 +448,7 @@ export default Actuator({
 
   test("full grammar: all shapes together", () => {
     const source = `
-import { Actuator, type Context, modifier, param, choice, optional, repeated, conditional, seq } from "mindcraft";
+import { Actuator, type Context, modifier, param, choice, optional, repeated, conditional, seq } from "wendoo";
 
 export default Actuator({
   name: "mega",
@@ -491,7 +491,7 @@ describe("sensor return type extraction", () => {
 
   test("type reference return type", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -505,7 +505,7 @@ export default Sensor({
 
   test("number keyword return type", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -519,7 +519,7 @@ export default Sensor({
 
   test("string keyword return type", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -533,7 +533,7 @@ export default Sensor({
 
   test("async unwraps Promise<T>", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -547,7 +547,7 @@ export default Sensor({
 
   test("nullable union type is not supported as return type", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -560,7 +560,7 @@ export default Sensor({
 
   test("void return type produces diagnostic", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -573,7 +573,7 @@ export default Sensor({
 
   test("missing return type annotation produces diagnostic", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -586,7 +586,7 @@ export default Sensor({
 
   test("actuator does not extract return type", () => {
     const source = `
-import { Actuator, type Context } from "mindcraft";
+import { Actuator, type Context } from "wendoo";
 
 export default Actuator({
   name: "test",
@@ -611,7 +611,7 @@ describe("descriptor arg spec extraction diagnostics", () => {
    */
   function argDiagnostics(argElement: string) {
     const source = `
-import { Actuator, type Context, choice, conditional, modifier, optional, param, repeated, seq } from "mindcraft";
+import { Actuator, type Context, choice, conditional, modifier, optional, param, repeated, seq } from "wendoo";
 
 export default Actuator({
   name: "test",
@@ -635,7 +635,7 @@ ${argElement}
 
   test("args as non-array expression produces diagnostic", () => {
     const source = `
-import { Actuator, type Context } from "mindcraft";
+import { Actuator, type Context } from "wendoo";
 
 export default Actuator({
   name: "test",
@@ -1154,7 +1154,7 @@ describe("end-to-end: extraction through callDef", () => {
 
   test("sensor with all grammar shapes compiles and produces valid program", () => {
     const source = `
-import { Sensor, type Context, modifier, param, choice, optional, repeated, conditional, seq } from "mindcraft";
+import { Sensor, type Context, modifier, param, choice, optional, repeated, conditional, seq } from "wendoo";
 
 export default Sensor({
   name: "complex-sensor",
@@ -1204,7 +1204,7 @@ export default Sensor({
 
   test("actuator with nested grammar compiles cleanly", () => {
     const source = `
-import { Actuator, type Context, choice, optional, param, seq, modifier } from "mindcraft";
+import { Actuator, type Context, choice, optional, param, seq, modifier } from "wendoo";
 
 export default Actuator({
   name: "patrol",
@@ -1294,7 +1294,7 @@ describe("arg spec execution: args passed to onExecute", () => {
 
   test("single param receives value in onExecute", () => {
     const source = `
-import { Sensor, param, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "single-param",
@@ -1315,7 +1315,7 @@ export default Sensor({
 
   test("multiple params receive correct values by position", () => {
     const source = `
-import { Sensor, param, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "multi-param",
@@ -1345,7 +1345,7 @@ export default Sensor({
 
   test("string param received correctly", () => {
     const source = `
-import { Sensor, param, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "str-param",
@@ -1366,7 +1366,7 @@ export default Sensor({
 
   test("optional param receives value when provided", () => {
     const source = `
-import { Sensor, optional, param, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "opt-param",
@@ -1387,7 +1387,7 @@ export default Sensor({
 
   test("choice params receive value for selected option", () => {
     const source = `
-import { Sensor, choice, param, type Context } from "mindcraft";
+import { Sensor, choice, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "choice-param",
@@ -1417,7 +1417,7 @@ export default Sensor({
 
   test("conditional then-branch param receives value", () => {
     const source = `
-import { Sensor, conditional, param, type Context } from "mindcraft";
+import { Sensor, conditional, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "cond-param",
@@ -1438,7 +1438,7 @@ export default Sensor({
 
   test("seq params receive values in declaration order", () => {
     const source = `
-import { Sensor, seq, param, modifier, type Context } from "mindcraft";
+import { Sensor, seq, param, modifier, type Context } from "wendoo";
 
 export default Sensor({
   name: "seq-params",
@@ -1468,7 +1468,7 @@ export default Sensor({
 
   test("mixed grammar: params from different nesting levels all receive values", () => {
     const source = `
-import { Sensor, param, optional, choice, seq, modifier, type Context } from "mindcraft";
+import { Sensor, param, optional, choice, seq, modifier, type Context } from "wendoo";
 
 export default Sensor({
   name: "mixed",
@@ -1512,7 +1512,7 @@ export default Sensor({
 
   test("boolean param controls branch in onExecute", () => {
     const source = `
-import { Sensor, param, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "bool-branch",
@@ -1543,7 +1543,7 @@ export default Sensor({
 
   test("repeated modifier occupies slot before param", () => {
     const source = `
-import { Sensor, repeated, modifier, param, type Context } from "mindcraft";
+import { Sensor, repeated, modifier, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "rep-mod",
@@ -1565,7 +1565,7 @@ export default Sensor({
 
   test("repeated modifier exposes count, zero when absent", () => {
     const source = `
-import { Sensor, repeated, modifier, param, type Context } from "mindcraft";
+import { Sensor, repeated, modifier, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "rep-mod-count",
@@ -1590,7 +1590,7 @@ export default Sensor({
 
   test("repeated modifier preserves min/max in descriptor", () => {
     const source = `
-import { Sensor, repeated, modifier, type Context } from "mindcraft";
+import { Sensor, repeated, modifier, type Context } from "wendoo";
 
 export default Sensor({
   name: "rep-bounds",
@@ -1616,7 +1616,7 @@ export default Sensor({
 
   test("optional(choice(A, B)) -- only slot 1 filled returns correct value", () => {
     const source = `
-import { Sensor, optional, choice, param, type Context } from "mindcraft";
+import { Sensor, optional, choice, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "opt-choice-slot1",
@@ -1640,7 +1640,7 @@ export default Sensor({
 
   test("optional(choice(A, B)) -- only slot 0 filled returns correct value", () => {
     const source = `
-import { Sensor, optional, choice, param, type Context } from "mindcraft";
+import { Sensor, optional, choice, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "opt-choice-slot0",
@@ -1664,7 +1664,7 @@ export default Sensor({
 
   test("modifier present yields true in args", () => {
     const source = `
-import { Sensor, modifier, type Context } from "mindcraft";
+import { Sensor, modifier, type Context } from "wendoo";
 
 export default Sensor({
   name: "mod-present",
@@ -1686,7 +1686,7 @@ export default Sensor({
 
   test("modifier absent yields false in args", () => {
     const source = `
-import { Sensor, modifier, type Context } from "mindcraft";
+import { Sensor, modifier, type Context } from "wendoo";
 
 export default Sensor({
   name: "mod-absent",
@@ -1708,7 +1708,7 @@ export default Sensor({
 
   test("modifier in choice with param uses correct slots", () => {
     const source = `
-import { Sensor, choice, modifier, param, type Context } from "mindcraft";
+import { Sensor, choice, modifier, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "mod-choice",
@@ -1739,7 +1739,7 @@ export default Sensor({
       new BrainTileModifierDef("modifier.distance.nearby", { metadata: { label: "nearby" } })
     );
     const source = `
-import { Sensor, modifier, type Context } from "mindcraft";
+import { Sensor, modifier, type Context } from "wendoo";
 
 export default Sensor({
   name: "existing-ref",
@@ -1764,7 +1764,7 @@ export default Sensor({
 
   test("multiple modifiers before param use correct slot indices", () => {
     const source = `
-import { Sensor, modifier, param, type Context } from "mindcraft";
+import { Sensor, modifier, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "multi-mod",

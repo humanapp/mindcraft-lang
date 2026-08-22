@@ -1,5 +1,5 @@
-declare module "mindcraft" {
-  interface MindcraftTypeMap {
+declare module "wendoo" {
+  interface WendooTypeMap {
     Vector2: Vector2;
     ActorRef: ActorRef;
     "ActorRef?": ActorRef | null;

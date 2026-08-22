@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, runtime } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
+import { List, runtime } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { ExecutionContext } from "@wendoo-lang/core/runtime";
 import {
   HandleTable,
   isStructValue,
@@ -19,8 +19,8 @@ import {
   type StructValue,
   type Value,
   VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";
@@ -110,7 +110,7 @@ describe("optional chaining", () => {
 
   test("obj?.field returns field value when obj is non-null", () => {
     const source = `
-import { Sensor, type Context, type Inner } from "mindcraft";
+import { Sensor, type Context, type Inner } from "wendoo";
 
 export default Sensor({
   name: "opt-field-nonnull",
@@ -128,7 +128,7 @@ export default Sensor({
 
   test("obj?.field returns undefined when obj is null", () => {
     const source = `
-import { Sensor, type Context, type Inner } from "mindcraft";
+import { Sensor, type Context, type Inner } from "wendoo";
 
 export default Sensor({
   name: "opt-field-null",
@@ -146,7 +146,7 @@ export default Sensor({
 
   test("obj?.field returns undefined when obj is undefined", () => {
     const source = `
-import { Sensor, type Context, type Inner } from "mindcraft";
+import { Sensor, type Context, type Inner } from "wendoo";
 
 export default Sensor({
   name: "opt-field-undef",
@@ -164,7 +164,7 @@ export default Sensor({
 
   test("arr?.[0] returns element when arr is non-null", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "opt-elem-nonnull",
@@ -182,7 +182,7 @@ export default Sensor({
 
   test("arr?.[0] returns undefined when arr is null", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "opt-elem-null",
@@ -200,7 +200,7 @@ export default Sensor({
 
   test("str?.length returns length when str is non-null", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "opt-strlen-nonnull",
@@ -218,7 +218,7 @@ export default Sensor({
 
   test("str?.length returns undefined when str is null", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "opt-strlen-null",
@@ -236,7 +236,7 @@ export default Sensor({
 
   test("fn?.() returns result when fn is non-null", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "opt-call-nonnull",
@@ -254,7 +254,7 @@ export default Sensor({
 
   test("fn?.() returns undefined when fn is null", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "opt-call-null",
@@ -272,7 +272,7 @@ export default Sensor({
 
   test("chained optional: obj?.inner.value with null obj", () => {
     const source = `
-import { Sensor, type Context, type Outer } from "mindcraft";
+import { Sensor, type Context, type Outer } from "wendoo";
 
 export default Sensor({
   name: "opt-chain-null",
@@ -290,7 +290,7 @@ export default Sensor({
 
   test("arr?.length returns length when arr is non-null", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "opt-arrlen-nonnull",
@@ -308,7 +308,7 @@ export default Sensor({
 
   test("arr?.length returns undefined when arr is null", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "opt-arrlen-null",

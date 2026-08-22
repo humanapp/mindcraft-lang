@@ -7,22 +7,22 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { AuthoringWorkspace, TargetAdapter } from "@mindcraft-lang/assistant-bridge";
-import { serveToolCalls } from "@mindcraft-lang/assistant-bridge/relay";
-import { ruleIdAt } from "@mindcraft-lang/assistant-bridge/testing";
-import type { EditedBrainWorkspaces, PersonActivity } from "@mindcraft-lang/assistant-panel";
+import type { AuthoringWorkspace, TargetAdapter } from "@wendoo-lang/assistant-bridge";
+import { serveToolCalls } from "@wendoo-lang/assistant-bridge/relay";
+import { ruleIdAt } from "@wendoo-lang/assistant-bridge/testing";
+import type { EditedBrainWorkspaces, PersonActivity } from "@wendoo-lang/assistant-panel";
 import {
   createEditedBrainWorkspaces,
   createPersonActivity,
   NoEditedBrain,
   NoEditedBrainCode,
   personInteractionWindowMs,
-} from "@mindcraft-lang/assistant-panel";
-import type { MindcraftEnvironment } from "@mindcraft-lang/core/app";
-import { coreModule, createMindcraftEnvironment, List } from "@mindcraft-lang/core/app";
-import type { BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { AddRuleCommand, BrainCommandHistory, BrainDef, BrainEditOrigin } from "@mindcraft-lang/core/brain/model";
-import type { EditedBrain, EditedBrainPlace } from "@mindcraft-lang/ui";
+} from "@wendoo-lang/assistant-panel";
+import type { WendooEnvironment } from "@wendoo-lang/core/app";
+import { coreModule, createWendooEnvironment, List } from "@wendoo-lang/core/app";
+import type { BrainPageDef, BrainRuleDef } from "@wendoo-lang/core/brain/model";
+import { AddRuleCommand, BrainCommandHistory, BrainDef, BrainEditOrigin } from "@wendoo-lang/core/brain/model";
+import type { EditedBrain, EditedBrainPlace } from "@wendoo-lang/ui";
 import { createEcosimModule } from "@/brain/index";
 import { TileIds } from "@/brain/tileids";
 import { createTargetAdapter } from "@/rehearsal/adapter";
@@ -54,7 +54,7 @@ const authoringCalls = [
 
 /** One app, as far as the workspaces are concerned: its environment and its target. */
 interface AppStand {
-  readonly environment: MindcraftEnvironment;
+  readonly environment: WendooEnvironment;
   readonly adapter: TargetAdapter;
   readonly workspaces: EditedBrainWorkspaces;
   /** Where the person's own acting is recorded, over a clock the test moves itself. */
@@ -65,7 +65,7 @@ interface AppStand {
 
 /** Stand an environment carrying this app's module, with the target adapter it authors for. */
 function appStand(): AppStand {
-  const environment = createMindcraftEnvironment({ modules: [coreModule(), createEcosimModule()] });
+  const environment = createWendooEnvironment({ modules: [coreModule(), createEcosimModule()] });
   const adapter = createTargetAdapter(CONTENT);
   let at = 0;
   const activity = createPersonActivity({ now: () => at });

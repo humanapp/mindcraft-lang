@@ -1,7 +1,7 @@
-import type { IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
-import { groupTilesByLibrary, type LibraryTileGroups } from "@mindcraft-lang/ui/brain-editor/tile-library-groups";
-import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
-import { kDocsPanelInsetVar, publishInset, withdrawInset } from "@mindcraft-lang/ui/ui/surface-insets";
+import type { IBrainTileDef, ITileCatalog } from "@wendoo-lang/core/brain";
+import { groupTilesByLibrary, type LibraryTileGroups } from "@wendoo-lang/ui/brain-editor/tile-library-groups";
+import type { TileVisual } from "@wendoo-lang/ui/brain-editor/types";
+import { kDocsPanelInsetVar, publishInset, withdrawInset } from "@wendoo-lang/ui/ui/surface-insets";
 import { BookOpen, ChevronLeft, ChevronRight, ExternalLink, GripVertical, Printer, Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";

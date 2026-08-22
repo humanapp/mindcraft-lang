@@ -1,6 +1,6 @@
-import { parseProjectContentManifest } from "@mindcraft-lang/app-host";
+import { parseProjectContentManifest } from "@wendoo-lang/app-host";
 import * as vscode from "vscode";
-import { MINDCRAFT_JSON } from "../mindcraft-json";
+import { WENDOO_JSON } from "../wendoo-json";
 import { type FolderTargetDescriptor, readDevTargetDescriptor } from "./project-skeleton";
 import { ensureCachedTargetApp } from "./target-app-cache-host";
 import { type ProjectTargetResolution, resolveProjectTargetDescriptor, targetRegistryEntries } from "./target-registry";
@@ -15,11 +15,11 @@ export async function fileExists(uri: vscode.Uri): Promise<boolean> {
   }
 }
 
-/** The workspace folders that contain a `mindcraft.json` manifest, in workspace order. */
+/** The workspace folders that contain a `wendoo.json` manifest, in workspace order. */
 export async function findProjectFolderCandidates(): Promise<vscode.WorkspaceFolder[]> {
   const candidates: vscode.WorkspaceFolder[] = [];
   for (const folder of vscode.workspace.workspaceFolders ?? []) {
-    if (await fileExists(vscode.Uri.joinPath(folder.uri, MINDCRAFT_JSON))) {
+    if (await fileExists(vscode.Uri.joinPath(folder.uri, WENDOO_JSON))) {
       candidates.push(folder);
     }
   }
@@ -35,7 +35,7 @@ export async function findProjectFolderCandidates(): Promise<vscode.WorkspaceFol
 export async function readDeclaredTargetRanges(folderUri: vscode.Uri): Promise<Readonly<Record<string, string>>> {
   let text: string;
   try {
-    text = new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(folderUri, MINDCRAFT_JSON)));
+    text = new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(folderUri, WENDOO_JSON)));
   } catch {
     return {};
   }
@@ -50,7 +50,7 @@ export async function readDeclaredTargetRanges(folderUri: vscode.Uri): Promise<R
 
 /**
  * Resolve the target descriptor the project folder at `folderUri` opens with:
- * the `mindcraft.devTarget` override when set, else the registry-listed target
+ * the `wendoo.devTarget` override when set, else the registry-listed target
  * declared by the folder's own project manifest.
  */
 export async function resolveFolderTargetDescriptor(folderUri: vscode.Uri): Promise<ProjectTargetResolution> {

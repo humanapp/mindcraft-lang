@@ -1,6 +1,6 @@
-import type { ITileCatalog } from "@mindcraft-lang/core/brain";
-import { DocsPage as SharedDocsPage } from "@mindcraft-lang/docs";
-import { Toaster } from "@mindcraft-lang/ui";
+import type { ITileCatalog } from "@wendoo-lang/core/brain";
+import { DocsPage as SharedDocsPage } from "@wendoo-lang/docs";
+import { Toaster } from "@wendoo-lang/ui";
 import { useMemo } from "react";
 import { dataTypeIconMap, dataTypeNameMap } from "./brain/editor/data-type-icons";
 import { createVfsAwareVisualProvider } from "./brain/editor/visual-provider";

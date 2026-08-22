@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { coreModule, createMindcraftEnvironment } from "@mindcraft-lang/core/app";
-import { buildCoreAmbientDeclarations, buildPlatformAmbientDeclarations } from "@mindcraft-lang/ts-compiler";
+import { coreModule, createWendooEnvironment } from "@wendoo-lang/core/app";
+import { buildCoreAmbientDeclarations, buildPlatformAmbientDeclarations } from "@wendoo-lang/ts-compiler";
 import { createEcosimModule } from "../brain";
 
 function readText(relativePath: string): string {
@@ -15,8 +15,8 @@ function readPackageText(specifier: string): string {
 }
 
 test("checked-in ambient declarations match generated core and sim declarations", () => {
-  const coreEnvironment = createMindcraftEnvironment({ modules: [coreModule()] });
-  const ecosimEnvironment = createMindcraftEnvironment({ modules: [coreModule(), createEcosimModule()] });
+  const coreEnvironment = createWendooEnvironment({ modules: [coreModule()] });
+  const ecosimEnvironment = createWendooEnvironment({ modules: [coreModule(), createEcosimModule()] });
 
   const coreAmbient = buildCoreAmbientDeclarations(coreEnvironment.brainServices.runtime.types);
   const ecosimAmbient = buildPlatformAmbientDeclarations(
@@ -24,6 +24,6 @@ test("checked-in ambient declarations match generated core and sim declarations"
     ecosimEnvironment.brainServices.runtime.types
   );
 
-  assert.equal(readPackageText("@mindcraft-lang/core/lib/mindcraft.core.d.ts"), coreAmbient);
-  assert.equal(readText("../../lib/mindcraft.ecosim.d.ts"), ecosimAmbient);
+  assert.equal(readPackageText("@wendoo-lang/core/lib/wendoo.core.d.ts"), coreAmbient);
+  assert.equal(readText("../../lib/wendoo.ecosim.d.ts"), ecosimAmbient);
 });

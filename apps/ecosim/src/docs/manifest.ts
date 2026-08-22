@@ -7,7 +7,7 @@
 // content/{locale}/tiles/ or content/{locale}/patterns/.
 // ---------------------------------------------------------------------------
 
-import type { AppPatternDocMeta, AppTileDocMeta } from "@mindcraft-lang/docs";
+import type { AppPatternDocMeta, AppTileDocMeta } from "@wendoo-lang/docs";
 
 // ---------------------------------------------------------------------------
 // Tile doc metadata

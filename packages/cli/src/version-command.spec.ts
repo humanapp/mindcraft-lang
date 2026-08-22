@@ -19,10 +19,10 @@ after(async () => {
 });
 
 async function readManifest(dir: string): Promise<Record<string, unknown>> {
-  return JSON.parse(await readFile(path.join(dir, "mindcraft.json"), "utf8")) as Record<string, unknown>;
+  return JSON.parse(await readFile(path.join(dir, "wendoo.json"), "utf8")) as Record<string, unknown>;
 }
 
-describe("mindcraft version", () => {
+describe("wendoo version", () => {
   it("increments each component and writes the new version back to the manifest", async () => {
     const cases: ReadonlyArray<[string, string, string]> = [
       ["patch", "1.2.3", "1.2.4"],
@@ -32,7 +32,7 @@ describe("mindcraft version", () => {
     for (const [component, from, expected] of cases) {
       const project = await scratch();
       await writeProjectFiles(project, {
-        "mindcraft.json": JSON.stringify({ name: "Blinker", version: from }, null, 2),
+        "wendoo.json": JSON.stringify({ name: "Blinker", version: from }, null, 2),
       });
 
       const result = await runCliBin(project, "version", component);
@@ -46,7 +46,7 @@ describe("mindcraft version", () => {
   it("preserves other manifest fields, including a build-version stamp, while bumping the version", async () => {
     const project = await scratch();
     await writeProjectFiles(project, {
-      "mindcraft.json": JSON.stringify(
+      "wendoo.json": JSON.stringify(
         {
           name: "Microbit V2",
           version: "0.9.1",
@@ -81,16 +81,16 @@ describe("mindcraft version", () => {
   it("rejects a missing or unknown component with usage output", async () => {
     const project = await scratch();
     await writeProjectFiles(project, {
-      "mindcraft.json": JSON.stringify({ name: "Blinker", version: "1.0.0" }, null, 2),
+      "wendoo.json": JSON.stringify({ name: "Blinker", version: "1.0.0" }, null, 2),
     });
 
     const missing = await runCliBin(project, "version");
     assert.equal(missing.code, 1);
-    assert.match(missing.stderr, /usage: mindcraft version/);
+    assert.match(missing.stderr, /usage: wendoo version/);
 
     const unknown = await runCliBin(project, "version", "huge");
     assert.equal(unknown.code, 1);
-    assert.match(unknown.stderr, /usage: mindcraft version/);
+    assert.match(unknown.stderr, /usage: wendoo version/);
     // A refused bump does not touch the manifest.
     assert.equal((await readManifest(project)).version, "1.0.0");
   });

@@ -1,4 +1,4 @@
-import { type PrintTransport, printPortalViaTransport } from "@mindcraft-lang/ui/print/standalone-print-document";
+import { type PrintTransport, printPortalViaTransport } from "@wendoo-lang/ui/print/standalone-print-document";
 import { useCallback, useRef, useState } from "react";
 
 /**
@@ -38,7 +38,7 @@ export function useDocsPrint(printTransport?: PrintTransport) {
             setPrintContent(null);
           };
           if (printTransport) {
-            void printPortalViaTransport(root, "docs-print-root", "Mindcraft Docs", printTransport)
+            void printPortalViaTransport(root, "docs-print-root", "Wendoo Docs", printTransport)
               .catch(() => undefined)
               .finally(finish);
             return;

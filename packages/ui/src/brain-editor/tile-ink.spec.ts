@@ -7,11 +7,11 @@
 
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import type { BrainServices, IBrainTileDef } from "@mindcraft-lang/core/brain";
-import { mkOperatorTileId, RuleSide } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { BrainDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { CoreOpId } from "@mindcraft-lang/core/runtime";
+import type { BrainServices, IBrainTileDef } from "@wendoo-lang/core/brain";
+import { mkOperatorTileId, RuleSide } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { BrainDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
+import { CoreOpId } from "@wendoo-lang/core/runtime";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { readableInk } from "../lib/color";

@@ -1,4 +1,4 @@
-import type { BrainServices } from "@mindcraft-lang/core/brain";
+import type { BrainServices } from "@wendoo-lang/core/brain";
 import { CompileDiagCode, DescriptorDiagCode } from "./diag-codes.js";
 import { UserTileProject } from "./project.js";
 import type { CompileOptions } from "./types.js";

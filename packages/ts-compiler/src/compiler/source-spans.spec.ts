@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { compileUserTile } from "./compile.js";
 import type { DebugSpan } from "./types.js";
@@ -15,7 +15,7 @@ describe("source span tracking", () => {
 
   test("pcToSpanIndex has an entry for every PC", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -50,7 +50,7 @@ export default Sensor({
 
   test("statement boundaries are set for expression statements", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -72,7 +72,7 @@ export default Sensor({
 
   test("statement boundaries are set for return statements", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -93,7 +93,7 @@ export default Sensor({
 
   test("statement boundaries are set for if conditions", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -121,7 +121,7 @@ export default Sensor({
 
   test("statement boundaries are set for while loop conditions", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -149,7 +149,7 @@ export default Sensor({
 
   test("statement boundaries are set for break and continue", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -181,7 +181,7 @@ export default Sensor({
 
   test("sub-expression PCs have isStatementBoundary false", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -203,7 +203,7 @@ export default Sensor({
 
   test("spans have valid line and column info", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -231,7 +231,7 @@ export default Sensor({
 
   test("spanId values are unique within a function", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -256,7 +256,7 @@ export default Sensor({
 
   test("generated functions have span data", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 let counter = 0;
 
@@ -281,7 +281,7 @@ export default Sensor({
 
   test("for loop has boundaries for condition", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "test",
@@ -309,7 +309,7 @@ export default Sensor({
 
   test("multiple functions each have their own span data", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function helper(x: number): number {
   return x * 2;

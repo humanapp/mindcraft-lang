@@ -16,9 +16,9 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { AuthoringWorkspace, ScenarioInput, SimulationRun } from "@mindcraft-lang/assistant-bridge";
-import { createAuthoringWorkspace, proposeEdit } from "@mindcraft-lang/assistant-bridge";
-import { ruleIdAt } from "@mindcraft-lang/assistant-bridge/testing";
+import type { AuthoringWorkspace, ScenarioInput, SimulationRun } from "@wendoo-lang/assistant-bridge";
+import { createAuthoringWorkspace, proposeEdit } from "@wendoo-lang/assistant-bridge";
+import { ruleIdAt } from "@wendoo-lang/assistant-bridge/testing";
 import { createTargetAdapter } from "./adapter";
 import { sourceRehearsalContent } from "./source-content";
 

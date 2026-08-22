@@ -10,11 +10,11 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { Dict, List, UniqueSet } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { compileBrain } from "@mindcraft-lang/core/brain/compiler";
-import { BrainDef } from "@mindcraft-lang/core/brain/model";
+import { Dict, List, UniqueSet } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { compileBrain } from "@wendoo-lang/core/brain/compiler";
+import { BrainDef } from "@wendoo-lang/core/brain/model";
 import {
   BYTECODE_VERSION,
   createProgramServices,
@@ -34,8 +34,8 @@ import {
   type Value,
   VM,
   VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 
 /** The funcId of the single rule function every raw-bytecode fixture below runs. */
 const RULE_FUNC_ID = 0;

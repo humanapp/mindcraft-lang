@@ -9,7 +9,7 @@ export interface TileScaffold {
 /** Starter scaffold for a new sensor tile. */
 export const SENSOR_SCAFFOLD: TileScaffold = {
   baseName: "my-sensor",
-  content: `import { Sensor } from "mindcraft";
+  content: `import { Sensor } from "wendoo";
 
 export default Sensor({
   name: "my sensor",
@@ -25,7 +25,7 @@ export default Sensor({
 /** Starter scaffold for a new actuator tile. */
 export const ACTUATOR_SCAFFOLD: TileScaffold = {
   baseName: "my-actuator",
-  content: `import { Actuator } from "mindcraft";
+  content: `import { Actuator } from "wendoo";
 
 export default Actuator({
   name: "my actuator",

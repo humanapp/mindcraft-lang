@@ -1,28 +1,28 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  detectMindcraftProgramImageEncoding,
-  MINDCRAFT_BINARY_PROGRAM_IMAGE_MAGIC,
-  MINDCRAFT_PROGRAM_IMAGE_FORMAT,
-  MINDCRAFT_PROGRAM_IMAGE_VERSION,
-  type MindcraftProgramImage,
-  MindcraftProgramImageEncoding,
-  MindcraftProgramImageValidationCode,
-  parseMindcraftProgramImage,
-  parseMindcraftProgramImageJson,
-  serializeMindcraftProgramImageJson,
-  validateMindcraftProgramImage,
+  detectWendooProgramImageEncoding,
+  parseWendooProgramImage,
+  parseWendooProgramImageJson,
+  serializeWendooProgramImageJson,
+  validateWendooProgramImage,
+  WENDOO_BINARY_PROGRAM_IMAGE_MAGIC,
+  WENDOO_PROGRAM_IMAGE_FORMAT,
+  WENDOO_PROGRAM_IMAGE_VERSION,
+  type WendooProgramImage,
+  WendooProgramImageEncoding,
+  WendooProgramImageValidationCode,
 } from "./program-image";
 
 type ProgramImageValidationCode =
-  (typeof MindcraftProgramImageValidationCode)[keyof typeof MindcraftProgramImageValidationCode];
+  (typeof WendooProgramImageValidationCode)[keyof typeof WendooProgramImageValidationCode];
 
-const VALID_IMAGE: MindcraftProgramImage<{
+const VALID_IMAGE: WendooProgramImage<{
   readonly entry: string;
   readonly bytecode: readonly number[];
 }> = {
-  format: MINDCRAFT_PROGRAM_IMAGE_FORMAT,
-  version: MINDCRAFT_PROGRAM_IMAGE_VERSION,
+  format: WENDOO_PROGRAM_IMAGE_FORMAT,
+  version: WENDOO_PROGRAM_IMAGE_VERSION,
   profileId: "test-profile",
   program: {
     entry: "main",
@@ -31,78 +31,78 @@ const VALID_IMAGE: MindcraftProgramImage<{
 };
 
 function errorCodes(value: unknown): readonly ProgramImageValidationCode[] {
-  const result = validateMindcraftProgramImage(value);
+  const result = validateWendooProgramImage(value);
   assert.equal(result.ok, false);
   return result.errors.map((error) => error.code);
 }
 
-describe("parseMindcraftProgramImageJson", () => {
+describe("parseWendooProgramImageJson", () => {
   it("parses JSON program image text", () => {
-    const result = parseMindcraftProgramImageJson(JSON.stringify(VALID_IMAGE));
+    const result = parseWendooProgramImageJson(JSON.stringify(VALID_IMAGE));
 
     assert.equal(result.ok, true);
-    assert.equal(result.encoding, MindcraftProgramImageEncoding.JSON);
+    assert.equal(result.encoding, WendooProgramImageEncoding.JSON);
     assert.deepEqual(result.image, VALID_IMAGE);
   });
 
   it("returns a stable code for malformed JSON", () => {
-    const result = parseMindcraftProgramImageJson("{not json");
+    const result = parseWendooProgramImageJson("{not json");
 
     assert.equal(result.ok, false);
-    assert.equal(result.encoding, MindcraftProgramImageEncoding.JSON);
+    assert.equal(result.encoding, WendooProgramImageEncoding.JSON);
     assert.deepEqual(
       result.errors.map((error) => error.code),
-      [MindcraftProgramImageValidationCode.INVALID_PROGRAM_IMAGE_JSON]
+      [WendooProgramImageValidationCode.INVALID_PROGRAM_IMAGE_JSON]
     );
     assert.ok(result.errors[0]?.cause);
   });
 });
 
-describe("parseMindcraftProgramImage", () => {
+describe("parseWendooProgramImage", () => {
   it("parses JSON program image text", () => {
-    const result = parseMindcraftProgramImage(JSON.stringify(VALID_IMAGE));
+    const result = parseWendooProgramImage(JSON.stringify(VALID_IMAGE));
 
     assert.equal(result.ok, true);
-    assert.equal(result.encoding, MindcraftProgramImageEncoding.JSON);
+    assert.equal(result.encoding, WendooProgramImageEncoding.JSON);
     assert.deepEqual(result.image, VALID_IMAGE);
   });
 
   it("detects JSON program image bytes", () => {
     const bytes = new TextEncoder().encode(JSON.stringify(VALID_IMAGE));
 
-    const result = parseMindcraftProgramImage(bytes);
+    const result = parseWendooProgramImage(bytes);
 
     assert.equal(result.ok, true);
-    assert.equal(result.encoding, MindcraftProgramImageEncoding.JSON);
+    assert.equal(result.encoding, WendooProgramImageEncoding.JSON);
     assert.deepEqual(result.image, VALID_IMAGE);
   });
 
   it("returns a stable code for recognized binary program images", () => {
-    const result = parseMindcraftProgramImage(new Uint8Array([...MINDCRAFT_BINARY_PROGRAM_IMAGE_MAGIC, 1, 2, 3]));
+    const result = parseWendooProgramImage(new Uint8Array([...WENDOO_BINARY_PROGRAM_IMAGE_MAGIC, 1, 2, 3]));
 
     assert.equal(result.ok, false);
-    assert.equal(result.encoding, MindcraftProgramImageEncoding.BINARY);
+    assert.equal(result.encoding, WendooProgramImageEncoding.BINARY);
     assert.deepEqual(
       result.errors.map((error) => error.code),
-      [MindcraftProgramImageValidationCode.UNSUPPORTED_BINARY_PROGRAM_IMAGE]
+      [WendooProgramImageValidationCode.UNSUPPORTED_BINARY_PROGRAM_IMAGE]
     );
   });
 
   it("returns a stable code for unknown byte encodings", () => {
-    const result = parseMindcraftProgramImage(new Uint8Array([0x01, 0x02, 0x03]));
+    const result = parseWendooProgramImage(new Uint8Array([0x01, 0x02, 0x03]));
 
     assert.equal(result.ok, false);
     assert.equal(result.encoding, undefined);
     assert.deepEqual(
       result.errors.map((error) => error.code),
-      [MindcraftProgramImageValidationCode.INVALID_PROGRAM_IMAGE_ENCODING]
+      [WendooProgramImageValidationCode.INVALID_PROGRAM_IMAGE_ENCODING]
     );
   });
 });
 
-describe("validateMindcraftProgramImage", () => {
+describe("validateWendooProgramImage", () => {
   it("validates a parsed program image object", () => {
-    const result = validateMindcraftProgramImage(VALID_IMAGE);
+    const result = validateWendooProgramImage(VALID_IMAGE);
 
     assert.equal(result.ok, true);
     assert.deepEqual(result.image, VALID_IMAGE);
@@ -112,47 +112,47 @@ describe("validateMindcraftProgramImage", () => {
     assert.deepEqual(
       errorCodes({
         ...VALID_IMAGE,
-        format: "mindcraft.project",
+        format: "wendoo.project",
         version: 2,
         profileId: 3,
         program: null,
       }),
       [
-        MindcraftProgramImageValidationCode.INVALID_PROGRAM_IMAGE_FORMAT,
-        MindcraftProgramImageValidationCode.INVALID_PROGRAM_IMAGE_VERSION,
-        MindcraftProgramImageValidationCode.INVALID_PROGRAM_IMAGE_PROFILE,
-        MindcraftProgramImageValidationCode.MISSING_PROGRAM_IMAGE_PROGRAM,
+        WendooProgramImageValidationCode.INVALID_PROGRAM_IMAGE_FORMAT,
+        WendooProgramImageValidationCode.INVALID_PROGRAM_IMAGE_VERSION,
+        WendooProgramImageValidationCode.INVALID_PROGRAM_IMAGE_PROFILE,
+        WendooProgramImageValidationCode.MISSING_PROGRAM_IMAGE_PROGRAM,
       ]
     );
   });
 
   it("rejects non-object JSON roots", () => {
-    assert.deepEqual(errorCodes([]), [MindcraftProgramImageValidationCode.INVALID_PROGRAM_IMAGE_ROOT]);
+    assert.deepEqual(errorCodes([]), [WendooProgramImageValidationCode.INVALID_PROGRAM_IMAGE_ROOT]);
   });
 });
 
-describe("detectMindcraftProgramImageEncoding", () => {
+describe("detectWendooProgramImageEncoding", () => {
   it("detects JSON program image bytes", () => {
     const jsonPrefix = new Uint8Array([0x0a, 0x7b]);
 
-    assert.equal(detectMindcraftProgramImageEncoding(jsonPrefix), MindcraftProgramImageEncoding.JSON);
+    assert.equal(detectWendooProgramImageEncoding(jsonPrefix), WendooProgramImageEncoding.JSON);
   });
 
   it("detects binary program image bytes", () => {
-    const bytes = new Uint8Array([...MINDCRAFT_BINARY_PROGRAM_IMAGE_MAGIC, 1, 2, 3]);
+    const bytes = new Uint8Array([...WENDOO_BINARY_PROGRAM_IMAGE_MAGIC, 1, 2, 3]);
 
-    assert.equal(detectMindcraftProgramImageEncoding(bytes), MindcraftProgramImageEncoding.BINARY);
+    assert.equal(detectWendooProgramImageEncoding(bytes), WendooProgramImageEncoding.BINARY);
   });
 
   it("rejects unknown byte encodings", () => {
-    assert.equal(detectMindcraftProgramImageEncoding(new Uint8Array([0x01, 0x02, 0x03])), undefined);
+    assert.equal(detectWendooProgramImageEncoding(new Uint8Array([0x01, 0x02, 0x03])), undefined);
   });
 });
 
-describe("serializeMindcraftProgramImageJson", () => {
+describe("serializeWendooProgramImageJson", () => {
   it("preserves the embedded profile id across JSON serialization", () => {
-    const serialized = serializeMindcraftProgramImageJson(VALID_IMAGE);
-    const result = parseMindcraftProgramImageJson(serialized);
+    const serialized = serializeWendooProgramImageJson(VALID_IMAGE);
+    const result = parseWendooProgramImageJson(serialized);
 
     assert.equal(result.ok, true);
     assert.equal(result.image.profileId, "test-profile");

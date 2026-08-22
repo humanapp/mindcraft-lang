@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, runtime } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext, Scheduler } from "@mindcraft-lang/core/runtime";
+import { List, runtime } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { ExecutionContext, Scheduler } from "@wendoo-lang/core/runtime";
 import {
   HandleTable,
   NativeType,
@@ -12,8 +12,8 @@ import {
   type StringValue,
   type Value,
   VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { compileUserTile } from "./compile.js";
 
@@ -47,7 +47,7 @@ function mkScheduler(): Scheduler {
 
 function sensorReturningNumber(body: string): string {
   return `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "nested-fn-test",
@@ -60,7 +60,7 @@ export default Sensor({
 
 function sensorReturningString(body: string): string {
   return `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "nested-fn-test",
@@ -175,7 +175,7 @@ describe("nested function declarations", () => {
 
   test("nested function capturing outer parameter", () => {
     const source = `
-import { Sensor, param, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "wendoo";
 
 export default Sensor({
   name: "nested-fn-capture-param",
@@ -294,7 +294,7 @@ export default Sensor({
 
   test("nested function shadows a top-level helper with the same name", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function double(n: number): number {
   return n * 2;
@@ -329,7 +329,7 @@ export default Sensor({
 
   test("two top-level helpers each with a same-named local function don't stomp each other", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 function helperA(n: number): number {
   function compute(x: number): number {

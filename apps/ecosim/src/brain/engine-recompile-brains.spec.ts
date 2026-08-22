@@ -1,19 +1,19 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { CORE_LIB_COORDINATE, resolveProjectExtensions } from "@mindcraft-lang/bridge-app";
-import { buildEmbeddedExtensionFromDir } from "@mindcraft-lang/bridge-app/node";
+import { CORE_LIB_COORDINATE, resolveProjectExtensions } from "@wendoo-lang/bridge-app";
+import { buildEmbeddedExtensionFromDir } from "@wendoo-lang/bridge-app/node";
 import {
   BrainDef,
   coreModule,
-  createMindcraftEnvironment,
-  type MindcraftBrain,
-  type MindcraftEnvironment,
+  createWendooEnvironment,
   mkActuatorTileId,
   mkSensorTileId,
-} from "@mindcraft-lang/core/app";
-import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
-import { createWorkspaceCompiler, type Mount, type WorkspaceSnapshot } from "@mindcraft-lang/ts-compiler";
+  type WendooBrain,
+  type WendooEnvironment,
+} from "@wendoo-lang/core/app";
+import type { IBrainTileDef } from "@wendoo-lang/core/brain";
+import { createWorkspaceCompiler, type Mount, type WorkspaceSnapshot } from "@wendoo-lang/ts-compiler";
 import { createEcosimModule } from "../brain";
 import type { Archetype } from "../brain/actor";
 import { Engine } from "../brain/engine";
@@ -44,7 +44,7 @@ function embedRecord() {
   ];
 }
 
-const HOST_PROGRAM = `import { Sensor, type Context } from "mindcraft";
+const HOST_PROGRAM = `import { Sensor, type Context } from "wendoo";
 export default Sensor({
   name: "host probe",
   onExecute(ctx: Context): boolean {
@@ -54,7 +54,7 @@ export default Sensor({
 `;
 
 /** True when the brain's linked program binds the given bytecode action key. */
-function brainBindsAction(brain: MindcraftBrain, key: string): boolean {
+function brainBindsAction(brain: WendooBrain, key: string): boolean {
   const program = brain.getProgram();
   const actions = program?.actions;
   if (!actions) return false;
@@ -76,7 +76,7 @@ function findTile(tiles: readonly IBrainTileDef[], tileId: string): IBrainTileDe
  * extension install/uninstall does: re-resolve the project's dependency set,
  * recompile, and republish the compiled action bundle into the environment.
  */
-function createCompileHarness(env: MindcraftEnvironment) {
+function createCompileHarness(env: WendooEnvironment) {
   const mounts: readonly Mount[] = [];
   function resolve(coordinates: readonly string[]) {
     const extensions: Record<string, string> = { [ECOSIM_LIB_COORDINATE]: ECOSIM_LIB_REFERENCE };
@@ -115,7 +115,7 @@ function createCompileHarness(env: MindcraftEnvironment) {
  * and whose DO uses the Teleport actuator. The tiles are taken from a bundle in
  * which both are installed.
  */
-function buildTeleportBrainDef(env: MindcraftEnvironment, tiles: readonly IBrainTileDef[]): BrainDef {
+function buildTeleportBrainDef(env: WendooEnvironment, tiles: readonly IBrainTileDef[]): BrainDef {
   const teleportTile = findTile(tiles, mkActuatorTileId(TELEPORT_KEY));
   const detectTile = findTile(tiles, mkSensorTileId(`${ECOSIM_DETECT_EXT_COORDINATE}:user.sensor.${DETECT_ID}`));
   const def = BrainDef.emptyBrainDef(env.brainServices, "carnivore");
@@ -136,7 +136,7 @@ function fakeScene(): Playground {
 }
 
 /** A store stand-in exposing the real environment and a per-archetype brain def source. */
-function fakeStore(env: MindcraftEnvironment, defs: Record<Archetype, BrainDef>): EcosimEnvironmentStore {
+function fakeStore(env: WendooEnvironment, defs: Record<Archetype, BrainDef>): EcosimEnvironmentStore {
   return {
     env,
     getDesiredCounts: () => ({ carnivore: 0, herbivore: 0, plant: 0 }),
@@ -147,7 +147,7 @@ function fakeStore(env: MindcraftEnvironment, defs: Record<Archetype, BrainDef>)
 
 describe("engine re-instantiates living actor brains on recompile", () => {
   test("an actor spawned while a tile is uninstalled recovers when the tile is re-added", async () => {
-    const env = createMindcraftEnvironment({ modules: [coreModule(), createEcosimModule()] });
+    const env = createWendooEnvironment({ modules: [coreModule(), createEcosimModule()] });
     const harness = createCompileHarness(env);
 
     // Teleport installed: build the archetype brain def against the live bundle.
@@ -208,7 +208,7 @@ describe("engine re-instantiates living actor brains on recompile", () => {
   });
 
   test("a normal brain edit still re-instantiates living actor brains", async () => {
-    const env = createMindcraftEnvironment({ modules: [coreModule(), createEcosimModule()] });
+    const env = createWendooEnvironment({ modules: [coreModule(), createEcosimModule()] });
     const harness = createCompileHarness(env);
     const withTiles = harness.recompileWith([ECOSIM_TELEPORT_EXT_COORDINATE, ECOSIM_DETECT_EXT_COORDINATE]);
     const teleportDef = buildTeleportBrainDef(env, withTiles);

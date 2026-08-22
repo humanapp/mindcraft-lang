@@ -17,10 +17,10 @@
 
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List } from "@mindcraft-lang/core";
-import type { BrainServices, IBrainTileDef } from "@mindcraft-lang/core/brain";
-import { CoreControlFlowId, mkControlFlowTileId, mkOperatorTileId, RuleSide } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { List } from "@wendoo-lang/core";
+import type { BrainServices, IBrainTileDef } from "@wendoo-lang/core/brain";
+import { CoreControlFlowId, mkControlFlowTileId, mkOperatorTileId, RuleSide } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
 import {
   flattenRuleTiles,
   projectRuleSentence,
@@ -28,10 +28,10 @@ import {
   type SentenceTileRef,
   type SentenceWordSegment,
   whenTriggerWord,
-} from "@mindcraft-lang/core/brain/language-service";
-import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { BrainTileActuatorDef, BrainTileModifierDef, BrainTileSensorDef } from "@mindcraft-lang/core/brain/tiles";
-import { createDefaultLocalizer, type Localizer } from "@mindcraft-lang/core/localization";
+} from "@wendoo-lang/core/brain/language-service";
+import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
+import { BrainTileActuatorDef, BrainTileModifierDef, BrainTileSensorDef } from "@wendoo-lang/core/brain/tiles";
+import { createDefaultLocalizer, type Localizer } from "@wendoo-lang/core/localization";
 import {
   bag,
   CoreOpId,
@@ -42,7 +42,7 @@ import {
   mod,
   NIL_VALUE,
   optional,
-} from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
 import {
   canEndSideExpression,
   composePivotReading,

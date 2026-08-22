@@ -1,7 +1,7 @@
 import type { WireFileContent } from "./file-content.js";
 
-/** Shared Mindcraft project document format identifier. */
-export const MINDCRAFT_PROJECT_FORMAT = "mindcraft.project/2";
+/** Shared Wendoo project document format identifier. */
+export const WENDOO_PROJECT_FORMAT = "wendoo.project/2";
 
 /**
  * Content version a project document, content manifest, or extension reads and
@@ -11,50 +11,50 @@ export const MINDCRAFT_PROJECT_FORMAT = "mindcraft.project/2";
 export const LOWEST_CONTENT_VERSION = "0.0.0";
 
 /** Validation code constants used by shared project document diagnostics. */
-export const MindcraftProjectDocumentValidationCode = {
-  INVALID_JSON: "MINDCRAFT_PROJECT_INVALID_JSON",
-  INVALID_ROOT: "MINDCRAFT_PROJECT_INVALID_ROOT",
-  INVALID_FORMAT: "MINDCRAFT_PROJECT_INVALID_FORMAT",
-  INVALID_MANIFEST: "MINDCRAFT_PROJECT_INVALID_MANIFEST",
-  INVALID_CONTENTS: "MINDCRAFT_PROJECT_INVALID_CONTENTS",
-  INVALID_FILE_PATH: "MINDCRAFT_PROJECT_INVALID_FILE_PATH",
-  INVALID_FILE_CONTENT: "MINDCRAFT_PROJECT_INVALID_FILE_CONTENT",
+export const WendooProjectDocumentValidationCode = {
+  INVALID_JSON: "WENDOO_PROJECT_INVALID_JSON",
+  INVALID_ROOT: "WENDOO_PROJECT_INVALID_ROOT",
+  INVALID_FORMAT: "WENDOO_PROJECT_INVALID_FORMAT",
+  INVALID_MANIFEST: "WENDOO_PROJECT_INVALID_MANIFEST",
+  INVALID_CONTENTS: "WENDOO_PROJECT_INVALID_CONTENTS",
+  INVALID_FILE_PATH: "WENDOO_PROJECT_INVALID_FILE_PATH",
+  INVALID_FILE_CONTENT: "WENDOO_PROJECT_INVALID_FILE_CONTENT",
 } as const;
 
-/** Union of all {@link MindcraftProjectDocumentValidationCode} values. */
-export type MindcraftProjectDocumentValidationCode =
-  (typeof MindcraftProjectDocumentValidationCode)[keyof typeof MindcraftProjectDocumentValidationCode];
+/** Union of all {@link WendooProjectDocumentValidationCode} values. */
+export type WendooProjectDocumentValidationCode =
+  (typeof WendooProjectDocumentValidationCode)[keyof typeof WendooProjectDocumentValidationCode];
 
 /** Extension dependencies keyed by their `<owner>/<repo>` coordinate; each value is an extension reference string. */
-export type MindcraftProjectExtensions = Readonly<Record<string, string>>;
+export type WendooProjectExtensions = Readonly<Record<string, string>>;
 
 /**
  * One file's contents inside a project document: its text as a bare string, or
  * a base64 entry for a file whose bytes are not UTF-8 text.
  */
-export type MindcraftProjectFileContent = string | WireFileContent;
+export type WendooProjectFileContent = string | WireFileContent;
 
 /**
- * Shared Mindcraft project document: a single-file container for one project.
- * The project's content manifest (its `mindcraft.json` object) is embedded
+ * Shared Wendoo project document: a single-file container for one project.
+ * The project's content manifest (its `wendoo.json` object) is embedded
  * verbatim; the document adds only the format marker and the project's file
  * contents.
  */
-export interface MindcraftProjectDocument {
+export interface WendooProjectDocument {
   /** Document format identifier. */
-  readonly format: typeof MINDCRAFT_PROJECT_FORMAT;
+  readonly format: typeof WENDOO_PROJECT_FORMAT;
 
   /** The project's content manifest object, embedded verbatim. */
   readonly manifest: Readonly<Record<string, unknown>>;
 
   /** File contents keyed by project-relative path. */
-  readonly contents: Readonly<Record<string, MindcraftProjectFileContent>>;
+  readonly contents: Readonly<Record<string, WendooProjectFileContent>>;
 }
 
 /** Validation diagnostic for a rejected shared project document. */
-export interface MindcraftProjectDocumentValidationError {
+export interface WendooProjectDocumentValidationError {
   /** Stable machine-readable validation code. */
-  readonly code: MindcraftProjectDocumentValidationCode;
+  readonly code: WendooProjectDocumentValidationCode;
 
   /** JSON path of the rejected field. */
   readonly path: string;
@@ -64,13 +64,13 @@ export interface MindcraftProjectDocumentValidationError {
 }
 
 /** Result of validating or parsing a shared project document. */
-export type MindcraftProjectDocumentParseResult =
+export type WendooProjectDocumentParseResult =
   | {
       /** True when a valid project document was produced. */
       readonly ok: true;
 
       /** Parsed shared project document. */
-      readonly document: MindcraftProjectDocument;
+      readonly document: WendooProjectDocument;
 
       /** Empty diagnostics list for a valid document. */
       readonly errors: readonly [];
@@ -80,15 +80,15 @@ export type MindcraftProjectDocumentParseResult =
       readonly ok: false;
 
       /** Validation diagnostics. */
-      readonly errors: readonly MindcraftProjectDocumentValidationError[];
+      readonly errors: readonly WendooProjectDocumentValidationError[];
     };
 
 /**
- * Parses and validates a shared Mindcraft project document from JSON text.
+ * Parses and validates a shared Wendoo project document from JSON text.
  *
- * @param content - JSON text from a `.mindcraft` file.
+ * @param content - JSON text from a `.wendoo` file.
  */
-export function parseMindcraftProjectDocument(content: string): MindcraftProjectDocumentParseResult {
+export function parseWendooProjectDocument(content: string): WendooProjectDocumentParseResult {
   let parsed: unknown;
   try {
     parsed = JSON.parse(content);
@@ -97,7 +97,7 @@ export function parseMindcraftProjectDocument(content: string): MindcraftProject
       ok: false,
       errors: [
         {
-          code: MindcraftProjectDocumentValidationCode.INVALID_JSON,
+          code: WendooProjectDocumentValidationCode.INVALID_JSON,
           path: "$",
           message: "Project document is not valid JSON.",
         },
@@ -105,24 +105,24 @@ export function parseMindcraftProjectDocument(content: string): MindcraftProject
     };
   }
 
-  return validateMindcraftProjectDocument(parsed);
+  return validateWendooProjectDocument(parsed);
 }
 
 /**
- * Validates a parsed shared Mindcraft project document: the format marker, the
+ * Validates a parsed shared Wendoo project document: the format marker, the
  * embedded manifest object, and the file contents map. The manifest object is
  * carried verbatim; its fields are validated by the content manifest schema,
  * not here.
  *
- * @param value - Parsed JSON value from a `.mindcraft` file.
+ * @param value - Parsed JSON value from a `.wendoo` file.
  */
-export function validateMindcraftProjectDocument(value: unknown): MindcraftProjectDocumentParseResult {
+export function validateWendooProjectDocument(value: unknown): WendooProjectDocumentParseResult {
   if (!isRecord(value)) {
     return {
       ok: false,
       errors: [
         {
-          code: MindcraftProjectDocumentValidationCode.INVALID_ROOT,
+          code: WendooProjectDocumentValidationCode.INVALID_ROOT,
           path: "$",
           message: "Project document root must be an object.",
         },
@@ -130,19 +130,19 @@ export function validateMindcraftProjectDocument(value: unknown): MindcraftProje
     };
   }
 
-  const errors: MindcraftProjectDocumentValidationError[] = [];
+  const errors: WendooProjectDocumentValidationError[] = [];
 
-  if (value.format !== MINDCRAFT_PROJECT_FORMAT) {
+  if (value.format !== WENDOO_PROJECT_FORMAT) {
     errors.push({
-      code: MindcraftProjectDocumentValidationCode.INVALID_FORMAT,
+      code: WendooProjectDocumentValidationCode.INVALID_FORMAT,
       path: "$.format",
-      message: `Project document format must be "${MINDCRAFT_PROJECT_FORMAT}".`,
+      message: `Project document format must be "${WENDOO_PROJECT_FORMAT}".`,
     });
   }
 
   if (!isRecord(value.manifest)) {
     errors.push({
-      code: MindcraftProjectDocumentValidationCode.INVALID_MANIFEST,
+      code: WendooProjectDocumentValidationCode.INVALID_MANIFEST,
       path: "$.manifest",
       message: "$.manifest must be an object.",
     });
@@ -150,24 +150,24 @@ export function validateMindcraftProjectDocument(value: unknown): MindcraftProje
 
   if (!isRecord(value.contents)) {
     errors.push({
-      code: MindcraftProjectDocumentValidationCode.INVALID_CONTENTS,
+      code: WendooProjectDocumentValidationCode.INVALID_CONTENTS,
       path: "$.contents",
       message: "$.contents must be an object keyed by project-relative path.",
     });
   } else {
     for (const [filePath, content] of Object.entries(value.contents)) {
       const path = `$.contents[${JSON.stringify(filePath)}]`;
-      if (!isMindcraftProjectFilePath(filePath)) {
+      if (!isWendooProjectFilePath(filePath)) {
         errors.push({
-          code: MindcraftProjectDocumentValidationCode.INVALID_FILE_PATH,
+          code: WendooProjectDocumentValidationCode.INVALID_FILE_PATH,
           path,
           message: "Project file path must be a project-relative path.",
         });
         continue;
       }
-      if (!isMindcraftProjectFileContent(content)) {
+      if (!isWendooProjectFileContent(content)) {
         errors.push({
-          code: MindcraftProjectDocumentValidationCode.INVALID_FILE_CONTENT,
+          code: WendooProjectDocumentValidationCode.INVALID_FILE_CONTENT,
           path,
           message: 'Project file content must be text or a { content, encoding: "base64" } entry.',
         });
@@ -182,16 +182,16 @@ export function validateMindcraftProjectDocument(value: unknown): MindcraftProje
   return {
     ok: true,
     document: {
-      format: MINDCRAFT_PROJECT_FORMAT,
+      format: WENDOO_PROJECT_FORMAT,
       manifest: value.manifest as Readonly<Record<string, unknown>>,
-      contents: value.contents as Readonly<Record<string, MindcraftProjectFileContent>>,
+      contents: value.contents as Readonly<Record<string, WendooProjectFileContent>>,
     },
     errors: [],
   };
 }
 
 /** Tests whether a value is a valid entry of a project document's `contents` map. */
-export function isMindcraftProjectFileContent(value: unknown): value is MindcraftProjectFileContent {
+export function isWendooProjectFileContent(value: unknown): value is WendooProjectFileContent {
   if (typeof value === "string") {
     return true;
   }
@@ -202,7 +202,7 @@ export function isMindcraftProjectFileContent(value: unknown): value is Mindcraf
 }
 
 /** Tests whether a value is a valid shared-project file path. */
-export function isMindcraftProjectFilePath(value: unknown): value is string {
+export function isWendooProjectFilePath(value: unknown): value is string {
   if (typeof value !== "string" || value.length === 0) {
     return false;
   }

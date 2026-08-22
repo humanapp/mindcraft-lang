@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { mkTypeId, NativeType } from "@mindcraft-lang/core/runtime";
+import { List } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { mkTypeId, NativeType } from "@wendoo-lang/core/runtime";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";
@@ -41,7 +41,7 @@ describe("buildAmbientDeclarations", () => {
     const vec2End = ambient.indexOf("}", vec2Start);
     const vec2Block = ambient.slice(vec2Start, vec2End + 1);
     assert.ok(!vec2Block.includes("readonly __brand"), "user-creatable struct should not have brand");
-    assert.ok(ambient.includes("Vector2: Vector2;"), "should have MindcraftTypeMap entry");
+    assert.ok(ambient.includes("Vector2: Vector2;"), "should have WendooTypeMap entry");
   });
 
   test("generates branded interface for native-backed struct", () => {
@@ -63,13 +63,13 @@ describe("buildAmbientDeclarations", () => {
     assert.ok(ambient.includes("readonly __brand: unique symbol;"), "native-backed should have brand");
     assert.ok(ambient.includes("readonly id: number;"), "fields should be readonly");
     assert.ok(ambient.includes('readonly "energy pct": number;'), "spaced field name should be quoted");
-    assert.ok(ambient.includes("ActorRef: ActorRef;"), "should have MindcraftTypeMap entry");
+    assert.ok(ambient.includes("ActorRef: ActorRef;"), "should have WendooTypeMap entry");
   });
 
   test("branded struct prevents object literal assignment (TS type error)", () => {
     const ambient = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, type Context, type ActorRef } from "mindcraft";
+import { Sensor, type Context, type ActorRef } from "wendoo";
 
 export default Sensor({
   name: "test-brand",
@@ -90,7 +90,7 @@ export default Sensor({
   test("native-backed struct param compiles to LOAD_LOCAL/STORE_LOCAL", () => {
     const ambient = buildAmbientDeclarations(services.runtime.types);
     const source = `
-import { Sensor, param, type ActorRef, type Context } from "mindcraft";
+import { Sensor, param, type ActorRef, type Context } from "wendoo";
 
 export default Sensor({
   name: "test-param-assign",
@@ -140,7 +140,7 @@ export default Sensor({
     assert.ok(ambient.includes("pos: Position;"), "struct field should reference Position type");
   });
 
-  test("strongly-typed number adds MindcraftTypeMap entry", () => {
+  test("strongly-typed number adds WendooTypeMap entry", () => {
     const types = services.runtime.types;
     const healthId = mkTypeId(NativeType.Number, "health");
     if (!types.get(healthId)) {
@@ -171,7 +171,7 @@ export default Sensor({
       ambient.includes('export type Direction = "north" | "south" | "east";'),
       "should generate string union from enum keys"
     );
-    assert.ok(ambient.includes("Direction: Direction;"), "should have MindcraftTypeMap entry");
+    assert.ok(ambient.includes("Direction: Direction;"), "should have WendooTypeMap entry");
   });
 
   test("list type generates Array alias", () => {
@@ -186,19 +186,19 @@ export default Sensor({
 
     const ambient = buildAmbientDeclarations(services.runtime.types);
     assert.ok(ambient.includes("export type NumberList = Array<number>;"), "should generate Array type alias");
-    assert.ok(ambient.includes("NumberList: NumberList;"), "should have MindcraftTypeMap entry");
+    assert.ok(ambient.includes("NumberList: NumberList;"), "should have WendooTypeMap entry");
   });
 
-  test("core types are not duplicated in MindcraftTypeMap", () => {
+  test("core types are not duplicated in WendooTypeMap", () => {
     const ambient = buildAmbientDeclarations(services.runtime.types);
     const matches = ambient.match(/boolean: boolean;/g);
-    assert.equal(matches?.length, 1, "boolean should appear exactly once in MindcraftTypeMap");
+    assert.equal(matches?.length, 1, "boolean should appear exactly once in WendooTypeMap");
   });
 
-  test("buffer joins MindcraftTypeMap exactly once under its lowercase registry key", () => {
+  test("buffer joins WendooTypeMap exactly once under its lowercase registry key", () => {
     const ambient = buildAmbientDeclarations(services.runtime.types);
     const matches = ambient.match(/buffer: Buffer;/g);
-    assert.equal(matches?.length, 1, "buffer should appear exactly once in MindcraftTypeMap");
+    assert.equal(matches?.length, 1, "buffer should appear exactly once in WendooTypeMap");
   });
 
   test("BufferConstructor exposes the isBuffer type guard", () => {
@@ -224,7 +224,7 @@ export default Sensor({
 
   test("SensorConfig and ActuatorConfig accept metadata fields", () => {
     const sensorSource = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "meta-sensor",
@@ -243,7 +243,7 @@ export default Sensor({
     assert.ok(sensorResult.program);
 
     const actuatorSource = `
-import { Actuator, type Context } from "mindcraft";
+import { Actuator, type Context } from "wendoo";
 
 export default Actuator({
   name: "meta-actuator",

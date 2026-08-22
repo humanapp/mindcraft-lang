@@ -1,11 +1,11 @@
 import { buildEmbeddedExtensionFromDir, extensionSourceFiles } from "./embedded-extension-loader.js";
 import type { EmbeddedExtension } from "./embedded-extensions.js";
 
-/** One embedded extension a host application registers: its coordinate and the directory holding its `mindcraft.json`. */
+/** One embedded extension a host application registers: its coordinate and the directory holding its `wendoo.json`. */
 export interface EmbeddedExtensionRegistration {
   /** Canonical `<owner>/<repo>` coordinate the assembled bundle is keyed under. */
   coordinate: string;
-  /** Absolute path to the directory holding the extension's `mindcraft.json`. */
+  /** Absolute path to the directory holding the extension's `wendoo.json`. */
   dir: string;
 }
 
@@ -21,12 +21,12 @@ export interface EmbeddedExtensionsVitePlugin {
 }
 
 /** Default specifier a host application imports the assembled bundles from. */
-export const EMBEDDED_EXTENSIONS_MODULE_ID = "virtual:mindcraft-embedded-extensions";
+export const EMBEDDED_EXTENSIONS_MODULE_ID = "virtual:wendoo-embedded-extensions";
 
 /**
  * Build a Vite plugin that assembles each registered extension from its own
- * `mindcraft.json` `files` list and exposes the bundles as the default export of
- * a virtual module (`virtual:mindcraft-embedded-extensions` unless overridden).
+ * `wendoo.json` `files` list and exposes the bundles as the default export of
+ * a virtual module (`virtual:wendoo-embedded-extensions` unless overridden).
  * A host application registers coordinates and directories only; the file list
  * comes from each extension's manifest, so adding a file to an extension needs
  * no change here. Assembly runs through {@link buildEmbeddedExtensionFromDir},
@@ -42,7 +42,7 @@ export function embeddedExtensionsVitePlugin(
 ): EmbeddedExtensionsVitePlugin {
   const resolvedId = `\0${moduleId}`;
   return {
-    name: "mindcraft-embedded-extensions",
+    name: "wendoo-embedded-extensions",
     resolveId(id: string): string | undefined {
       return id === moduleId ? resolvedId : undefined;
     },

@@ -1,8 +1,4 @@
-import type {
-  ExtensionFetchFileResult,
-  ExtensionFetchTransport,
-  ProjectContentManifest,
-} from "@mindcraft-lang/app-host";
+import type { ExtensionFetchFileResult, ExtensionFetchTransport, ProjectContentManifest } from "@wendoo-lang/app-host";
 import {
   createJsDelivrExtensionTransport,
   ExtensionFetchErrorCode,
@@ -10,7 +6,7 @@ import {
   highestListedRelease,
   parseExtensionReference,
   parseProjectContentManifest,
-} from "@mindcraft-lang/app-host";
+} from "@wendoo-lang/app-host";
 import * as vscode from "vscode";
 import type {
   TargetAppCacheErrorCode,

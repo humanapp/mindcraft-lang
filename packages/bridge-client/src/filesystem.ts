@@ -1,7 +1,7 @@
-import type { FileSystemNotification } from "@mindcraft-lang/bridge-protocol";
-import { MAX_FILE_CONTENT_BYTES } from "@mindcraft-lang/bridge-protocol";
-import type { FileContent } from "@mindcraft-lang/service-api";
-import { fileContentByteLength, fileContentFromWire, fileContentToWire } from "@mindcraft-lang/service-api";
+import type { FileSystemNotification } from "@wendoo-lang/bridge-protocol";
+import { MAX_FILE_CONTENT_BYTES } from "@wendoo-lang/bridge-protocol";
+import type { FileContent } from "@wendoo-lang/service-api";
+import { fileContentByteLength, fileContentFromWire, fileContentToWire } from "@wendoo-lang/service-api";
 import { ErrorCode, ProtocolError } from "./error-codes.js";
 
 export type { FileSystemNotification };

@@ -5,5 +5,5 @@
     "noEmit": true,
     "types": []
   },
-  "files": ["mindcraft.ecosim.d.ts"]
+  "files": ["wendoo.ecosim.d.ts"]
 }

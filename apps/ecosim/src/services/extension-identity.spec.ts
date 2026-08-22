@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { EmbeddedExtension } from "@mindcraft-lang/bridge-app";
-import { resolveProjectExtensions } from "@mindcraft-lang/bridge-app";
+import type { EmbeddedExtension } from "@wendoo-lang/bridge-app";
+import { resolveProjectExtensions } from "@wendoo-lang/bridge-app";
 
 /**
  * A mounted extension whose own manifest declares an identity that differs
@@ -12,7 +12,7 @@ function mismatchedExtension(): EmbeddedExtension {
     canonicalOrigin: "acme/widget",
     files: [
       {
-        path: "mindcraft.json",
+        path: "wendoo.json",
         content: JSON.stringify({
           name: "Widget",
           version: "1.0.0",

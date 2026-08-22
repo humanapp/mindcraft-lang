@@ -7,11 +7,11 @@ describe("PROJECT_ACTIONS", () => {
     assert.deepStrictEqual(
       PROJECT_ACTIONS.map((action) => action.commandId),
       [
-        "mindcraft.createSensor",
-        "mindcraft.createActuator",
-        "mindcraft.importProject",
-        "mindcraft.openEditor",
-        "mindcraft.openSettings",
+        "wendoo.createSensor",
+        "wendoo.createActuator",
+        "wendoo.importProject",
+        "wendoo.openEditor",
+        "wendoo.openSettings",
       ]
     );
   });

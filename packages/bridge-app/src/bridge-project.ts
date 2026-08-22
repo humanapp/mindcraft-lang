@@ -1,6 +1,6 @@
-import type { FileSystemSnapshot } from "@mindcraft-lang/bridge-client";
-import { Project, type ProjectOptions } from "@mindcraft-lang/bridge-client";
-import type { AppClientMessage, AppServerMessage, FileSystemNotification } from "@mindcraft-lang/bridge-protocol";
+import type { FileSystemSnapshot } from "@wendoo-lang/bridge-client";
+import { Project, type ProjectOptions } from "@wendoo-lang/bridge-client";
+import type { AppClientMessage, AppServerMessage, FileSystemNotification } from "@wendoo-lang/bridge-protocol";
 import { CompilationManager, type CompilationProvider } from "./compilation.js";
 
 /** Options for {@link BridgeProject}. */

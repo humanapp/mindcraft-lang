@@ -1,5 +1,5 @@
-import type { BrainCommandHistory, BrainPageDef, BrainRuleDef, RuleLocation } from "@mindcraft-lang/core/brain/model";
-import { kMaxBrainRuleDepth, MoveRuleCommand } from "@mindcraft-lang/core/brain/model";
+import type { BrainCommandHistory, BrainPageDef, BrainRuleDef, RuleLocation } from "@wendoo-lang/core/brain/model";
+import { kMaxBrainRuleDepth, MoveRuleCommand } from "@wendoo-lang/core/brain/model";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const DRAG_THRESHOLD_PX = 5;

@@ -5,8 +5,8 @@
 // - Content (markdown strings): imported per locale from "./docs/{locale}"
 //
 // Typical usage:
-//   import { coreTileDocs, coreConceptDocs } from "@mindcraft-lang/core/docs";
-//   import { tileContent, conceptContent } from "@mindcraft-lang/core/docs/en";
+//   import { coreTileDocs, coreConceptDocs } from "@wendoo-lang/core/docs";
+//   import { tileContent, conceptContent } from "@wendoo-lang/core/docs/en";
 // ---------------------------------------------------------------------------
 
 export type { CoreConceptDocMeta, CoreTileDocMeta } from "./manifest";

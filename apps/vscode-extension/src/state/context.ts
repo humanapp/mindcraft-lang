@@ -1,12 +1,12 @@
 import * as vscode from "vscode";
 
-let mindcraftEnabled = false;
+let wendooEnabled = false;
 
-export function isMindcraftEnabled(): boolean {
-  return mindcraftEnabled;
+export function isWendooEnabled(): boolean {
+  return wendooEnabled;
 }
 
-export function setMindcraftEnabled(enabled: boolean): Thenable<void> {
-  mindcraftEnabled = enabled;
-  return vscode.commands.executeCommand("setContext", "mindcraft.enabled", enabled);
+export function setWendooEnabled(enabled: boolean): Thenable<void> {
+  wendooEnabled = enabled;
+  return vscode.commands.executeCommand("setContext", "wendoo.enabled", enabled);
 }

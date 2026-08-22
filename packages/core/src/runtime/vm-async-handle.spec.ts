@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { List } from "@mindcraft-lang/core";
+import { List } from "@wendoo-lang/core";
 import {
   type AsyncHandle,
   BYTECODE_VERSION,
@@ -18,8 +18,8 @@ import {
   type Program,
   VM,
   VmStatus,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 
 /**
  * Runs a single `HOST_CALL_ASYNC; AWAIT; RET` program whose one async host

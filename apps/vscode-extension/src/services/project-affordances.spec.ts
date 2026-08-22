@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { FileContent } from "@mindcraft-lang/app-host";
-import { fileContentText, fileContentToWire } from "@mindcraft-lang/app-host";
-import type { FolderCompilerFilesPayload } from "@mindcraft-lang/bridge-protocol";
-import { EXTENSIONS_TREE_PATH, INSTALLED_EXTENSIONS_METADATA_PATH } from "@mindcraft-lang/bridge-protocol";
+import type { FileContent } from "@wendoo-lang/app-host";
+import { fileContentText, fileContentToWire } from "@wendoo-lang/app-host";
+import type { FolderCompilerFilesPayload } from "@wendoo-lang/bridge-protocol";
+import { EXTENSIONS_TREE_PATH, INSTALLED_EXTENSIONS_METADATA_PATH } from "@wendoo-lang/bridge-protocol";
 import type { AffordanceFileAccess } from "./project-affordances";
 import {
   GENERATED_TSCONFIG_MARKER,
@@ -97,11 +97,11 @@ describe("updatedGitignoreContent", () => {
   });
 
   it("appends caller-supplied entries and no-ops once they are covered", () => {
-    const added = updatedGitignoreContent("node_modules/\n", [".mindcraft/"]);
+    const added = updatedGitignoreContent("node_modules/\n", [".wendoo/"]);
     assert.ok(added);
     assert.ok(added.startsWith("node_modules/\n"));
-    assert.ok(added.slice("node_modules/\n".length).includes(".mindcraft/"));
-    assert.equal(updatedGitignoreContent("node_modules/\n.mindcraft/\n", [".mindcraft/"]), undefined);
+    assert.ok(added.slice("node_modules/\n".length).includes(".wendoo/"));
+    assert.equal(updatedGitignoreContent("node_modules/\n.wendoo/\n", [".wendoo/"]), undefined);
   });
 });
 

@@ -8,17 +8,17 @@ declare function parseFloat(string: string): number;
 declare function isNaN(number: number): boolean;
 declare function isFinite(number: number): boolean;
 
-/** @deprecated Not supported in Mindcraft Runtime */
+/** @deprecated Not supported in Wendoo Runtime */
 type Object = {};
-/** @deprecated Not supported in Mindcraft Runtime */
+/** @deprecated Not supported in Wendoo Runtime */
 type Function = {};
-/** @deprecated Not supported in Mindcraft Runtime */
+/** @deprecated Not supported in Wendoo Runtime */
 type CallableFunction = {};
-/** @deprecated Not supported in Mindcraft Runtime */
+/** @deprecated Not supported in Wendoo Runtime */
 type NewableFunction = {};
-/** @deprecated Not supported in Mindcraft Runtime */
+/** @deprecated Not supported in Wendoo Runtime */
 type IArguments = {};
-/** @deprecated Not supported in Mindcraft Runtime */
+/** @deprecated Not supported in Wendoo Runtime */
 type RegExp = {};
 
 interface SymbolConstructor {
@@ -322,8 +322,8 @@ type Capitalize<S extends string> = intrinsic;
 type Uncapitalize<S extends string> = intrinsic;
 type NoInfer<T> = intrinsic;
 
-declare module "mindcraft" {
-  interface MindcraftTypeMap {
+declare module "wendoo" {
+  interface WendooTypeMap {
     boolean: boolean;
     number: number;
     string: string;
@@ -335,21 +335,21 @@ declare module "mindcraft" {
     Context: Context;
   }
 
-  export type AnyList = Array<MindcraftValue>;
+  export type AnyList = Array<WendooValue>;
   export interface BrainContext {
     readonly __brand: unique symbol;
-    getVariable(name: string): MindcraftValue;
-    setVariable(name: string, value: MindcraftValue): void;
+    getVariable(name: string): WendooValue;
+    setVariable(name: string, value: WendooValue): void;
   }
   export interface EngineContext {
     readonly __brand: unique symbol;
   }
   export interface RuleContext {
     readonly __brand: unique symbol;
-    getVariable(name: string): MindcraftValue;
-    setVariable(name: string, value: MindcraftValue): void;
+    getVariable(name: string): WendooValue;
+    setVariable(name: string, value: WendooValue): void;
   }
-  export interface Context extends MindcraftPlatformContext {
+  export interface Context extends WendooPlatformContext {
     readonly __brand: unique symbol;
     readonly time: number;
     readonly dt: number;
@@ -357,15 +357,15 @@ declare module "mindcraft" {
     readonly brain: BrainContext;
     readonly engine: EngineContext;
     readonly rule: RuleContext;
-    getWhenResult(): MindcraftValue;
+    getWhenResult(): WendooValue;
   }
 
-  type MindcraftValue = MindcraftTypeMap[keyof MindcraftTypeMap];
-  type MindcraftType = keyof MindcraftTypeMap | (string & {});
+  type WendooValue = WendooTypeMap[keyof WendooTypeMap];
+  type WendooType = keyof WendooTypeMap | (string & {});
   /** An `enum` binding used where a type is named; it names the enum's registered type. */
   type EnumTypeRef = Record<string, string | number>;
 
-  export interface MindcraftPlatformContext {}
+  export interface WendooPlatformContext {}
 
   interface ModifierSpec {
     readonly __brand: "modifier";
@@ -393,7 +393,7 @@ declare module "mindcraft" {
   export function modifier(id: string, opts?: { label: string; icon?: string }): ModifierSpec;
   export function param(
     name: string,
-    opts: { type: MindcraftType | TypeRef<unknown> | EnumTypeRef; default?: unknown; anonymous?: boolean }
+    opts: { type: WendooType | TypeRef<unknown> | EnumTypeRef; default?: unknown; anonymous?: boolean }
   ): ParamSpec;
   export function choice(name: string, ...items: ArgSpec[]): ChoiceSpec;
   export function choice(...items: ArgSpec[]): ChoiceSpec;
@@ -412,7 +412,7 @@ declare module "mindcraft" {
     /** Output name; the second half of the output identity. */
     name: string;
     /** Output value type, named by TypeRef token (preferred) or type name; the first half of the output identity. */
-    type: MindcraftType | TypeRef<unknown> | EnumTypeRef;
+    type: WendooType | TypeRef<unknown> | EnumTypeRef;
     label?: string;
     icon?: string;
     docs?: string;
@@ -472,14 +472,14 @@ declare module "mindcraft" {
      */
     presenceGated?: boolean;
     /** Return value type, named by TypeRef token (preferred) or type name; defaults to the `onExecute` return annotation. */
-    returnType?: MindcraftType | TypeRef<unknown> | EnumTypeRef;
+    returnType?: WendooType | TypeRef<unknown> | EnumTypeRef;
     /**
      * Declares that this sensor consumes the rule's WHEN result, named by TypeRef
      * token (preferred) or type name. The editor uses it to offer and validate the
      * tile against the WHEN-result type. Declare it when `onExecute` reads
      * `ctx.getWhenResult()`.
      */
-    consumesWhenResult?: MindcraftType | TypeRef<unknown> | EnumTypeRef;
+    consumesWhenResult?: WendooType | TypeRef<unknown> | EnumTypeRef;
     args?: ArgSpec[];
     /** Named, typed outputs this sensor exposes; each surfaces downstream as an inline value-tile written via `setOutput`. */
     outputs?: OutputSpec[];
@@ -504,7 +504,7 @@ declare module "mindcraft" {
      * tile against the WHEN-result type. Declare it when `onExecute` reads
      * `ctx.getWhenResult()`.
      */
-    consumesWhenResult?: MindcraftType | TypeRef<unknown> | EnumTypeRef;
+    consumesWhenResult?: WendooType | TypeRef<unknown> | EnumTypeRef;
     args?: ArgSpec[];
     onExecute(ctx: Context, args: Record<string, unknown>): void | Promise<void>;
     onPageEntered?(ctx: Context): void;
@@ -547,7 +547,7 @@ declare module "mindcraft" {
   export function System<S, M>(config: SystemConfig<S> & M & ThisType<S & M>): S & M;
 
   /**
-   * Value token naming a registered Mindcraft type. `T` is the TS-side value
+   * Value token naming a registered Wendoo type. `T` is the TS-side value
    * type the token names; a surface that accepts a TypeRef infers its argument
    * and return types from the token.
    */
@@ -579,8 +579,8 @@ declare module "mindcraft" {
   /** The TS value type a struct field type spec names. */
   type StructFieldValue<S> = S extends TypeRef<infer V>
     ? V
-    : S extends keyof MindcraftTypeMap
-      ? MindcraftTypeMap[S]
+    : S extends keyof WendooTypeMap
+      ? WendooTypeMap[S]
       : unknown;
 
   /** The TS object type of a struct instance, derived from a fields config. */
@@ -601,7 +601,7 @@ declare module "mindcraft" {
    * accepted and constructs instances when called. Every importer of the
    * binding resolves to the one declared type.
    */
-  export function StructType<const F extends Record<string, TypeRef<unknown> | MindcraftType>>(
+  export function StructType<const F extends Record<string, TypeRef<unknown> | WendooType>>(
     config: StructTypeConfig<F>
   ): StructTypeBinding<StructValueOf<F>>;
 
@@ -613,9 +613,9 @@ declare module "mindcraft" {
     /** Stable identifier for this conversion, assigned automatically on first compile. Treat as opaque; do not edit or reuse. */
     id?: string;
     /** Source type, named by an imported TypeRef token (preferred) or a type name. */
-    from: TypeRef<F> | MindcraftType;
+    from: TypeRef<F> | WendooType;
     /** Target type, named by an imported TypeRef token (preferred) or a type name. */
-    to: TypeRef<T> | MindcraftType;
+    to: TypeRef<T> | WendooType;
     /** Relative cost used to pick among conversion paths; a small positive integer. */
     cost: number;
     /** Computes the `to`-typed value from a `from`-typed value. Must be synchronous. */

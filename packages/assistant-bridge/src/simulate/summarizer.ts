@@ -1,4 +1,4 @@
-import type { DiagCode } from "@mindcraft-lang/core/brain/compiler";
+import type { DiagCode } from "@wendoo-lang/core/brain/compiler";
 import type { DispatchObservation, SimulationRun, ThinkObservation } from "../target/adapter.js";
 
 /** Spans a summary keeps before it stops and reports itself truncated. */

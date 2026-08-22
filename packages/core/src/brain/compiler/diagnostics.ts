@@ -306,7 +306,7 @@ export interface BrainBuildResult<TProgram = LinkedBrainProgram> {
 }
 
 /**
- * Thrown by brain runtime construction ({@link MindcraftEnvironment.createBrain})
+ * Thrown by brain runtime construction ({@link WendooEnvironment.createBrain})
  * when the brain has error-severity diagnostics.
  */
 export class BrainBuildError extends Error {

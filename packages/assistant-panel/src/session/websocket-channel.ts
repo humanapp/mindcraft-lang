@@ -1,5 +1,5 @@
-import type { RelayDownstreamMessage } from "@mindcraft-lang/assistant-relay";
-import { relayDownstreamMessageSchema } from "@mindcraft-lang/assistant-relay";
+import type { RelayDownstreamMessage } from "@wendoo-lang/assistant-relay";
+import { relayDownstreamMessageSchema } from "@wendoo-lang/assistant-relay";
 import type { AssistantChannel, AssistantConnect } from "./channel";
 
 /** Raised by a socket channel's `next` once the session it reads has closed. */

@@ -28,7 +28,7 @@ import { CoreTypeNames, mkTypeId } from "./core-types";
 import type { ActionCallSiteEntry, LinkedBrainProgram, PageMetadata } from "./host-bindings";
 import type { Program, ProgramTypeEntry, SystemRegistration } from "./program";
 import { NO_VARIABLE_INIT, variableInitAt } from "./program";
-import { MINDCRAFT_BINARY_PROGRAM_IMAGE_MAGIC } from "./program-image";
+import { WENDOO_BINARY_PROGRAM_IMAGE_MAGIC } from "./program-image";
 import { type EnumTypeDef, type ITypeRegistry, NativeType, type TypeId } from "./type-defs";
 import type { Value } from "./value";
 
@@ -90,35 +90,35 @@ export interface LinkedBrainProgramFromBytesResult {
 /** Stable machine-readable diagnostic codes for binary `.mcprogram` decode/encode failures. */
 export const BrainProgramBinaryCodecErrorCode = {
   /** The leading bytes are not the binary `.mcprogram` magic. */
-  INVALID_MAGIC: "MINDCRAFT_BINARY_CODEC_INVALID_MAGIC",
+  INVALID_MAGIC: "WENDOO_BINARY_CODEC_INVALID_MAGIC",
   /** The envelope format version exceeds the reader's maximum. */
-  UNSUPPORTED_FORMAT_VERSION: "MINDCRAFT_BINARY_CODEC_UNSUPPORTED_FORMAT_VERSION",
+  UNSUPPORTED_FORMAT_VERSION: "WENDOO_BINARY_CODEC_UNSUPPORTED_FORMAT_VERSION",
   /** An f64 numeric entry was found while decoding for an f32 target. */
-  F64_ON_F32_TARGET: "MINDCRAFT_BINARY_CODEC_F64_ON_F32_TARGET",
+  F64_ON_F32_TARGET: "WENDOO_BINARY_CODEC_F64_ON_F32_TARGET",
   /** A CNUM discriminant byte is not one of `0`/`1`/`2`. */
-  INVALID_NUMBER_DISCRIMINANT: "MINDCRAFT_BINARY_CODEC_INVALID_NUMBER_DISCRIMINANT",
+  INVALID_NUMBER_DISCRIMINANT: "WENDOO_BINARY_CODEC_INVALID_NUMBER_DISCRIMINANT",
   /** A value tag byte is not a serializable {@link NativeType}. */
-  INVALID_VALUE_TAG: "MINDCRAFT_BINARY_CODEC_INVALID_VALUE_TAG",
+  INVALID_VALUE_TAG: "WENDOO_BINARY_CODEC_INVALID_VALUE_TAG",
   /** A runtime-only or native-backed value was passed to the encoder. */
-  UNENCODABLE_VALUE: "MINDCRAFT_BINARY_CODEC_UNENCODABLE_VALUE",
+  UNENCODABLE_VALUE: "WENDOO_BINARY_CODEC_UNENCODABLE_VALUE",
   /** An opcode byte has no operand-schema entry. */
-  UNKNOWN_OPCODE: "MINDCRAFT_BINARY_CODEC_UNKNOWN_OPCODE",
+  UNKNOWN_OPCODE: "WENDOO_BINARY_CODEC_UNKNOWN_OPCODE",
   /** An instruction's operands do not match its opcode's operand schema. */
-  INSTRUCTION_SCHEMA_MISMATCH: "MINDCRAFT_BINARY_CODEC_INSTRUCTION_SCHEMA_MISMATCH",
+  INSTRUCTION_SCHEMA_MISMATCH: "WENDOO_BINARY_CODEC_INSTRUCTION_SCHEMA_MISMATCH",
   /** A profile id outside the unsigned 32-bit range was supplied to the encoder. */
-  INVALID_PROFILE_ID: "MINDCRAFT_BINARY_CODEC_INVALID_PROFILE_ID",
+  INVALID_PROFILE_ID: "WENDOO_BINARY_CODEC_INVALID_PROFILE_ID",
   /** A TYPS entry tag byte is not a known type-entry tag. */
-  INVALID_TYPE_ENTRY_TAG: "MINDCRAFT_BINARY_CODEC_INVALID_TYPE_ENTRY_TAG",
+  INVALID_TYPE_ENTRY_TAG: "WENDOO_BINARY_CODEC_INVALID_TYPE_ENTRY_TAG",
   /** A TYPS entry references a child at or beyond its own index. */
-  TYPE_FORWARD_REFERENCE: "MINDCRAFT_BINARY_CODEC_TYPE_FORWARD_REFERENCE",
+  TYPE_FORWARD_REFERENCE: "WENDOO_BINARY_CODEC_TYPE_FORWARD_REFERENCE",
   /** A type-table index is outside the decoded table. */
-  TYPE_INDEX_OUT_OF_RANGE: "MINDCRAFT_BINARY_CODEC_TYPE_INDEX_OUT_OF_RANGE",
+  TYPE_INDEX_OUT_OF_RANGE: "WENDOO_BINARY_CODEC_TYPE_INDEX_OUT_OF_RANGE",
   /** An enum constant's symbol ordinal is outside its type's symbol list. */
-  ENUM_ORDINAL_OUT_OF_RANGE: "MINDCRAFT_BINARY_CODEC_ENUM_ORDINAL_OUT_OF_RANGE",
+  ENUM_ORDINAL_OUT_OF_RANGE: "WENDOO_BINARY_CODEC_ENUM_ORDINAL_OUT_OF_RANGE",
   /** A TYPS atom entry's atomId is not registered in the decoding runtime. */
-  UNKNOWN_TYPE_ATOM: "MINDCRAFT_BINARY_CODEC_UNKNOWN_TYPE_ATOM",
+  UNKNOWN_TYPE_ATOM: "WENDOO_BINARY_CODEC_UNKNOWN_TYPE_ATOM",
   /** A TYPS enum entry's value-kind byte is not `0` (number) or `1` (string). */
-  INVALID_ENUM_VALUE_KIND: "MINDCRAFT_BINARY_CODEC_INVALID_ENUM_VALUE_KIND",
+  INVALID_ENUM_VALUE_KIND: "WENDOO_BINARY_CODEC_INVALID_ENUM_VALUE_KIND",
 } as const;
 
 /** Union of all {@link BrainProgramBinaryCodecErrorCode} values. */
@@ -129,7 +129,7 @@ export type BrainProgramBinaryCodecErrorCode =
 export const BINARY_PROGRAM_FORMAT_VERSION = 4;
 
 /** The file magic identifying a binary `.mcprogram`, as a cross-platform list of bytes. */
-const MAGIC = List.from(MINDCRAFT_BINARY_PROGRAM_IMAGE_MAGIC as readonly number[]);
+const MAGIC = List.from(WENDOO_BINARY_PROGRAM_IMAGE_MAGIC as readonly number[]);
 
 const I32_MIN = -2147483648;
 const I32_MAX = 2147483647;

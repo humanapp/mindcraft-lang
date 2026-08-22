@@ -1,4 +1,4 @@
-import { assertUnreachable } from "@mindcraft-lang/core";
+import { assertUnreachable } from "@wendoo-lang/core";
 import {
   CoreCapabilityBits,
   fixedFormat,
@@ -13,14 +13,14 @@ import {
   TilePlacement,
   timeMsFormat,
   timeSecondsFormat,
-} from "@mindcraft-lang/core/brain";
-import type { TileSuggestion, TileSuggestionResult } from "@mindcraft-lang/core/brain/language-service";
+} from "@wendoo-lang/core/brain";
+import type { TileSuggestion, TileSuggestionResult } from "@wendoo-lang/core/brain/language-service";
 import {
   applyDisplayFormat,
   type BrainTileFactoryDef,
   type BrainTileOperatorDef,
   type BrainTileVariableDef,
-} from "@mindcraft-lang/core/brain/tiles";
+} from "@wendoo-lang/core/brain/tiles";
 import {
   CoreHostActions,
   CoreOpId,
@@ -28,7 +28,7 @@ import {
   mkActuatorTileId,
   mkSensorTileId,
   type TypeId,
-} from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
 import type { ArmedTileTarget } from "./ArmedTargetContext";
 import { groupTilesByLibrary, type TileSourceLibrary, tileSourceNamespace } from "./tile-library-groups";
 

@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { List } from "@mindcraft-lang/core";
+import { List } from "@wendoo-lang/core";
 import {
   type BrainServices,
   type IBrainTileDef,
@@ -20,16 +20,16 @@ import {
   mkVariableTileId,
   RuleSide,
   TilePlacement,
-} from "@mindcraft-lang/core/brain";
-import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { Expr } from "@mindcraft-lang/core/brain/compiler";
+} from "@wendoo-lang/core/brain";
+import { __test__appendTile, __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { Expr } from "@wendoo-lang/core/brain/compiler";
 import {
   type InsertionContext,
   parseTilesForSuggestions,
   suggestTiles,
   type TileSuggestionResult,
-} from "@mindcraft-lang/core/brain/language-service";
-import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+} from "@wendoo-lang/core/brain/language-service";
+import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
 import {
   type BrainTileFactoryDef,
   BrainTileLiteralDef,
@@ -37,7 +37,7 @@ import {
   BrainTileVariableDef,
   getCatalogFallbackLabel,
   TileCatalog,
-} from "@mindcraft-lang/core/brain/tiles";
+} from "@wendoo-lang/core/brain/tiles";
 import {
   CoreOpId,
   CoreTypeIds,
@@ -47,7 +47,7 @@ import {
   type StructTypeDef,
   type TypeId,
   type Value,
-} from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
 import ts from "typescript";
 import { buildCompiledActionBundle } from "../runtime/action-bundle.js";
 import { registerUserTile } from "../runtime/registration-bridge.js";
@@ -67,7 +67,7 @@ import { createVirtualCompilerHost } from "./virtual-host.js";
 const POSITION_IDENTITY = qualifiedClassName(TEST_PROJECT_NAMESPACE, "/position.ts", "Position");
 
 /** The declared type under test: ref-form and string-form field types together. */
-const POSITION_SOURCE = `import { NumberType, StructType, type StructOf } from "mindcraft";
+const POSITION_SOURCE = `import { NumberType, StructType, type StructOf } from "wendoo";
 
 export const Position = StructType({
   name: "position",
@@ -79,7 +79,7 @@ export type Position = StructOf<typeof Position>;
 `;
 
 /** Sensor returning the declared type through the returnType config reference. */
-const STICK_SOURCE = `import { Sensor, type Context } from "mindcraft";
+const STICK_SOURCE = `import { Sensor, type Context } from "wendoo";
 import { Position } from "./position";
 
 export default Sensor({
@@ -92,7 +92,7 @@ export default Sensor({
 `;
 
 /** A second importer of the same declared type. */
-const SECOND_SOURCE = `import { Sensor, type Context } from "mindcraft";
+const SECOND_SOURCE = `import { Sensor, type Context } from "wendoo";
 import { Position } from "./position";
 
 export default Sensor({
@@ -414,7 +414,7 @@ describe("StructType declarations: execution", () => {
 
   test("a struct-typed anonymous param carries the value across the action boundary", () => {
     const services = __test__createBrainServices();
-    const readerSource = `import { type Context, param, Sensor } from "mindcraft";
+    const readerSource = `import { type Context, param, Sensor } from "wendoo";
 import { Position } from "./position";
 
 export default Sensor({
@@ -446,7 +446,7 @@ export default Sensor({
 
   test("a struct-typed param and output leave no live AST node on the compiled program", () => {
     const services = __test__createBrainServices();
-    const readerSource = `import { type Context, param, Sensor } from "mindcraft";
+    const readerSource = `import { type Context, param, Sensor } from "wendoo";
 import { Position } from "./position";
 
 export default Sensor({
@@ -457,7 +457,7 @@ export default Sensor({
   },
 });
 `;
-    const outputSource = `import { Sensor, setOutput, type Context } from "mindcraft";
+    const outputSource = `import { Sensor, setOutput, type Context } from "wendoo";
 import { Position } from "./position";
 
 export default Sensor({
@@ -488,7 +488,7 @@ export default Sensor({
 
   test("a struct value converts through a user conversion whose from-type is the declared struct", () => {
     const services = __test__createBrainServices();
-    const conversionSource = `import { BufferType, Conversion } from "mindcraft";
+    const conversionSource = `import { BufferType, Conversion } from "wendoo";
 import { Position } from "./position";
 
 export default Conversion({
@@ -501,7 +501,7 @@ export default Conversion({
   },
 });
 `;
-    const decoderSource = `import { type Context, param, Sensor } from "mindcraft";
+    const decoderSource = `import { type Context, param, Sensor } from "wendoo";
 
 export default Sensor({
   name: "decode packet",
@@ -547,7 +547,7 @@ export default Sensor({
 describe("StructType declarations: outputs and picker", () => {
   test("a struct-typed output tile carries the declared type and offers its accessors", () => {
     const services = __test__createBrainServices();
-    const outputSource = `import { Sensor, setOutput, type Context } from "mindcraft";
+    const outputSource = `import { Sensor, setOutput, type Context } from "wendoo";
 import { Position } from "./position";
 
 export default Sensor({
@@ -624,7 +624,7 @@ export default Sensor({
 
     // Recompile a project that no longer declares the struct: the compile pass
     // tears down the `::`-keyed user type.
-    const bareSensor = `import { Sensor, type Context } from "mindcraft";
+    const bareSensor = `import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "bare sensor",
@@ -747,7 +747,7 @@ describe("StructType declarations: brain document round-trip", () => {
 describe("StructType declarations: shorthand and module-private bindings", () => {
   test("shorthand config members resolve to their declared values", () => {
     const services = __test__createBrainServices();
-    const positionSource = `import { NumberType, StructType, type StructOf } from "mindcraft";
+    const positionSource = `import { NumberType, StructType, type StructOf } from "wendoo";
 
 const name = "position";
 const accessors = true;
@@ -782,7 +782,7 @@ export type Position = StructOf<typeof Position>;
 
   test("a module-private binding works through the module's exported helper", () => {
     const services = __test__createBrainServices();
-    const positionSource = `import { StructType, type StructOf } from "mindcraft";
+    const positionSource = `import { StructType, type StructOf } from "wendoo";
 
 const Position = StructType({
   name: "position",
@@ -795,7 +795,7 @@ export function mkOrigin(): Position {
 }
 export type { Position };
 `;
-    const stickSource = `import { Sensor, type Context } from "mindcraft";
+    const stickSource = `import { Sensor, type Context } from "wendoo";
 import { mkOrigin } from "./position";
 
 export default Sensor({
@@ -850,7 +850,7 @@ describe("StructType declarations: diagnostics", () => {
     const services = __test__createBrainServices();
     const diags = structDiag(
       services,
-      `import { StructType, type StructOf } from "mindcraft";
+      `import { StructType, type StructOf } from "wendoo";
 
 export const Position = StructType({
   name: 42 as any,
@@ -866,7 +866,7 @@ export type Position = StructOf<typeof Position>;
     const services = __test__createBrainServices();
     const notObject = structDiag(
       services,
-      `import { StructType, type StructOf } from "mindcraft";
+      `import { StructType, type StructOf } from "wendoo";
 
 export const Position = StructType({
   name: "position",
@@ -879,7 +879,7 @@ export type Position = StructOf<typeof Position>;
 
     const empty = structDiag(
       services,
-      `import { StructType, type StructOf } from "mindcraft";
+      `import { StructType, type StructOf } from "wendoo";
 
 export const Position = StructType({
   name: "position",
@@ -897,7 +897,7 @@ export type Position = StructOf<typeof Position>;
 
   test("a non-literal config argument is reported", () => {
     const services = __test__createBrainServices();
-    const positionSource = `import { StructType, type StructOf } from "mindcraft";
+    const positionSource = `import { StructType, type StructOf } from "wendoo";
 
 const config = {
   name: "position",
@@ -909,7 +909,7 @@ export type Position = StructOf<typeof Position>;
 `;
     // An entry using only the annotation reaches collection, which reports the
     // config shape precisely.
-    const annotationStick = `import { Sensor, type Context } from "mindcraft";
+    const annotationStick = `import { Sensor, type Context } from "wendoo";
 import { Position } from "./position";
 
 export default Sensor({
@@ -935,7 +935,7 @@ export default Sensor({
     const services = __test__createBrainServices();
     const spread = structDiag(
       services,
-      `import { StructType, type StructOf } from "mindcraft";
+      `import { StructType, type StructOf } from "wendoo";
 
 const base = { accessors: true };
 
@@ -951,7 +951,7 @@ export type Position = StructOf<typeof Position>;
 
     const nonLiteralShorthand = structDiag(
       services,
-      `import { StructType, type StructOf } from "mindcraft";
+      `import { StructType, type StructOf } from "wendoo";
 
 const accessors = 1 < 2;
 
@@ -974,7 +974,7 @@ export type Position = StructOf<typeof Position>;
     const services = __test__createBrainServices();
     const diags = structDiag(
       services,
-      `import { StructType, type StructOf } from "mindcraft";
+      `import { StructType, type StructOf } from "wendoo";
 
 export const Position = StructType({
   name: "position",
@@ -991,7 +991,7 @@ export type Position = StructOf<typeof Position>;
     const services = __test__createBrainServices();
     const diags = structDiag(
       services,
-      `import { StructType, type StructOf } from "mindcraft";
+      `import { StructType, type StructOf } from "wendoo";
 
 export const Position = StructType({
   name: "position",
@@ -1005,7 +1005,7 @@ export type Position = StructOf<typeof Position>;
 
   test("an unresolvable returnType reference is reported", () => {
     const services = __test__createBrainServices();
-    const source = `import { Sensor, type Context, type TypeRef } from "mindcraft";
+    const source = `import { Sensor, type Context, type TypeRef } from "wendoo";
 
 const NotAType = null as unknown as TypeRef<number>;
 

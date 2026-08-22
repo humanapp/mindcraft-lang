@@ -1,6 +1,6 @@
-import type { IBrainRuleDef } from "@mindcraft-lang/core/brain";
-import { RuleSide } from "@mindcraft-lang/core/brain";
-import type { SentenceSegment, SentenceTileRef } from "@mindcraft-lang/core/brain/language-service";
+import type { IBrainRuleDef } from "@wendoo-lang/core/brain";
+import { RuleSide } from "@wendoo-lang/core/brain";
+import type { SentenceSegment, SentenceTileRef } from "@wendoo-lang/core/brain/language-service";
 import type { ArmedTargetMode } from "./ArmedTargetContext";
 
 /**

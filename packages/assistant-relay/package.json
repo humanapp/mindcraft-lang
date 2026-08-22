@@ -1,5 +1,5 @@
 {
-  "name": "@mindcraft-lang/assistant-relay",
+  "name": "@wendoo-lang/assistant-relay",
   "version": "0.1.0",
   "description": "Assistant relay protocol: the session handshake, turn events, and tool-call wire the hosted Assistant's split loop speaks",
   "license": "MIT",
@@ -7,15 +7,15 @@
   "author": "humanapp",
   "repository": {
     "type": "git",
-    "url": "https://github.com/humanapp/mindcraft-lang.git",
+    "url": "https://github.com/humanapp/wendoo-lang.git",
     "directory": "packages/assistant-relay"
   },
   "bugs": {
-    "url": "https://github.com/humanapp/mindcraft-lang/issues"
+    "url": "https://github.com/humanapp/wendoo-lang/issues"
   },
-  "homepage": "https://github.com/humanapp/mindcraft-lang/tree/main/packages/assistant-relay#readme",
+  "homepage": "https://github.com/humanapp/wendoo-lang/tree/main/packages/assistant-relay#readme",
   "keywords": [
-    "mindcraft",
+    "wendoo",
     "assistant",
     "protocol",
     "schemas",
@@ -49,7 +49,7 @@
       "import": "./dist/testing/index.js"
     }
   },
-  "mindcraftBuild": {
+  "wendooBuild": {
     "script": "build:prod",
     "outputs": [
       "dist"

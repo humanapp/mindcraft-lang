@@ -8,7 +8,7 @@ import {
   mkCallDef,
   NIL_VALUE,
   TARGET_ACTION_ID_BASE,
-} from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
 
 function mkHostAction(key: string, id: number, isAsync = false): HostActionBinding {
   const descriptor: ActionDescriptor = {

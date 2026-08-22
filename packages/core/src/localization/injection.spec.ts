@@ -6,10 +6,10 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { brain, coreModule, createMindcraftEnvironment } from "@mindcraft-lang/core";
-import { BrainDef } from "@mindcraft-lang/core/brain/model";
-import type { Localizer } from "@mindcraft-lang/core/localization";
-import { createDefaultLocalizer, createLocalizer, defaultPluralRule } from "@mindcraft-lang/core/localization";
+import { brain, coreModule, createWendooEnvironment } from "@wendoo-lang/core";
+import { BrainDef } from "@wendoo-lang/core/brain/model";
+import type { Localizer } from "@wendoo-lang/core/localization";
+import { createDefaultLocalizer, createLocalizer, defaultPluralRule } from "@wendoo-lang/core/localization";
 
 /** A localizer whose locale identifies it, for tracing which instance was threaded. */
 function markerLocalizer(): Localizer {
@@ -26,12 +26,12 @@ describe("app services", () => {
   });
 
   test("the environment threads its localizer option into app services", () => {
-    const environment = createMindcraftEnvironment({ modules: [coreModule()], localizer: markerLocalizer() });
+    const environment = createWendooEnvironment({ modules: [coreModule()], localizer: markerLocalizer() });
     assert.equal(environment.appServices.localizer.locale(), "xx");
   });
 
   test("the environment defaults its localizer when the option is omitted", () => {
-    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule()] });
     assert.equal(environment.appServices.localizer.locale(), "en");
   });
 });
@@ -52,7 +52,7 @@ describe("edit-time access path", () => {
 
 describe("retired translator surface", () => {
   test("the i18n subpath no longer resolves", async () => {
-    const retiredSubpath = ["@mindcraft-lang", "core", "i18n"].join("/");
+    const retiredSubpath = ["@wendoo-lang", "core", "i18n"].join("/");
     await assert.rejects(async () => {
       await import(retiredSubpath);
     });

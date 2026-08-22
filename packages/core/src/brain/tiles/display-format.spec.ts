@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { applyDisplayFormat } from "@mindcraft-lang/core/brain/tiles";
+import { applyDisplayFormat } from "@wendoo-lang/core/brain/tiles";
 
 describe("applyDisplayFormat", () => {
   describe("default", () => {

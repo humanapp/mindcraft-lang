@@ -7,25 +7,25 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { ruleIdAt } from "@mindcraft-lang/assistant-bridge/testing";
-import type { EditedBrainWorkspaces } from "@mindcraft-lang/assistant-panel";
-import { assistantToolManifest, createEditedBrainWorkspaces } from "@mindcraft-lang/assistant-panel";
-import { recordFor } from "@mindcraft-lang/assistant-panel/conversation/store";
-import type { AssistantChannel } from "@mindcraft-lang/assistant-panel/session/channel";
-import { AssistantMachine, AssistantStatus } from "@mindcraft-lang/assistant-panel/session/machine";
-import type { ScriptedService } from "@mindcraft-lang/assistant-panel/testing/scripted-service";
-import { runScriptedService } from "@mindcraft-lang/assistant-panel/testing/scripted-service";
+import { ruleIdAt } from "@wendoo-lang/assistant-bridge/testing";
+import type { EditedBrainWorkspaces } from "@wendoo-lang/assistant-panel";
+import { assistantToolManifest, createEditedBrainWorkspaces } from "@wendoo-lang/assistant-panel";
+import { recordFor } from "@wendoo-lang/assistant-panel/conversation/store";
+import type { AssistantChannel } from "@wendoo-lang/assistant-panel/session/channel";
+import { AssistantMachine, AssistantStatus } from "@wendoo-lang/assistant-panel/session/machine";
+import type { ScriptedService } from "@wendoo-lang/assistant-panel/testing/scripted-service";
+import { runScriptedService } from "@wendoo-lang/assistant-panel/testing/scripted-service";
 import type {
   ConversationAssistantEntry,
   ConversationRecord,
   ConversationToolCall,
-} from "@mindcraft-lang/assistant-relay";
-import type { RelayLoopback } from "@mindcraft-lang/assistant-relay/testing";
-import { createRelayLoopback } from "@mindcraft-lang/assistant-relay/testing";
-import { coreModule, createMindcraftEnvironment, List } from "@mindcraft-lang/core/app";
-import type { BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { BrainCommandHistory, BrainDef } from "@mindcraft-lang/core/brain/model";
-import type { EditedBrain } from "@mindcraft-lang/ui";
+} from "@wendoo-lang/assistant-relay";
+import type { RelayLoopback } from "@wendoo-lang/assistant-relay/testing";
+import { createRelayLoopback } from "@wendoo-lang/assistant-relay/testing";
+import { coreModule, createWendooEnvironment, List } from "@wendoo-lang/core/app";
+import type { BrainPageDef, BrainRuleDef } from "@wendoo-lang/core/brain/model";
+import { BrainCommandHistory, BrainDef } from "@wendoo-lang/core/brain/model";
+import type { EditedBrain } from "@wendoo-lang/ui";
 import { createEcosimModule } from "@/brain/index";
 import { TileIds } from "@/brain/tileids";
 import { createTargetAdapter } from "@/rehearsal/adapter";
@@ -101,7 +101,7 @@ interface Stand {
  * gets its own script, so a turn addresses the rule of the brain it is for.
  */
 function appStand(script: (ruleId: string) => ScriptedService): Stand {
-  const environment = createMindcraftEnvironment({ modules: [coreModule(), createEcosimModule()] });
+  const environment = createWendooEnvironment({ modules: [coreModule(), createEcosimModule()] });
   const adapter = createTargetAdapter(CONTENT);
   const workspaces = createEditedBrainWorkspaces({ environment, adapter });
   const services: Promise<void>[] = [];

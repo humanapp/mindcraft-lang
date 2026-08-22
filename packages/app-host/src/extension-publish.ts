@@ -1,6 +1,5 @@
 import type { DependencyPinProbe } from "./dependency-stability.js";
 import { collectUnstableDependencies } from "./dependency-stability.js";
-import { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
 import {
   isExtensionCoordinate,
   type ProjectContentManifest,
@@ -8,6 +7,7 @@ import {
   readExplicitContentManifestVersion,
   serializeProjectContentManifest,
 } from "./project-content-manifest.js";
+import { WENDOO_JSON_PATH } from "./wendoo-json.js";
 
 /** Project-relative path of the README furniture a publish writes into a repository. */
 const README_PATH = "README.md";
@@ -112,7 +112,7 @@ export interface PublishFile {
 /** Reads the content of the project being published. */
 export interface ExtensionPublishSource {
   /**
-   * Text of the project's `mindcraft.json`, or `undefined` when the project
+   * Text of the project's `wendoo.json`, or `undefined` when the project
    * has none.
    */
   readManifest(): Promise<string | undefined>;
@@ -130,7 +130,7 @@ export interface ExtensionPublishCommit {
   /** Tag naming the published version (`v<version>`). */
   readonly tag: string;
   /**
-   * The published tree: the `mindcraft.json` carrying the published version
+   * The published tree: the `wendoo.json` carrying the published version
    * first, followed by each manifest-listed file and each host-app bundle
    * file, and a `README.md` -- the author's own when the project carries one,
    * otherwise one generated from the manifest -- unless the manifest already
@@ -148,7 +148,7 @@ export interface ExtensionPublishBackend {
   /** Resolves `true` when the target repository has at least one tag. */
   hasAnyTags(): Promise<boolean>;
   /**
-   * Text of `mindcraft.json` at the target repository's current head, or
+   * Text of `wendoo.json` at the target repository's current head, or
    * `undefined` when the repository is empty or its head carries none.
    */
   readHeadManifest(): Promise<string | undefined>;
@@ -288,7 +288,7 @@ export function bumpVersion(version: string, bump: PublishVersionBump): string {
  * Publish a version of a project: reads the project's manifest, bumps its
  * `version` by `bump` (or keeps it as-is when `bump` is absent), stamps the
  * manifest's `identity` with `coordinate`, and records the published tree --
- * the published `mindcraft.json`, every manifest-listed file, every host-app
+ * the published `wendoo.json`, every manifest-listed file, every host-app
  * bundle file, and a `README.md` (the author's own, or one generated from the
  * manifest when the project carries none, unless the manifest already lists a
  * `README.md`) -- on the target repository as a commit tagged
@@ -318,7 +318,7 @@ export async function publishExtensionVersion(options: ExtensionPublishOptions):
 
   const manifestText = await source.readManifest();
   if (manifestText === undefined) {
-    return refusal(ExtensionPublishErrorCode.MANIFEST_MISSING, `The project has no ${MINDCRAFT_JSON_PATH} manifest.`);
+    return refusal(ExtensionPublishErrorCode.MANIFEST_MISSING, `The project has no ${WENDOO_JSON_PATH} manifest.`);
   }
 
   const parsed = parseProjectContentManifest(manifestText);
@@ -326,7 +326,7 @@ export async function publishExtensionVersion(options: ExtensionPublishOptions):
     const details = parsed.errors.map((error) => `${error.code} at ${error.path}: ${error.message}`).join(" ");
     return refusal(
       ExtensionPublishErrorCode.MANIFEST_INVALID,
-      `${MINDCRAFT_JSON_PATH} is not a valid content manifest. ${details}`
+      `${WENDOO_JSON_PATH} is not a valid content manifest. ${details}`
     );
   }
   const manifest = parsed.manifest;
@@ -417,7 +417,7 @@ export async function publishExtensionVersion(options: ExtensionPublishOptions):
   const encoder = new TextEncoder();
   const publishedManifestData: ProjectContentManifest = { ...manifest, version, identity: coordinate };
   const publishedManifest = serializeProjectContentManifest(publishedManifestData);
-  const files: PublishFile[] = [{ path: MINDCRAFT_JSON_PATH, content: encoder.encode(publishedManifest) }];
+  const files: PublishFile[] = [{ path: WENDOO_JSON_PATH, content: encoder.encode(publishedManifest) }];
   const listedPaths = [
     ...(manifest.files ?? []),
     ...(manifest.hostApp?.files ?? []),
@@ -426,7 +426,7 @@ export async function publishExtensionVersion(options: ExtensionPublishOptions):
   for (const path of listedPaths) {
     // The manifest serialized above is the published manifest; a files entry
     // naming it must not overwrite it with the source bytes.
-    if (path === MINDCRAFT_JSON_PATH) continue;
+    if (path === WENDOO_JSON_PATH) continue;
     const content = await source.readFile(path);
     if (content === undefined) {
       return refusal(

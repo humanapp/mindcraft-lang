@@ -31,14 +31,14 @@ function entry(
 }
 
 const installedAddon = entry({
-  coordinate: "mindcraft-lang/microbit-position",
+  coordinate: "wendoo-lang/microbit-position",
   name: "Position",
   version: "1.3.0",
   installed: true,
   thumbnailUrl: "https://example.test/pos.png",
 });
 const availableAddon = entry({
-  coordinate: "mindcraft-lang/shared-math",
+  coordinate: "wendoo-lang/shared-math",
   name: "Shared Math",
   version: "2.0.0",
   installed: false,
@@ -100,7 +100,7 @@ describe("filterExtensionEntries", () => {
     const result = filterExtensionEntries(all, "position");
     assert.deepEqual(
       result.map((e) => e.coordinate),
-      ["mindcraft-lang/microbit-position"]
+      ["wendoo-lang/microbit-position"]
     );
   });
 
@@ -108,7 +108,7 @@ describe("filterExtensionEntries", () => {
     const result = filterExtensionEntries(all, "shared-math");
     assert.deepEqual(
       result.map((e) => e.coordinate),
-      ["mindcraft-lang/shared-math"]
+      ["wendoo-lang/shared-math"]
     );
   });
 });
@@ -231,8 +231,8 @@ describe("runExtensionCardAction", () => {
     void runExtensionCardAction(availableAddon, "install", callbacks);
     void runExtensionCardAction(installedAddon, "uninstall", callbacks);
 
-    assert.deepEqual(installed, ["mindcraft-lang/shared-math"]);
-    assert.deepEqual(uninstalled, ["mindcraft-lang/microbit-position"]);
+    assert.deepEqual(installed, ["wendoo-lang/shared-math"]);
+    assert.deepEqual(uninstalled, ["wendoo-lang/microbit-position"]);
   });
 
   test("open-repo opens the entry's repoUrl", () => {
@@ -409,18 +409,18 @@ describe("ExtensionBrowserList rendering", () => {
 describe("catalog offer cards in the unified list", () => {
   const offers: ExtensionCatalogOffer[] = [
     {
-      coordinate: "mindcraft-lang/lib-codal-position",
+      coordinate: "wendoo-lang/lib-codal-position",
       name: "Position",
       version: "0.1.0",
       description: "Position sensing.",
-      ref: "gh:mindcraft-lang/lib-codal-position@b19b80b029a77303ee575d3ff9b29adbf7021b23",
+      ref: "gh:wendoo-lang/lib-codal-position@b19b80b029a77303ee575d3ff9b29adbf7021b23",
     },
     {
-      coordinate: "mindcraft-lang/lib-ecosim-teleport",
+      coordinate: "wendoo-lang/lib-ecosim-teleport",
       name: "Teleport",
       version: "0.2.0",
       description: "Teleport actuator.",
-      ref: "gh:mindcraft-lang/lib-ecosim-teleport@89abcdef0123456789abcdef0123456789abcdef",
+      ref: "gh:wendoo-lang/lib-ecosim-teleport@89abcdef0123456789abcdef0123456789abcdef",
     },
   ];
 
@@ -464,7 +464,7 @@ describe("orderExtensionBrowserItems -- stable catalog order", () => {
   // must present catalog items at their catalog positions regardless of
   // install status; a directly-installed unlisted library follows the catalog
   // block in coordinate order.
-  const catalogCoordinates = ["elecfreaks/cutebot", "yahboom/gamepad", "mindcraft-lang/microbit-position"];
+  const catalogCoordinates = ["elecfreaks/cutebot", "yahboom/gamepad", "wendoo-lang/microbit-position"];
 
   function offerFor(coordinate: string): ExtensionCatalogOffer {
     return {
@@ -522,7 +522,7 @@ describe("orderExtensionBrowserItems -- stable catalog order", () => {
     assert.deepEqual(items, [
       "elecfreaks/cutebot",
       "yahboom/gamepad",
-      "mindcraft-lang/microbit-position",
+      "wendoo-lang/microbit-position",
       "example-org/alpha-lib",
       "example-org/zeta-lib",
     ]);

@@ -185,7 +185,7 @@ export interface ICallsiteServices {
 /**
  * Host-supplied capabilities the embedding application provides at
  * environment construction. These cross the host/core seam and are not
- * configured by `coreModule()` or other Mindcraft modules. Future
+ * configured by `coreModule()` or other Wendoo modules. Future
  * host-injected capabilities (logger, network, clock, persistence, etc.)
  * land here.
  */
@@ -210,7 +210,7 @@ export interface AppServices {
 
 /**
  * Language-side registries the VM consults during fiber execution. Owned
- * and populated by `coreModule()` and other Mindcraft modules during
+ * and populated by `coreModule()` and other Wendoo modules during
  * environment setup; the host does not supply these.
  */
 export interface RuntimeLangServices {

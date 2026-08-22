@@ -1,5 +1,5 @@
-import type { FileContent, ProjectFileChange, ProjectFileSnapshot, ProjectStore } from "@mindcraft-lang/app-host";
-import { fileContentFromWire, fileContentText, fileContentToWire } from "@mindcraft-lang/app-host";
+import type { FileContent, ProjectFileChange, ProjectFileSnapshot, ProjectStore } from "@wendoo-lang/app-host";
+import { fileContentFromWire, fileContentText, fileContentToWire } from "@wendoo-lang/app-host";
 import type {
   CompileDiagnosticEntry,
   CompileDiagnosticsPayload,
@@ -10,12 +10,12 @@ import type {
   FolderInstalledExtensionMetadata,
   FolderSessionErrorCode,
   FolderWelcomePayload,
-} from "@mindcraft-lang/bridge-protocol";
+} from "@wendoo-lang/bridge-protocol";
 import {
   FOLDER_SESSION_PROTOCOL_VERSION,
   FolderSessionErrorCode as FolderSessionErrorCodes,
   INSTALLED_EXTENSIONS_METADATA_PATH,
-} from "@mindcraft-lang/bridge-protocol";
+} from "@wendoo-lang/bridge-protocol";
 import {
   parseInstalledExtensionMetadata,
   reconstructInstalledSnapshotsFromTree,

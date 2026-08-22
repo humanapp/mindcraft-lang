@@ -10,7 +10,7 @@ import { makeScratchDir, runCliBin } from "./test-support/publish-fixtures.js";
 const tempRoots: string[] = [];
 
 function tempRoot(): string {
-  const dir = mkdtempSync(path.join(tmpdir(), "mindcraft-cli-version-"));
+  const dir = mkdtempSync(path.join(tmpdir(), "wendoo-cli-version-"));
   tempRoots.push(dir);
   return dir;
 }
@@ -25,14 +25,14 @@ describe("readCliVersion", () => {
   it("reads the version from a package.json", () => {
     const root = tempRoot();
     const packageJson = path.join(root, "package.json");
-    writeFileSync(packageJson, JSON.stringify({ name: "mindcraft-cli", version: "9.9.9" }));
+    writeFileSync(packageJson, JSON.stringify({ name: "wendoo-cli", version: "9.9.9" }));
     assert.equal(readCliVersion(packageJson), "9.9.9");
   });
 
   it("falls back to 0.0.0 when no version is declared", () => {
     const root = tempRoot();
     const packageJson = path.join(root, "package.json");
-    writeFileSync(packageJson, JSON.stringify({ name: "mindcraft-cli" }));
+    writeFileSync(packageJson, JSON.stringify({ name: "wendoo-cli" }));
     assert.equal(readCliVersion(packageJson), "0.0.0");
   });
 });
@@ -52,7 +52,7 @@ describe("formatCliVersion", () => {
   });
 });
 
-describe("mindcraft CLI from a non-repo directory", () => {
+describe("wendoo CLI from a non-repo directory", () => {
   const scratchDirs: string[] = [];
 
   after(async () => {

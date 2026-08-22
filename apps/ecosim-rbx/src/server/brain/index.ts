@@ -1,9 +1,4 @@
-import {
-  createHostActuator,
-  createHostSensor,
-  type MindcraftModule,
-  type MindcraftModuleApi,
-} from "@mindcraft-lang/core/app";
+import { createHostActuator, createHostSensor, type WendooModule, type WendooModuleApi } from "@wendoo-lang/core/app";
 import fnBump, { modifiers as bumpModifiers } from "./actions/bump";
 import fnEat, { parameters as eatParameters } from "./actions/eat";
 import fnMove, { modifiers as moveModifiers, parameters as moveParameters } from "./actions/move";
@@ -22,13 +17,13 @@ import { registerTypes } from "./type-system";
  * engine and brain context extensions, the seven sensors and actuators, and
  * their modifier, parameter, and literal tiles.
  *
- * @returns The module, ready to pass to `createMindcraftEnvironment`.
+ * @returns The module, ready to pass to `createWendooEnvironment`.
  */
-export function createEcosimModule(): MindcraftModule {
+export function createEcosimModule(): WendooModule {
   return {
-    id: "mindcraft.ecosim",
+    id: "wendoo.ecosim",
     migrateBrainJson: migrateEcosimBrainJson,
-    install(api: MindcraftModuleApi): void {
+    install(api: WendooModuleApi): void {
       registerTypes(api);
       registerEngineContext(api);
       registerBrainContext(api);

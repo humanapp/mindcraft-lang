@@ -9,8 +9,8 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { Dict, List } from "@mindcraft-lang/core";
-import { coreModule, createMindcraftEnvironment } from "@mindcraft-lang/core/app";
+import { Dict, List } from "@wendoo-lang/core";
+import { coreModule, createWendooEnvironment } from "@wendoo-lang/core/app";
 import {
   type BrainServices,
   type IBrainTileDef,
@@ -18,22 +18,22 @@ import {
   mkVariableTileId,
   RuleSide,
   TilePlacement,
-} from "@mindcraft-lang/core/brain";
-import { __test__appendTile, __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { Expr } from "@mindcraft-lang/core/brain/compiler";
+} from "@wendoo-lang/core/brain";
+import { __test__appendTile, __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import type { Expr } from "@wendoo-lang/core/brain/compiler";
 import {
   type InsertionContext,
   parseTilesForSuggestions,
   suggestTiles,
   type TileSuggestionResult,
-} from "@mindcraft-lang/core/brain/language-service";
-import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+} from "@wendoo-lang/core/brain/language-service";
+import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
 import {
   BrainTileLiteralDef,
   BrainTileOperatorDef,
   BrainTileVariableDef,
   TileCatalog,
-} from "@mindcraft-lang/core/brain/tiles";
+} from "@wendoo-lang/core/brain/tiles";
 import {
   CoreTypeIds,
   extractNumberValue,
@@ -41,7 +41,7 @@ import {
   isBytecodeConversion,
   mkParameterTileId,
   type Value,
-} from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
 import ts from "typescript";
 import { registerUserTile } from "../runtime/registration-bridge.js";
 import { buildUserTileMetadata } from "../runtime/user-tile-metadata.js";
@@ -56,7 +56,7 @@ import { createVirtualCompilerHost } from "./virtual-host.js";
 const NUM_TO_BUF_ID = "convnumbuf000001";
 
 /** Ref-form declaration of the synthetic number -> buffer conversion. */
-const REF_CONVERSION_SOURCE = `import { BufferType, Conversion, NumberType } from "mindcraft";
+const REF_CONVERSION_SOURCE = `import { BufferType, Conversion, NumberType } from "wendoo";
 
 export default Conversion({
   id: ${JSON.stringify(NUM_TO_BUF_ID)},
@@ -70,7 +70,7 @@ export default Conversion({
 `;
 
 /** String-form declaration of the same conversion (dual-acceptance equivalence). */
-const STRING_CONVERSION_SOURCE = `import { Conversion } from "mindcraft";
+const STRING_CONVERSION_SOURCE = `import { Conversion } from "wendoo";
 
 export default Conversion({
   id: ${JSON.stringify(NUM_TO_BUF_ID)},
@@ -84,7 +84,7 @@ export default Conversion({
 `;
 
 /** Sensor with an anonymous buffer slot; folds the packet bytes into one number. */
-const DECODER_SOURCE = `import { type Context, param, Sensor } from "mindcraft";
+const DECODER_SOURCE = `import { type Context, param, Sensor } from "wendoo";
 
 export default Sensor({
   name: "decode packet",
@@ -98,7 +98,7 @@ export default Sensor({
 `;
 
 /** Number-producing sensor for picker suggestions. */
-const SEVEN_SOURCE = `import { type Context, Sensor } from "mindcraft";
+const SEVEN_SOURCE = `import { type Context, Sensor } from "wendoo";
 
 export default Sensor({
   name: "seven", inline: true,
@@ -393,7 +393,7 @@ export function checksum(value: number): number {
   return (value * 2) % 100;
 }
 `;
-    const magicConversionSource = `import { BufferType, Conversion, NumberType } from "mindcraft";
+    const magicConversionSource = `import { BufferType, Conversion, NumberType } from "wendoo";
 import { checksum, PACKET_MAGIC } from "./protocol";
 
 const HEADER = PACKET_MAGIC + 1;
@@ -517,7 +517,7 @@ describe("Conversion declarations: pair conflicts", () => {
 
   test("a declaration duplicating a registered host conversion pair reports a conflict", () => {
     const services = __test__createBrainServices();
-    const source = `import { Conversion, NumberType, StringType } from "mindcraft";
+    const source = `import { Conversion, NumberType, StringType } from "wendoo";
 
 export default Conversion({
   id: "convnumstr000001",
@@ -551,7 +551,7 @@ export default Conversion({
 describe("Conversion declarations: diagnostics", () => {
   test("an unresolvable string type name is reported", () => {
     const services = __test__createBrainServices();
-    const source = `import { Conversion } from "mindcraft";
+    const source = `import { Conversion } from "wendoo";
 
 export default Conversion({
   from: "bogusType",
@@ -570,9 +570,9 @@ export default Conversion({
     );
   });
 
-  test("a reference that is not a mindcraft type token is reported", () => {
+  test("a reference that is not a wendoo type token is reported", () => {
     const services = __test__createBrainServices();
-    const source = `import { Conversion, type TypeRef } from "mindcraft";
+    const source = `import { Conversion, type TypeRef } from "wendoo";
 
 const NotAToken = null as unknown as TypeRef<number>;
 
@@ -595,7 +595,7 @@ export default Conversion({
 
   test("a type-naming expression that is neither a name nor a token reference is reported", () => {
     const services = __test__createBrainServices();
-    const source = `import { Conversion, type TypeRef } from "mindcraft";
+    const source = `import { Conversion, type TypeRef } from "wendoo";
 
 export default Conversion({
   from: {} as TypeRef<number>,
@@ -616,7 +616,7 @@ export default Conversion({
 
   test("a zero-parameter convert function is rejected", () => {
     const services = __test__createBrainServices();
-    const source = `import { Conversion } from "mindcraft";
+    const source = `import { Conversion } from "wendoo";
 
 export default Conversion({
   from: "number",
@@ -638,7 +638,7 @@ export default Conversion({
 
   test("an async convert function is rejected", () => {
     const services = __test__createBrainServices();
-    const source = `import { Conversion } from "mindcraft";
+    const source = `import { Conversion } from "wendoo";
 
 export default Conversion({
   from: "number",
@@ -660,7 +660,7 @@ export default Conversion({
 
   test("an expression-bodied convert arrow is rejected at lowering", () => {
     const services = __test__createBrainServices();
-    const source = `import { Conversion } from "mindcraft";
+    const source = `import { Conversion } from "wendoo";
 
 export default Conversion({
   from: "number",
@@ -685,7 +685,7 @@ export default Conversion({
     // The setOutput value boundary needs number -> buffer here; only the
     // bytecode conversion holds that pair, and it lives in another artifact,
     // so the boundary reports a type mismatch.
-    const source = `import { type Context, Sensor, setOutput } from "mindcraft";
+    const source = `import { type Context, Sensor, setOutput } from "wendoo";
 
 export default Sensor({
   name: "packet out",
@@ -707,7 +707,7 @@ export default Sensor({
 
   test("a destructured convert parameter is rejected at lowering", () => {
     const services = __test__createBrainServices();
-    const source = `import { Conversion } from "mindcraft";
+    const source = `import { Conversion } from "wendoo";
 
 export default Conversion({
   from: "number",
@@ -785,7 +785,7 @@ export default Conversion({
 describe("config member forms: shorthand, spread, and stable ids", () => {
   test("a conversion declared entirely through shorthand members compiles with its declared id", () => {
     const services = __test__createBrainServices();
-    const source = `import { BufferType, Conversion, NumberType } from "mindcraft";
+    const source = `import { BufferType, Conversion, NumberType } from "wendoo";
 
 const id = "convnumbuf000009";
 const from = NumberType;
@@ -809,7 +809,7 @@ export default Conversion({ id, from, to, cost, convert });
 
   test("sensor config members resolve through shorthand, including nested type refs", () => {
     const services = __test__createBrainServices();
-    const source = `import { NumberType, Sensor, setOutput, type Context } from "mindcraft";
+    const source = `import { NumberType, Sensor, setOutput, type Context } from "wendoo";
 
 const name = "seven up";
 const returnType = NumberType;
@@ -834,7 +834,7 @@ export default Sensor({
 
   test("a spread config member is rejected", () => {
     const services = __test__createBrainServices();
-    const source = `import { BufferType, Conversion, NumberType } from "mindcraft";
+    const source = `import { BufferType, Conversion, NumberType } from "wendoo";
 
 const base = { cost: 2 };
 
@@ -877,7 +877,7 @@ export default Conversion({
 
   test("a conversion whose from and to name the same type is rejected", () => {
     const services = __test__createBrainServices();
-    const source = `import { Conversion, NumberType } from "mindcraft";
+    const source = `import { Conversion, NumberType } from "wendoo";
 
 export default Conversion({
   id: "convnumnum000001",
@@ -899,7 +899,7 @@ export default Conversion({
 
   test("two declarations sharing a stable id are rejected on the later file", () => {
     const services = __test__createBrainServices();
-    const sensor = (name: string) => `import { Sensor, type Context } from "mindcraft";
+    const sensor = (name: string) => `import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   id: "copypasted0000id",
@@ -921,7 +921,7 @@ export default Sensor({
 
 describe("Conversion declarations: environment bundle lifecycle", () => {
   test("applying a bundle registers the conversion; replacing the bundle removes it", () => {
-    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const environment = createWendooEnvironment({ modules: [coreModule()] });
     const services = environment.brainServices;
 
     const result = compileProject(services, { "conv.ts": REF_CONVERSION_SOURCE, "decoder.ts": DECODER_SOURCE });

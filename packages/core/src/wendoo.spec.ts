@@ -8,17 +8,17 @@ import {
   type CompiledActionBundle,
   type CreateBrainOptions,
   coreModule,
-  createMindcraftEnvironment,
+  createWendooEnvironment,
   Dict,
   type HydratedTileMetadataSnapshot,
-  type MindcraftBrain,
-  type MindcraftCatalog,
-  type MindcraftEnvironment,
-  type MindcraftModule,
-  type MindcraftModuleApi,
   runtime,
-} from "@mindcraft-lang/core";
-import { CoreHostActions } from "@mindcraft-lang/core/runtime";
+  type WendooBrain,
+  type WendooCatalog,
+  type WendooEnvironment,
+  type WendooModule,
+  type WendooModuleApi,
+} from "@wendoo-lang/core";
+import { CoreHostActions } from "@wendoo-lang/core/runtime";
 
 type RootContracts = [
   ActionBundleUpdate,
@@ -27,19 +27,19 @@ type RootContracts = [
   CompiledActionBundle,
   CreateBrainOptions,
   HydratedTileMetadataSnapshot,
-  MindcraftBrain,
-  MindcraftCatalog,
-  MindcraftEnvironment,
-  MindcraftModule,
-  MindcraftModuleApi,
+  WendooBrain,
+  WendooCatalog,
+  WendooEnvironment,
+  WendooModule,
+  WendooModuleApi,
 ];
 
-type ModuleApiMembers = [MindcraftModuleApi["registerFunction"], MindcraftModuleApi["registerOperator"]];
+type ModuleApiMembers = [WendooModuleApi["registerFunction"], WendooModuleApi["registerOperator"]];
 
 void (0 as unknown as RootContracts);
 void (0 as unknown as ModuleApiMembers);
 
-test("exports mindcraft public contracts from the root package", () => {
+test("exports wendoo public contracts from the root package", () => {
   const hydrated = {
     revision: "rev-1",
     tiles: [],
@@ -65,18 +65,18 @@ test("exports mindcraft public contracts from the root package", () => {
   assert.ok(brain.compiler);
   assert.ok(runtime);
   assert.ok(brain.tiles);
-  assert.equal(typeof createMindcraftEnvironment, "function");
+  assert.equal(typeof createWendooEnvironment, "function");
   assert.equal(typeof coreModule, "function");
 });
 
-test("coreModule installs through MindcraftModuleApi with brainServices", () => {
+test("coreModule installs through WendooModuleApi with brainServices", () => {
   const services = brain.createBrainServices(brain.createAppServices());
 
   const fail = (): never => {
     throw new Error("coreModule() should use api.brainServices directly");
   };
 
-  const api: MindcraftModuleApi = {
+  const api: WendooModuleApi = {
     brainServices: services,
     defineType: fail,
     registerHostSensor: fail,

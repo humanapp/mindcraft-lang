@@ -1,4 +1,4 @@
-import type { CompiledActionBundle, IBrainDef, MindcraftModule } from "@mindcraft-lang/core/app";
+import type { CompiledActionBundle, IBrainDef, WendooModule } from "@wendoo-lang/core/app";
 
 /**
  * Version of the adapter contract this package defines. A loader compares it
@@ -265,14 +265,14 @@ export interface TargetAdapter {
    */
   readonly contractVersion: number;
   /**
-   * Mindcraft identity of the target this artifact is, as the `identity` its
-   * target's own `mindcraft.json` declares, injected at build time.
+   * Wendoo identity of the target this artifact is, as the `identity` its
+   * target's own `wendoo.json` declares, injected at build time.
    */
   readonly targetIdentity: string;
   /** Facts about this world, stated to the model before it plans. */
   manifest(): TargetManifest;
-  /** Mindcraft modules this target installs into an authoring environment, beyond core's own. */
-  modules(): readonly MindcraftModule[];
+  /** Wendoo modules this target installs into an authoring environment, beyond core's own. */
+  modules(): readonly WendooModule[];
   /** The documentation markdown this target ships for its own tiles, keyed by tile id. */
   tileDocs(): ReadonlyMap<string, string>;
   /** Population roles a scenario may name as its subject. */
@@ -335,8 +335,8 @@ export interface AdapterNonconformance {
 /** What an artifact is checked against beyond the interface itself. */
 export interface AdapterExpectation {
   /**
-   * Mindcraft identity the artifact must report: the `identity` the target's
-   * own `mindcraft.json` declares.
+   * Wendoo identity the artifact must report: the `identity` the target's
+   * own `wendoo.json` declares.
    */
   readonly targetIdentity: string;
 }

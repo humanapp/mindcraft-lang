@@ -1,8 +1,8 @@
-import type { FileContent, MindcraftProjectDocument } from "@mindcraft-lang/service-api";
-import { fileContentFromWire } from "@mindcraft-lang/service-api";
-import { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
+import type { FileContent, WendooProjectDocument } from "@wendoo-lang/service-api";
+import { fileContentFromWire } from "@wendoo-lang/service-api";
 import type { ProjectContentManifest } from "./project-content-manifest.js";
 import { serializeProjectContentManifest, validateProjectContentManifest } from "./project-content-manifest.js";
+import { WENDOO_JSON_PATH } from "./wendoo-json.js";
 
 /** Stable identifiers for unpack refusals. */
 export const UnpackErrorCode = {
@@ -25,7 +25,7 @@ export interface UnpackRefusal {
 
 /** The publishable-repo tree {@link buildUnpackedTree} assembles from a project document. */
 export interface UnpackedTree {
-  /** Serialized `mindcraft.json` of the unpacked project. */
+  /** Serialized `wendoo.json` of the unpacked project. */
   manifestText: string;
   /** Every non-manifest document file, in document order. */
   files: readonly { path: string; content: FileContent }[];
@@ -41,12 +41,12 @@ export interface UnpackedTree {
  * {@link UnpackErrorCode.DOCUMENT_INVALID} when the embedded manifest is not a
  * valid content manifest. Pure: it reads no filesystem and writes nothing.
  *
- * @param document - Parsed `.mindcraft` document to unpack.
+ * @param document - Parsed `.wendoo` document to unpack.
  * @param coordinate - `<owner>/<repo>` recorded in the manifest's `identity`
  *   field, or `undefined` to leave the identity unset.
  */
 export function buildUnpackedTree(
-  document: MindcraftProjectDocument,
+  document: WendooProjectDocument,
   coordinate: string | undefined
 ): UnpackedTree | UnpackRefusal {
   const validated = validateProjectContentManifest(document.manifest);
@@ -59,7 +59,7 @@ export function buildUnpackedTree(
   }
 
   const files = Object.entries(document.contents)
-    .filter(([filePath]) => filePath !== MINDCRAFT_JSON_PATH)
+    .filter(([filePath]) => filePath !== WENDOO_JSON_PATH)
     .map(([filePath, content]) => ({
       path: filePath,
       content: typeof content === "string" ? content : fileContentFromWire(content),

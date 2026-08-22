@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
-import { Dict, List } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { treeshakeProgram as treeshakeLinked } from "@mindcraft-lang/core/brain/compiler";
+import { Dict, List } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { treeshakeProgram as treeshakeLinked } from "@wendoo-lang/core/brain/compiler";
 import type {
   BytecodeExecutableAction,
   ConstantPools,
   ExecutionContext,
   ProgramTypeEntry,
-} from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
 import {
   BYTECODE_VERSION,
   FALSE_VALUE,
@@ -32,8 +32,8 @@ import {
   VM,
   VmStatus,
   VOID_VALUE,
-} from "@mindcraft-lang/core/runtime";
-import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
+} from "@wendoo-lang/core/runtime";
+import { __test__createPlatformServices } from "@wendoo-lang/core/runtime/__test__";
 
 function mkInstr(op: Op, a?: number, b?: number, c?: number): Instr {
   const ins: Instr = { op };

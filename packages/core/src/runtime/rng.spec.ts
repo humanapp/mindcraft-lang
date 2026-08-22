@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { coreModule, createMindcraftEnvironment, List, MathOps, type MindcraftEnvironment } from "@mindcraft-lang/core";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
+import { coreModule, createWendooEnvironment, List, MathOps, type WendooEnvironment } from "@wendoo-lang/core";
+import type { BrainServices } from "@wendoo-lang/core/brain";
 import {
   type BrainSyncFunctionEntry,
   CoreFuncId,
@@ -11,7 +11,7 @@ import {
   extractNumberValue,
   Rng,
   type Value,
-} from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
 
 /** The first state seed 1 advances to, which pins the generator's constants. */
 const firstStateFromSeedOne = 1015568748;
@@ -65,7 +65,7 @@ describe("createEntropySeededRng", () => {
 });
 
 /** Calls `$$math_random` on `environment` `count` times, as the VM's HOST_CALL does. */
-function randomBuiltinDraws(environment: MindcraftEnvironment, count: number): number[] {
+function randomBuiltinDraws(environment: WendooEnvironment, count: number): number[] {
   const services: BrainServices = environment.withServices((brainServices) => brainServices);
   const entry = services.runtime.functions.getSyncById(CoreFuncId.MathRandom) as BrainSyncFunctionEntry | undefined;
   assert.ok(entry, "the core module registers $$math_random");
@@ -81,14 +81,14 @@ function randomBuiltinDraws(environment: MindcraftEnvironment, count: number): n
 
 describe("the $$math_random builtin", () => {
   test("draws from the environment's own rng", () => {
-    const environment = createMindcraftEnvironment({ modules: [coreModule()], rng: new Rng(4242) });
+    const environment = createWendooEnvironment({ modules: [coreModule()], rng: new Rng(4242) });
 
     assert.deepEqual(randomBuiltinDraws(environment, 5), draws(new Rng(4242), 5));
   });
 
   test("two environments of one seed do not share a stream", () => {
-    const first = createMindcraftEnvironment({ modules: [coreModule()], rng: new Rng(31) });
-    const second = createMindcraftEnvironment({ modules: [coreModule()], rng: new Rng(31) });
+    const first = createWendooEnvironment({ modules: [coreModule()], rng: new Rng(31) });
+    const second = createWendooEnvironment({ modules: [coreModule()], rng: new Rng(31) });
 
     randomBuiltinDraws(first, 10);
 
@@ -96,7 +96,7 @@ describe("the $$math_random builtin", () => {
   });
 
   test("rounds its draw to the environment's number precision", () => {
-    const environment = createMindcraftEnvironment({
+    const environment = createWendooEnvironment({
       modules: [coreModule()],
       rng: new Rng(4242),
       numerics: createProfileNumerics("f32"),

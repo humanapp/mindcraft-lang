@@ -1,4 +1,4 @@
-import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+import type { BrainRuleDef } from "@wendoo-lang/core/brain/model";
 import { createContext, useContext } from "react";
 
 export interface RuleDragController {

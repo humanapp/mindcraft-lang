@@ -1,8 +1,8 @@
-[![Publish @mindcraft-lang/ui](https://github.com/humanapp/mindcraft-lang/actions/workflows/publish-ui.yml/badge.svg)](https://github.com/humanapp/mindcraft-lang/actions/workflows/publish-ui.yml)
+[![Publish @wendoo-lang/ui](https://github.com/humanapp/wendoo-lang/actions/workflows/publish-ui.yml/badge.svg)](https://github.com/humanapp/wendoo-lang/actions/workflows/publish-ui.yml)
 
-# @mindcraft-lang/ui
+# @wendoo-lang/ui
 
-Shared React UI components for **Mindcraft** web applications. This package provides shadcn/ui primitives and the full brain editor component tree, designed to be consumed by any webapp in the monorepo.
+Shared React UI components for **Wendoo** web applications. This package provides shadcn/ui primitives and the full brain editor component tree, designed to be consumed by any webapp in the monorepo.
 
 ## What's Included
 
@@ -14,14 +14,14 @@ Shared React UI components for **Mindcraft** web applications. This package prov
 
 This is a **source-only package** -- there is no build step. Consuming apps resolve the source directly via Vite aliases and tsconfig path mappings.
 
-For step-by-step setup instructions in your own project, see the [Integration Guide](https://github.com/humanapp/mindcraft-lang/blob/main/INTEGRATION.md).
+For step-by-step setup instructions in your own project, see the [Integration Guide](https://github.com/humanapp/wendoo-lang/blob/main/INTEGRATION.md).
 
 ### Vite config
 
 ```js
 resolve: {
   alias: {
-    "@mindcraft-lang/ui": path.resolve(__dirname, "../../packages/ui/src"),
+    "@wendoo-lang/ui": path.resolve(__dirname, "../../packages/ui/src"),
   },
 },
 ```
@@ -32,8 +32,8 @@ resolve: {
 {
   "compilerOptions": {
     "paths": {
-      "@mindcraft-lang/ui": ["../../packages/ui/src/index.ts"],
-      "@mindcraft-lang/ui/*": ["../../packages/ui/src/*"]
+      "@wendoo-lang/ui": ["../../packages/ui/src/index.ts"],
+      "@wendoo-lang/ui/*": ["../../packages/ui/src/*"]
     }
   }
 }
@@ -42,9 +42,9 @@ resolve: {
 ### Imports
 
 ```typescript
-import { Button, Dialog, Slider } from "@mindcraft-lang/ui";
-import { BrainEditorDialog, BrainEditorProvider } from "@mindcraft-lang/ui";
-import { cn } from "@mindcraft-lang/ui";
+import { Button, Dialog, Slider } from "@wendoo-lang/ui";
+import { BrainEditorDialog, BrainEditorProvider } from "@wendoo-lang/ui";
+import { cn } from "@wendoo-lang/ui";
 ```
 
 ## Brain Editor Integration
@@ -52,8 +52,8 @@ import { cn } from "@mindcraft-lang/ui";
 The brain editor is decoupled from app-specific concepts through a context provider. Host apps supply tile visuals, data type icons, and optional custom literal types via `BrainEditorProvider`.
 
 ```tsx
-import { BrainEditorProvider, BrainEditorDialog } from "@mindcraft-lang/ui";
-import type { BrainEditorConfig } from "@mindcraft-lang/ui";
+import { BrainEditorProvider, BrainEditorDialog } from "@wendoo-lang/ui";
+import type { BrainEditorConfig } from "@wendoo-lang/ui";
 
 const config: BrainEditorConfig = {
   dataTypeIcons: new Map([...]),   // type ID -> icon URL
@@ -121,7 +121,7 @@ src/
 
 ## Dependencies
 
-- **@mindcraft-lang/core** -- brain data model, tile definitions, compiler
+- **@wendoo-lang/core** -- brain data model, tile definitions, compiler
 - **Radix UI** -- Dialog, DropdownMenu, Slider, Slot
 - **class-variance-authority + clsx + tailwind-merge** -- styling utilities
 - **lucide-react** -- icons

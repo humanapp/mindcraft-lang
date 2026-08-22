@@ -1,9 +1,9 @@
-import type { ExecutionContext, IBrainDef, MindcraftEnvironment, MindcraftModule } from "@mindcraft-lang/core/app";
-import type { BrainBuildDiagnostic } from "@mindcraft-lang/core/brain/compiler";
-import type { BrainJson } from "@mindcraft-lang/core/brain/model";
-import { brainJsonWithRulesEmptied } from "@mindcraft-lang/core/brain/model";
-import type { HandleId, IBrainRuntime, NumberPrecision } from "@mindcraft-lang/core/runtime";
-import { HandleOutcome } from "@mindcraft-lang/core/runtime";
+import type { ExecutionContext, IBrainDef, WendooEnvironment, WendooModule } from "@wendoo-lang/core/app";
+import type { BrainBuildDiagnostic } from "@wendoo-lang/core/brain/compiler";
+import type { BrainJson } from "@wendoo-lang/core/brain/model";
+import { brainJsonWithRulesEmptied } from "@wendoo-lang/core/brain/model";
+import type { HandleId, IBrainRuntime, NumberPrecision } from "@wendoo-lang/core/runtime";
+import { HandleOutcome } from "@wendoo-lang/core/runtime";
 import type {
   GateObservation,
   OperationEnding,
@@ -112,7 +112,7 @@ export interface OperationEndingReport {
 /** What the kit hands a world driver to stage one rehearsal. */
 export interface WorldStaging {
   /** The environment the world runs in, carrying core's modules and the target's. */
-  readonly environment: MindcraftEnvironment;
+  readonly environment: WendooEnvironment;
   /** Population role the brain under study drives; one of the driver's own subjects. */
   readonly subject: string;
   /**
@@ -171,8 +171,8 @@ export interface RehearsalWorld {
  * staged and stepped. Nothing here presumes entities, positions, or physics.
  */
 export interface WorldDriver {
-  /** Mindcraft modules this target installs into a rehearsal environment, beyond core's own. */
-  modules(): readonly MindcraftModule[];
+  /** Wendoo modules this target installs into a rehearsal environment, beyond core's own. */
+  modules(): readonly WendooModule[];
   /** Population roles a scenario may name as its subject. */
   subjects(): readonly string[];
   /**
@@ -200,8 +200,8 @@ export interface WorldDriver {
 /** What a rehearsal adapter is built from. */
 export interface RehearsalAdapterOptions {
   /**
-   * Mindcraft identity of the target the artifact is. Inject it at build time
-   * from the `identity` the target's own `mindcraft.json` declares.
+   * Wendoo identity of the target the artifact is. Inject it at build time
+   * from the `identity` the target's own `wendoo.json` declares.
    */
   readonly targetIdentity: string;
   /** Facts about this world, stated to the model before it plans. */
@@ -216,7 +216,7 @@ export interface RehearsalAdapterOptions {
  * is reported under the id the document addresses each rule by. Throws
  * {@link RehearsalRejection} when the brain does not build in `environment`.
  */
-function ruleFuncIdRuleIds(environment: MindcraftEnvironment, brainDef: IBrainDef): Map<number, string> {
+function ruleFuncIdRuleIds(environment: WendooEnvironment, brainDef: IBrainDef): Map<number, string> {
   const build = environment.linkBrain(brainDef);
   if (!build.program) {
     const errors: BrainBuildDiagnostic[] = [];

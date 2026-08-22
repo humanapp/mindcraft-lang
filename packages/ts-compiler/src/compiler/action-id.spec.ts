@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { UserTileProject } from "./project.js";
 
@@ -9,7 +9,7 @@ let services: BrainServices;
 
 function sensorSource(opts: { id?: string; name: string }): string {
   const idLine = opts.id ? `  id: ${JSON.stringify(opts.id)},\n` : "";
-  return `import { Sensor, type Context } from "mindcraft";
+  return `import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
 ${idLine}  name: ${JSON.stringify(opts.name)},
@@ -96,7 +96,7 @@ describe("user-action stable id", () => {
   });
 
   test("substitutes the tile-id placeholder in docs with the compiled tile's id-based tile id", () => {
-    const source = `import { Sensor, type Context } from "mindcraft";
+    const source = `import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   id: "docid",

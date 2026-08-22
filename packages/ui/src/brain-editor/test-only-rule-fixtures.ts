@@ -1,7 +1,7 @@
-import type { BrainServices, IBrainTileDef } from "@mindcraft-lang/core/brain";
-import { __test__appendTile } from "@mindcraft-lang/core/brain/__test__";
-import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { BrainTileActuatorDef, BrainTileSensorDef } from "@mindcraft-lang/core/brain/tiles";
+import type { BrainServices, IBrainTileDef } from "@wendoo-lang/core/brain";
+import { __test__appendTile } from "@wendoo-lang/core/brain/__test__";
+import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
+import { BrainTileActuatorDef, BrainTileSensorDef } from "@wendoo-lang/core/brain/tiles";
 import {
   type BrainActionCallDef,
   bag,
@@ -11,7 +11,7 @@ import {
   mod,
   NIL_VALUE,
   optional,
-} from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
 import { createElement, Fragment } from "react";
 import { type CandidateStripSurfaceOptions, useCandidateStripSurface } from "./BrainCandidateStrip";
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { collectUnstableDependencies, UnstableDependencyCode } from "@mindcraft-lang/app-host";
+import { collectUnstableDependencies, UnstableDependencyCode } from "@wendoo-lang/app-host";
 
 describe("collectUnstableDependencies", () => {
   it("flags branch references without consulting the probe", async () => {

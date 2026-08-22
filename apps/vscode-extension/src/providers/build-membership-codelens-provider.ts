@@ -26,7 +26,7 @@ export class BuildMembershipCodeLensProvider implements vscode.CodeLensProvider 
         new vscode.CodeLens(range, {
           title: "In build - Remove from build",
           tooltip: "Remove this file from the manifest files list. The file stays in the project.",
-          command: "mindcraft.toggleFileInBuild",
+          command: "wendoo.toggleFileInBuild",
           arguments: [document.uri],
         }),
       ];
@@ -35,7 +35,7 @@ export class BuildMembershipCodeLensProvider implements vscode.CodeLensProvider 
       new vscode.CodeLens(range, {
         title: "Not in build - Add to build",
         tooltip: "Add this file to the manifest files list so the build includes it.",
-        command: "mindcraft.toggleFileInBuild",
+        command: "wendoo.toggleFileInBuild",
         arguments: [document.uri],
       }),
     ];

@@ -10,8 +10,8 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import type { BrainServices } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
 import {
   CoreTypeIds,
   mkModifierTileId,
@@ -19,7 +19,7 @@ import {
   mkOutputVarKey,
   NativeType,
   type StructTypeDef,
-} from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
 import { buildMultiRootActionBundle } from "../runtime/action-bundle.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { CompileDiagCode } from "./diag-codes.js";
@@ -34,7 +34,7 @@ const EXT_A_NS = "acme/robot-a";
 const EXT_B_NS = "acme/robot-b";
 const HOST_NS = "host-store-id-0001";
 
-const SHARED_SOURCE = `import { Sensor, StructType, NumberType, type Context } from "mindcraft";
+const SHARED_SOURCE = `import { Sensor, StructType, NumberType, type Context } from "wendoo";
 
 export const Pos = StructType({
   name: "Pos",
@@ -52,7 +52,7 @@ export default Sensor({
 });
 `;
 
-const EXT_A_SENSOR = `import { Sensor, StructType, NumberType, setOutput, modifier, param, optional, type Context } from "mindcraft";
+const EXT_A_SENSOR = `import { Sensor, StructType, NumberType, setOutput, modifier, param, optional, type Context } from "wendoo";
 
 export const AVec = StructType({
   name: "AVec",
@@ -74,7 +74,7 @@ export default Sensor({
 });
 `;
 
-const EXT_A_CONVERSION = `import { BufferType, Conversion, NumberType } from "mindcraft";
+const EXT_A_CONVERSION = `import { BufferType, Conversion, NumberType } from "wendoo";
 
 export default Conversion({
   id: "convAnumbuf00001",
@@ -87,7 +87,7 @@ export default Conversion({
 });
 `;
 
-const EXT_B_SENSOR = `import { Sensor, StructType, NumberType, modifier, optional, type Context } from "mindcraft";
+const EXT_B_SENSOR = `import { Sensor, StructType, NumberType, modifier, optional, type Context } from "wendoo";
 
 export const BVec = StructType({
   name: "BVec",
@@ -110,7 +110,7 @@ export default Sensor({
 });
 `;
 
-const HOST_SOURCE = `import { Sensor, setOutput, type Context } from "mindcraft";
+const HOST_SOURCE = `import { Sensor, setOutput, type Context } from "wendoo";
 
 export default Sensor({
   name: "host range",
@@ -354,7 +354,7 @@ describe("multi-root compilation session", () => {
 
     // Re-adding the root with changed content compiles the new shape; the
     // previous resolution's registration is gone, not reused.
-    const changedB = `import { Sensor, StructType, NumberType, type Context } from "mindcraft";
+    const changedB = `import { Sensor, StructType, NumberType, type Context } from "wendoo";
 
 export const BVec = StructType({
   name: "BVec",
@@ -387,7 +387,7 @@ export default Sensor({
 
   test("two roots may reuse the same stable id: keys stay distinct per namespace", () => {
     const { session } = newSession();
-    const sensor = (name: string) => `import { Sensor, type Context } from "mindcraft";
+    const sensor = (name: string) => `import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   name: "${name}",
@@ -415,7 +415,7 @@ describe("multi-root shared-tile reconcile", () => {
   const modifierSensor = (
     id: string,
     label?: string
-  ) => `import { Sensor, modifier, optional, type Context } from "mindcraft";
+  ) => `import { Sensor, modifier, optional, type Context } from "wendoo";
 
 export default Sensor({
   name: "sensor ${id}",
@@ -474,10 +474,7 @@ export default Sensor({
   });
 
   test("conflicting shared-parameter types across roots diagnose in the later root", () => {
-    const paramSensor = (
-      id: string,
-      type: string
-    ) => `import { Sensor, param, optional, type Context } from "mindcraft";
+    const paramSensor = (id: string, type: string) => `import { Sensor, param, optional, type Context } from "wendoo";
 
 export default Sensor({
   name: "sensor ${id}",
@@ -502,7 +499,7 @@ export default Sensor({
   });
 
   test("a conversion pair claimed by an earlier root diagnoses a later root's duplicate", () => {
-    const conversion = (id: string) => `import { BufferType, Conversion, NumberType } from "mindcraft";
+    const conversion = (id: string) => `import { BufferType, Conversion, NumberType } from "wendoo";
 
 export default Conversion({
   id: "${id}",

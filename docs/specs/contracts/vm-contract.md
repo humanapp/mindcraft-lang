@@ -23,7 +23,7 @@ platform-level throw escapes `runFiber`.
 
 ## Single-entry guarantee
 
-The VM is **single-entry**. Only the mindcraft host loop may call
+The VM is **single-entry**. Only the wendoo host loop may call
 `brain.think()`, `scheduler.tick()`, `runFiber()`, or
 resolve / reject async handles. These entry points are mutually
 exclusive in time -- one is active at a time, on one thread of
@@ -33,7 +33,7 @@ The design rule that produces this property:
 
 ```
 ISR / event source / CODAL / browser callback  ->  enqueue only
-mindcraft host loop                             ->  drain, resolve,
+wendoo host loop                             ->  drain, resolve,
                                                     schedule, execute
 ```
 
@@ -69,7 +69,7 @@ host call. Re-entry corrupts all of these without diagnostic.
 This is a contract, not a runtime check. It is enforced by code
 review at the small set of host-function registration sites in
 `packages/core/src/runtime/*` and at the public seam in
-`packages/core/src/mindcraft.ts`. User TS code never registers host
+`packages/core/src/wendoo.ts`. User TS code never registers host
 functions and is not subject to this rule.
 
 ### Optional re-entry guard

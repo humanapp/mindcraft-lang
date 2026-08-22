@@ -21,8 +21,8 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { stream } from "@mindcraft-lang/core";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { stream } from "@wendoo-lang/core";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
 import {
   type BrainProgramTypeEntryJson,
   type BrainProgramValueJson,
@@ -38,7 +38,7 @@ import {
   NativeType,
   type NumberPrecision,
   Op,
-} from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
 
 const { byteArrayFromUint8Array, byteArrayToUint8Array } = stream;
 
@@ -46,11 +46,11 @@ const PROFILE_ID = 0;
 const PRECISION: NumberPrecision = "f32";
 
 /**
- * With `MINDCRAFT_REGENERATE_GOLDENS=1` every golden below is rewritten from
+ * With `WENDOO_REGENERATE_GOLDENS=1` every golden below is rewritten from
  * the freshly built artifact; otherwise only a missing golden is written and
  * the committed bytes must match.
  */
-const REGENERATE_GOLDENS = process.env.MINDCRAFT_REGENERATE_GOLDENS === "1";
+const REGENERATE_GOLDENS = process.env.WENDOO_REGENERATE_GOLDENS === "1";
 const typeRegistry = __test__createBrainServices().runtime.types;
 
 // ---- Fixtures ----

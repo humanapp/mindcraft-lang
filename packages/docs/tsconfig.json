@@ -20,8 +20,8 @@
 
     /* Path mapping */
     "paths": {
-      "@mindcraft-lang/ui": ["../ui/src/index.ts"],
-      "@mindcraft-lang/ui/*": ["../ui/src/*"]
+      "@wendoo-lang/ui": ["../ui/src/index.ts"],
+      "@wendoo-lang/ui/*": ["../ui/src/*"]
     }
   },
   "include": ["src"],

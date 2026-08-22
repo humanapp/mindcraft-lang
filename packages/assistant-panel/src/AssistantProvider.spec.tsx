@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { AuthoringWorkspace } from "@mindcraft-lang/assistant-bridge";
-import { FAKE_TARGET_IDENTITY } from "@mindcraft-lang/assistant-bridge/testing";
-import type { RelayToolManifest } from "@mindcraft-lang/assistant-relay";
+import type { AuthoringWorkspace } from "@wendoo-lang/assistant-bridge";
+import { FAKE_TARGET_IDENTITY } from "@wendoo-lang/assistant-bridge/testing";
+import type { RelayToolManifest } from "@wendoo-lang/assistant-relay";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AssistantProvider } from "./AssistantProvider";
 import type { AssistantContextValue } from "./assistant-context";

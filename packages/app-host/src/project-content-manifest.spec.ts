@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { ProjectContentManifest } from "@mindcraft-lang/app-host";
+import type { ProjectContentManifest } from "@wendoo-lang/app-host";
 import {
   isAbbreviatedCommitPin,
   ProjectContentManifestErrorCode,
@@ -9,15 +9,15 @@ import {
   serializeProjectContentManifest,
   validateProjectContentManifest,
   validateProjectExtensions,
-} from "@mindcraft-lang/app-host";
+} from "@wendoo-lang/app-host";
 
 const VALID_MANIFEST = {
   name: "My Project",
   version: "1.2.3",
   extensions: {
-    "example-org/mindcraft-position": "gh:example-org/mindcraft-position@v1.2.0",
+    "example-org/wendoo-position": "gh:example-org/wendoo-position@v1.2.0",
     "example-org/steering": "gh:example-org/steering#main",
-    "mindcraft-lang/microbit-stdlib": "embedded:mindcraft-lang/microbit-stdlib",
+    "wendoo-lang/microbit-stdlib": "embedded:wendoo-lang/microbit-stdlib",
   },
 };
 
@@ -27,43 +27,43 @@ function errorCodes(result: ReturnType<typeof validateProjectContentManifest>): 
 
 describe("parseExtensionReference", () => {
   it("parses a gh reference pinned at a tag", () => {
-    assert.deepStrictEqual(parseExtensionReference("gh:example-org/mindcraft-position@v1.2.0"), {
+    assert.deepStrictEqual(parseExtensionReference("gh:example-org/wendoo-position@v1.2.0"), {
       transport: "gh",
       owner: "example-org",
-      repo: "mindcraft-position",
+      repo: "wendoo-position",
       routing: { kind: "pin", pin: "v1.2.0" },
     });
   });
 
   it("parses a gh reference pinned at a full commit SHA without interpreting it", () => {
     const sha = "0123456789abcdef0123456789abcdef01234567";
-    assert.deepStrictEqual(parseExtensionReference(`gh:example-org/mindcraft-position@${sha}`), {
+    assert.deepStrictEqual(parseExtensionReference(`gh:example-org/wendoo-position@${sha}`), {
       transport: "gh",
       owner: "example-org",
-      repo: "mindcraft-position",
+      repo: "wendoo-position",
       routing: { kind: "pin", pin: sha },
     });
   });
 
   it("parses a gh branch reference, including a branch name containing a slash", () => {
-    assert.deepStrictEqual(parseExtensionReference("gh:example-org/mindcraft-position#main"), {
+    assert.deepStrictEqual(parseExtensionReference("gh:example-org/wendoo-position#main"), {
       transport: "gh",
       owner: "example-org",
-      repo: "mindcraft-position",
+      repo: "wendoo-position",
       routing: { kind: "branch", branch: "main" },
     });
-    assert.deepStrictEqual(parseExtensionReference("gh:example-org/mindcraft-position#feature/steering"), {
+    assert.deepStrictEqual(parseExtensionReference("gh:example-org/wendoo-position#feature/steering"), {
       transport: "gh",
       owner: "example-org",
-      repo: "mindcraft-position",
+      repo: "wendoo-position",
       routing: { kind: "branch", branch: "feature/steering" },
     });
   });
 
   it("parses an embedded reference carrying the full coordinate", () => {
-    assert.deepStrictEqual(parseExtensionReference("embedded:mindcraft-lang/microbit-stdlib"), {
+    assert.deepStrictEqual(parseExtensionReference("embedded:wendoo-lang/microbit-stdlib"), {
       transport: "embedded",
-      coordinate: "mindcraft-lang/microbit-stdlib",
+      coordinate: "wendoo-lang/microbit-stdlib",
     });
   });
 
@@ -187,11 +187,11 @@ describe("parseProjectContentManifest", () => {
 
   it("carries a non-empty files string array through", () => {
     const result = parseProjectContentManifest(
-      JSON.stringify({ name: "P", version: "0.1.0", files: ["index.ts", "mindcraft.core.d.ts"] })
+      JSON.stringify({ name: "P", version: "0.1.0", files: ["index.ts", "wendoo.core.d.ts"] })
     );
     assert.strictEqual(result.ok, true);
     if (result.ok) {
-      assert.deepStrictEqual(result.manifest.files, ["index.ts", "mindcraft.core.d.ts"]);
+      assert.deepStrictEqual(result.manifest.files, ["index.ts", "wendoo.core.d.ts"]);
     }
   });
 
@@ -207,11 +207,11 @@ describe("parseProjectContentManifest", () => {
 
   it("carries a non-empty ambient string array through", () => {
     const result = parseProjectContentManifest(
-      JSON.stringify({ name: "P", version: "0.1.0", ambient: ["mindcraft.core.d.ts", "mindcraft.codal.d.ts"] })
+      JSON.stringify({ name: "P", version: "0.1.0", ambient: ["wendoo.core.d.ts", "wendoo.codal.d.ts"] })
     );
     assert.strictEqual(result.ok, true);
     if (result.ok) {
-      assert.deepStrictEqual(result.manifest.ambient, ["mindcraft.core.d.ts", "mindcraft.codal.d.ts"]);
+      assert.deepStrictEqual(result.manifest.ambient, ["wendoo.core.d.ts", "wendoo.codal.d.ts"]);
     }
   });
 
@@ -230,13 +230,13 @@ describe("parseProjectContentManifest", () => {
       JSON.stringify({
         name: "P",
         version: "0.1.0",
-        targets: { "mindcraft-lang/microbit-v2": { packageVersion: "^0.2.0" } },
+        targets: { "wendoo-lang/microbit-v2": { packageVersion: "^0.2.0" } },
       })
     );
     assert.strictEqual(result.ok, true);
     if (result.ok) {
       assert.deepStrictEqual(result.manifest.targets, {
-        "mindcraft-lang/microbit-v2": { packageVersion: "^0.2.0" },
+        "wendoo-lang/microbit-v2": { packageVersion: "^0.2.0" },
       });
     }
   });
@@ -463,7 +463,7 @@ describe("validateProjectContentManifest", () => {
   });
 
   it("rejects an ambient entry that escapes the project root with FILE_ESCAPES_ROOT", () => {
-    for (const ambient of [["../ambient/mindcraft.core.d.ts"], ["/abs.d.ts"], ["nested/../../up.d.ts"]]) {
+    for (const ambient of [["../ambient/wendoo.core.d.ts"], ["/abs.d.ts"], ["nested/../../up.d.ts"]]) {
       const result = validateProjectContentManifest({ name: "P", version: "0.1.0", ambient });
       assert.strictEqual(result.ok, false, `Expected rejection for ambient ${JSON.stringify(ambient)}`);
       assert.ok(errorCodes(result).includes(ProjectContentManifestErrorCode.FILE_ESCAPES_ROOT));
@@ -475,7 +475,7 @@ describe("validateProjectContentManifest", () => {
       name: "P",
       version: "0.1.0",
       files: ["index.ts", "sub/image.ts", "sub/../image.ts"],
-      ambient: ["mindcraft.core.d.ts"],
+      ambient: ["wendoo.core.d.ts"],
     });
     assert.strictEqual(result.ok, true, `Expected acceptance: ${JSON.stringify(errorCodes(result))}`);
   });
@@ -485,9 +485,9 @@ describe("validateProjectContentManifest", () => {
       5,
       ["a"],
       { "-bad/repo": { packageVersion: "^1.0.0" } },
-      { "mindcraft-lang/codal": { packageVersion: 3 } },
-      { "mindcraft-lang/codal": { packageVersion: "" } },
-      { "mindcraft-lang/codal": "^1.0.0" },
+      { "wendoo-lang/codal": { packageVersion: 3 } },
+      { "wendoo-lang/codal": { packageVersion: "" } },
+      { "wendoo-lang/codal": "^1.0.0" },
     ];
     for (const targets of cases) {
       const result = validateProjectContentManifest({ name: "P", version: "0.1.0", targets });
@@ -616,7 +616,7 @@ describe("serializeProjectContentManifest", () => {
       name: "P",
       version: "0.1.0",
       extensions: {},
-      files: ["index.ts", "mindcraft.core.d.ts"],
+      files: ["index.ts", "wendoo.core.d.ts"],
     };
     const result = parseProjectContentManifest(serializeProjectContentManifest(manifest));
     assert.strictEqual(result.ok, true);
@@ -637,7 +637,7 @@ describe("serializeProjectContentManifest", () => {
       name: "P",
       version: "0.1.0",
       extensions: {},
-      ambient: ["mindcraft.core.d.ts"],
+      ambient: ["wendoo.core.d.ts"],
     };
     const result = parseProjectContentManifest(serializeProjectContentManifest(manifest));
     assert.strictEqual(result.ok, true);
@@ -658,7 +658,7 @@ describe("serializeProjectContentManifest", () => {
       name: "P",
       version: "0.1.0",
       extensions: {},
-      targets: { "mindcraft-lang/microbit-v2": { packageVersion: "^0.2.0" } },
+      targets: { "wendoo-lang/microbit-v2": { packageVersion: "^0.2.0" } },
     };
     const result = parseProjectContentManifest(serializeProjectContentManifest(manifest));
     assert.strictEqual(result.ok, true);

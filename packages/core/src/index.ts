@@ -1,34 +1,4 @@
 export * as brain from "./brain";
-export type {
-  ActionBundleUpdate,
-  BrainInvalidationEvent,
-  CompiledActionArtifact,
-  CompiledActionBundle,
-  ConversionDefinition,
-  CreateBrainOptions,
-  CreateHostActuatorOptions,
-  CreateHostSensorOptions,
-  HostActuatorDefinition,
-  HostFunctionDefinition,
-  HostSensorDefinition,
-  HydratedTileMetadataSnapshot,
-  MindcraftBrain,
-  MindcraftCatalog,
-  MindcraftEnvironment,
-  MindcraftModule,
-  MindcraftModuleApi,
-  MindcraftTypeDefinition,
-  OperatorDefinition,
-  OperatorOverloadDefinition,
-  TileDefinitionInput,
-} from "./mindcraft";
-export {
-  coreModule,
-  createHostActuator,
-  createHostSensor,
-  createMindcraftEnvironment,
-  withMindcraftEnvironmentServices,
-} from "./mindcraft";
 export { assertUnreachable } from "./platform/assert";
 export { Dict } from "./platform/dict";
 export { Error } from "./platform/error";
@@ -57,3 +27,33 @@ export type { EventListener } from "./util/event-emitter";
 export { EventEmitter } from "./util/event-emitter";
 export { MTree, MTreeBuilder, MTreeNode } from "./util/m-tree";
 export { OpResult, opFailure, opSuccess } from "./util/op-result";
+export type {
+  ActionBundleUpdate,
+  BrainInvalidationEvent,
+  CompiledActionArtifact,
+  CompiledActionBundle,
+  ConversionDefinition,
+  CreateBrainOptions,
+  CreateHostActuatorOptions,
+  CreateHostSensorOptions,
+  HostActuatorDefinition,
+  HostFunctionDefinition,
+  HostSensorDefinition,
+  HydratedTileMetadataSnapshot,
+  OperatorDefinition,
+  OperatorOverloadDefinition,
+  TileDefinitionInput,
+  WendooBrain,
+  WendooCatalog,
+  WendooEnvironment,
+  WendooModule,
+  WendooModuleApi,
+  WendooTypeDefinition,
+} from "./wendoo";
+export {
+  coreModule,
+  createHostActuator,
+  createHostSensor,
+  createWendooEnvironment,
+  withWendooEnvironmentServices,
+} from "./wendoo";

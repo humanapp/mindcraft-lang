@@ -1,6 +1,6 @@
 {
-  "name": "mindcraft-lang",
-  "description": "Mindcraft -- a tile-based programming language for creative coding applications",
+  "name": "wendoo-lang",
+  "description": "Wendoo -- a tile-based programming language for creative coding applications",
   "private": true,
   "license": "MIT",
   "scripts": {

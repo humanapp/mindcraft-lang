@@ -1,6 +1,6 @@
-import { type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
-import type { BrainDef, BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import type { BrainTileFactoryDef, BrainTileParameterDef } from "@mindcraft-lang/core/brain/tiles";
+import { type IBrainTileDef, RuleSide } from "@wendoo-lang/core/brain";
+import type { BrainDef, BrainPageDef, BrainRuleDef } from "@wendoo-lang/core/brain/model";
+import type { BrainTileFactoryDef, BrainTileParameterDef } from "@wendoo-lang/core/brain/tiles";
 import { staticAssetUrl } from "../asset-url";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { BrainPrintRuleSentence } from "./BrainRuleSentence";

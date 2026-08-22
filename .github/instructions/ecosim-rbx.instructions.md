@@ -20,7 +20,7 @@ position and velocity.
 ## Tech Stack
 
 roblox-ts 3.0 (TypeScript -> Luau), Rojo 7.4.1 (pinned in the root
-`aftman.toml`), `@rbxts/services`, `@rbxts/types`, `@mindcraft-lang/core` via a
+`aftman.toml`), `@rbxts/services`, `@rbxts/types`, `@wendoo-lang/core` via a
 `file:` dependency, Biome.
 
 ## Mirroring Discipline
@@ -47,7 +47,7 @@ Rules:
   `MAX_SPAWNS_PER_TICK`, respawn delays, energy configs) are copied exactly.
 - `abi-ids.ts` and `tileids.ts` are **byte-identical** to ecosim's. Verify with
   `diff` after touching either side.
-- The module id in `index.ts` is `"mindcraft.ecosim"` -- identical to ecosim's,
+- The module id in `index.ts` is `"wendoo.ecosim"` -- identical to ecosim's,
   because persisted brain JSON references it.
 - Registration order in `createEcosimModule` matches ecosim's exactly.
 - When ecosim changes an ABI value, change it here in the same slice.
@@ -59,7 +59,7 @@ Rules:
 module. It runs on Node (`tsx --test`) from `test/`, which sits outside the
 `src`-only `tsconfig.json` include, so it never enters the rbxtsc program.
 
-It builds one Mindcraft environment from each app's `createEcosimModule` in a
+It builds one Wendoo environment from each app's `createEcosimModule` in a
 single process and compares the registered artifacts -- tile catalogs, host
 actions and their resolved call-definition slot layouts, the type registry,
 host functions, operators, conversions, `migrateBrainJson`, and the three
@@ -271,7 +271,7 @@ npm run check:only  # Biome, read-only -- must print only the summary line
 
 `build:deps` runs `scripts/build-packages.js`, which walks this app's `file:`
 dependencies and builds each in dependency order. This app declares
-`mindcraftBuild.needs: ["rbx"]`, so the driver also runs the `rbx` variant of
+`wendooBuild.needs: ["rbx"]`, so the driver also runs the `rbx` variant of
 every dependency that declares one -- `packages/core`'s `build:rbx`. Consumers
 that do not name the variant never build it.
 

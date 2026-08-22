@@ -7,13 +7,13 @@
 
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import type { BrainServices, IBrainTileDef } from "@mindcraft-lang/core/brain";
-import { CoreControlFlowId, mkControlFlowTileId, RuleSide } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { buildInsertionContext } from "@mindcraft-lang/core/brain/language-service";
-import { BrainDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { BrainTileLiteralDef } from "@mindcraft-lang/core/brain/tiles";
-import { CoreTypeIds } from "@mindcraft-lang/core/runtime";
+import type { BrainServices, IBrainTileDef } from "@wendoo-lang/core/brain";
+import { CoreControlFlowId, mkControlFlowTileId, RuleSide } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { buildInsertionContext } from "@wendoo-lang/core/brain/language-service";
+import { BrainDef, type BrainRuleDef } from "@wendoo-lang/core/brain/model";
+import { BrainTileLiteralDef } from "@wendoo-lang/core/brain/tiles";
+import { CoreTypeIds } from "@wendoo-lang/core/runtime";
 import { armEditPoint, type EditPointPosition, editPointPositionOf, kEditPointPositions } from "./edit-point";
 
 let services: BrainServices;

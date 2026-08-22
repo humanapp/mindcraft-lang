@@ -1,19 +1,15 @@
-import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
-import { RuleSide } from "@mindcraft-lang/core/brain";
-import type {
-  SentenceSegment,
-  SentenceTileRef,
-  SentenceWordSegment,
-} from "@mindcraft-lang/core/brain/language-service";
+import type { IBrainTileDef } from "@wendoo-lang/core/brain";
+import { RuleSide } from "@wendoo-lang/core/brain";
+import type { SentenceSegment, SentenceTileRef, SentenceWordSegment } from "@wendoo-lang/core/brain/language-service";
 import {
   flattenRuleTiles,
   projectRuleSentence,
   segmentDisplayText,
   whenTriggerWord,
-} from "@mindcraft-lang/core/brain/language-service";
-import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import type { BrainTileLiteralDef } from "@mindcraft-lang/core/brain/tiles";
-import { CoreTypeIds } from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/brain/language-service";
+import type { BrainRuleDef } from "@wendoo-lang/core/brain/model";
+import type { BrainTileLiteralDef } from "@wendoo-lang/core/brain/tiles";
+import { CoreTypeIds } from "@wendoo-lang/core/runtime";
 import { type CSSProperties, Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../lib/utils";
 import { type BrainEditorConfig, useBrainEditorConfig, useLocalizer } from "./BrainEditorContext";

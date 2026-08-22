@@ -9,17 +9,17 @@
 
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { coreModule, createMindcraftEnvironment, type HydratedTileMetadataSnapshot } from "@mindcraft-lang/core";
-import type { BrainServices, IBrainDef } from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { BrainDef } from "@mindcraft-lang/core/brain/model";
+import { coreModule, createWendooEnvironment, type HydratedTileMetadataSnapshot } from "@wendoo-lang/core";
+import type { BrainServices, IBrainDef } from "@wendoo-lang/core/brain";
+import { __test__createBrainServices } from "@wendoo-lang/core/brain/__test__";
+import { BrainDef } from "@wendoo-lang/core/brain/model";
 import {
   CoreTypeIds,
   mkActuatorTileId,
   mkModifierTileId,
   mkParameterTileId,
   mkSensorTileId,
-} from "@mindcraft-lang/core/runtime";
+} from "@wendoo-lang/core/runtime";
 import { buildCompiledActionBundle, buildMultiRootActionBundle } from "../runtime/action-bundle.js";
 import { TEST_PROJECT_NAMESPACE } from "../testing/index.js";
 import { CompileDiagCode } from "./diag-codes.js";
@@ -70,7 +70,7 @@ const MOVEMENT_HELPER = `export function rate(value: number): number {
 `;
 
 /** The incident shape: a tile file whose \`@lib\` import names an unresolved dependency. */
-const STEER_BROKEN = `import { Actuator, param, type Context } from "mindcraft";
+const STEER_BROKEN = `import { Actuator, param, type Context } from "wendoo";
 import { Position } from "@lib/acme/pos";
 
 export default Actuator({
@@ -83,7 +83,7 @@ export default Actuator({
 });
 `;
 
-const DRIVE_CLEAN = `import { Actuator, type Context } from "mindcraft";
+const DRIVE_CLEAN = `import { Actuator, type Context } from "wendoo";
 import { rate } from "./movement";
 
 export default Actuator({
@@ -95,7 +95,7 @@ export default Actuator({
 });
 `;
 
-const LINE_CLEAN = `import { Sensor, param, type Context } from "mindcraft";
+const LINE_CLEAN = `import { Sensor, param, type Context } from "wendoo";
 
 export default Sensor({
   id: "snline0000000001",
@@ -107,7 +107,7 @@ export default Sensor({
 });
 `;
 
-const CONV_CLEAN = `import { BufferType, Conversion, NumberType } from "mindcraft";
+const CONV_CLEAN = `import { BufferType, Conversion, NumberType } from "wendoo";
 
 export default Conversion({
   id: "convnumbuf000001",
@@ -178,7 +178,7 @@ export function toInfluence(position: Position): number {
   return 1;
 }
 `,
-      "follow.ts": `import { Actuator, type Context } from "mindcraft";
+      "follow.ts": `import { Actuator, type Context } from "wendoo";
 import { toInfluence } from "./pos-util";
 
 export default Actuator({
@@ -210,7 +210,7 @@ export default Actuator({
 
   test("a tile importing another tile file that fails compiles no program transitively", () => {
     const result = compileProject({
-      "steer.ts": `import { Actuator, type Context } from "mindcraft";
+      "steer.ts": `import { Actuator, type Context } from "wendoo";
 import { Position } from "@lib/acme/pos";
 
 export function steerFactor(): number {
@@ -225,7 +225,7 @@ export default Actuator({
   },
 });
 `,
-      "chase.ts": `import { Actuator, type Context } from "mindcraft";
+      "chase.ts": `import { Actuator, type Context } from "wendoo";
 import { steerFactor } from "./steer";
 
 export default Actuator({
@@ -251,7 +251,7 @@ export default Actuator({
   test("a root whose every file fails contributes definitions only; unextractable definitions produce no bundle", () => {
     const result = compileProject({
       "steer.ts": STEER_BROKEN,
-      "other.ts": `import { Sensor, type Context } from "mindcraft";
+      "other.ts": `import { Sensor, type Context } from "wendoo";
 import { Position } from "@lib/acme/pos";
 
 export default Sensor({
@@ -273,7 +273,7 @@ export default Sensor({
     assert.equal(bundle.actions.keys().toArray().length, 0, "nothing is executable");
 
     const unextractable = compileProject({
-      "garbage.ts": `import { Actuator } from "mindcraft";\nexport default Actuator({ name: `,
+      "garbage.ts": `import { Actuator } from "wendoo";\nexport default Actuator({ name: `,
     });
     assert.equal(
       buildCompiledActionBundle(unextractable, { resolveTypeId: resolveCoreTypeId, services }),
@@ -284,7 +284,7 @@ export default Sensor({
 
   test("a warning-only file still contributes its tile", () => {
     const result = compileProject({
-      "beep.ts": `import { Actuator, type Context } from "mindcraft";
+      "beep.ts": `import { Actuator, type Context } from "wendoo";
 
 export default Actuator({
   id: "acbeep0000000001",
@@ -319,7 +319,7 @@ export default Actuator({
     };
     const result = compileProject(
       {
-        "deep.ts": `import { Actuator, type Context } from "mindcraft";
+        "deep.ts": `import { Actuator, type Context } from "wendoo";
 import { secret } from "@lib/acme/pos/inner";
 
 export default Actuator({
@@ -360,7 +360,7 @@ export default Actuator({
     const modifierSensor = (
       id: string,
       label: string
-    ) => `import { Sensor, modifier, optional, type Context } from "mindcraft";
+    ) => `import { Sensor, modifier, optional, type Context } from "wendoo";
 
 export default Sensor({
   id: "${id}",
@@ -402,7 +402,7 @@ const ROBOT_NS = "acme/robot";
 const POS_NS = "acme/pos";
 
 const POS_LIB_INDEX = `export { Position } from "./position";\n`;
-const POS_LIB_SOURCE = `import { NumberType, StructType, type StructOf } from "mindcraft";
+const POS_LIB_SOURCE = `import { NumberType, StructType, type StructOf } from "wendoo";
 
 export const Position = StructType({
   name: "Position",
@@ -413,7 +413,7 @@ export type Position = StructOf<typeof Position>;
 
 // The real cutebot shape: the tile's declared surface is typed by the
 // dependency, so a missing dependency makes the surface unresolvable.
-const ROBOT_STEER = `import { Actuator, param, type Context } from "mindcraft";
+const ROBOT_STEER = `import { Actuator, param, type Context } from "wendoo";
 import { Position } from "@lib/acme/pos";
 
 export default Actuator({
@@ -427,7 +427,7 @@ export default Actuator({
 
 // A failing file whose declared surface stays resolvable: the import breaks
 // the program, never the definition.
-const ROBOT_BEEP = `import { Actuator, type Context } from "mindcraft";
+const ROBOT_BEEP = `import { Actuator, type Context } from "wendoo";
 import { Position } from "@lib/acme/pos";
 
 export default Actuator({
@@ -439,7 +439,7 @@ export default Actuator({
 });
 `;
 
-const ROBOT_DRIVE = `import { Actuator, type Context } from "mindcraft";
+const ROBOT_DRIVE = `import { Actuator, type Context } from "wendoo";
 import { rate } from "./movement";
 
 export default Actuator({
@@ -451,7 +451,7 @@ export default Actuator({
 });
 `;
 
-const HOST_TILE = `import { Sensor, type Context } from "mindcraft";
+const HOST_TILE = `import { Sensor, type Context } from "wendoo";
 
 export default Sensor({
   id: "snhost0000000001",
@@ -523,7 +523,7 @@ describe("partial library loading across roots", () => {
   test("a failing library file keeps its tile; only surface-unresolvable tiles placeholder losslessly and heal", () => {
     // Healthy shape first: the library's dependency resolves, every file
     // compiles, and a brain places the steer, drive, beep, and host tiles.
-    const healthyEnv = createMindcraftEnvironment({ modules: [coreModule()] });
+    const healthyEnv = createWendooEnvironment({ modules: [coreModule()] });
     const healthySession = new MultiRootSession({ services: healthyEnv.brainServices });
     healthySession.setRoots([posRoot(), robotRoot(true), hostRoot()]);
     healthySession.compile();
@@ -548,7 +548,7 @@ describe("partial library loading across roots", () => {
     // The incident shape: the library's dependency is gone. steer.ts fails
     // AND its declared surface is typed by the missing dependency; beep.ts
     // fails but its declared surface stays resolvable; drive.ts compiles.
-    const brokenEnv = createMindcraftEnvironment({ modules: [coreModule()] });
+    const brokenEnv = createWendooEnvironment({ modules: [coreModule()] });
     const brokenSession = new MultiRootSession({ services: brokenEnv.brainServices });
     brokenSession.setRoots([robotRoot(false), hostRoot()]);
     const { roots } = brokenSession.compile();
@@ -582,7 +582,7 @@ describe("partial library loading across roots", () => {
     assert.deepEqual(roundTripped, savedJson, "the placeholder round-trips the saved form verbatim");
 
     // Healing the dependency restores the withheld tile from the same saved form.
-    const healedEnv = createMindcraftEnvironment({ modules: [coreModule()] });
+    const healedEnv = createWendooEnvironment({ modules: [coreModule()] });
     const healedSession = new MultiRootSession({ services: healedEnv.brainServices });
     healedSession.setRoots([posRoot(), robotRoot(true), hostRoot()]);
     healedSession.compile();
@@ -597,7 +597,7 @@ describe("partial library loading across roots", () => {
   });
 
   test("publication proceeds when the entry surface avoids the failing file", () => {
-    const env = createMindcraftEnvironment({ modules: [coreModule()] });
+    const env = createWendooEnvironment({ modules: [coreModule()] });
     const session = new MultiRootSession({ services: env.brainServices });
     session.setRoots([
       {
@@ -606,7 +606,7 @@ describe("partial library loading across roots", () => {
           ["index.ts", `export { Vec } from "./vec";\n`],
           [
             "vec.ts",
-            `import { NumberType, StructType, type StructOf } from "mindcraft";
+            `import { NumberType, StructType, type StructOf } from "wendoo";
 
 export const Vec = StructType({
   name: "Vec",
@@ -624,7 +624,7 @@ export type Vec = StructOf<typeof Vec>;
         files: new Map([
           [
             "probe.ts",
-            `import { Sensor, type Context } from "mindcraft";
+            `import { Sensor, type Context } from "wendoo";
 import { Vec } from "@lib/acme/pubroot";
 
 export default Sensor({
@@ -656,7 +656,7 @@ export default Sensor({
   });
 
   test("publication is withheld when the entry surface reaches the failing file, and consumers are withheld with it", () => {
-    const env = createMindcraftEnvironment({ modules: [coreModule()] });
+    const env = createWendooEnvironment({ modules: [coreModule()] });
     const session = new MultiRootSession({ services: env.brainServices });
     session.setRoots([
       {
@@ -680,7 +680,7 @@ export function steerFactor(position: Position): number {
         files: new Map([
           [
             "probe.ts",
-            `import { Sensor, type Context } from "mindcraft";
+            `import { Sensor, type Context } from "wendoo";
 import { steerFactor } from "@lib/acme/pubroot";
 
 export default Sensor({
@@ -715,7 +715,7 @@ export default Sensor({
   });
 
   test("publication is withheld when the entry module itself fails", () => {
-    const env = createMindcraftEnvironment({ modules: [coreModule()] });
+    const env = createWendooEnvironment({ modules: [coreModule()] });
     const session = new MultiRootSession({ services: env.brainServices });
     session.setRoots([
       {
@@ -748,7 +748,7 @@ export function steerFactor(position: Position): number {
   });
 
   test("an entry module that is itself a tile importing a failing file carries exactly one imported-file diagnostic", () => {
-    const env = createMindcraftEnvironment({ modules: [coreModule()] });
+    const env = createWendooEnvironment({ modules: [coreModule()] });
     const session = new MultiRootSession({ services: env.brainServices });
     session.setRoots([
       {
@@ -756,7 +756,7 @@ export function steerFactor(position: Position): number {
         files: new Map([
           [
             "index.ts",
-            `import { Actuator, type Context } from "mindcraft";
+            `import { Actuator, type Context } from "wendoo";
 import { toInfluence } from "./pos-util";
 
 export default Actuator({
@@ -792,7 +792,7 @@ export function toInfluence(position: Position): number {
   });
 
   test("a clean empty host root keeps the bundle when a library root is fully blocked", () => {
-    const env = createMindcraftEnvironment({ modules: [coreModule()] });
+    const env = createWendooEnvironment({ modules: [coreModule()] });
     const session = new MultiRootSession({ services: env.brainServices });
     session.setRoots([
       {
