@@ -1,4 +1,4 @@
-[![Deploy wendoo-sim](https://github.com/humanapp/wendoo-lang/actions/workflows/deploy-sim.yml/badge.svg)](https://github.com/humanapp/wendoo-lang/actions/workflows/deploy-sim.yml)
+[![Deploy wendoo-sim](https://github.com/wendoo-lang/wendoo-lang/actions/workflows/deploy-sim.yml/badge.svg)](https://github.com/wendoo-lang/wendoo-lang/actions/workflows/deploy-sim.yml)
 
 # Ecosystem Sim
 

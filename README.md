@@ -10,14 +10,14 @@ Wendoo programs are built by arranging **tiles** -- typed, composable tokens -- 
 
 The core library compiles to Roblox (Luau), Node.js, and browser (ESM) targets from a single TypeScript codebase.
 
-The companion [wendoo-mcu](https://github.com/humanapp/wendoo-mcu) repository extends Wendoo to embedded hardware, starting with the BBC micro:bit: a native C++ implementation of the bytecode VM that runs brains on the device, plus a browser simulator and CODAL-inspired web device runtime for authoring and testing. A brain you build and test in the browser flashes to a real micro:bit over WebUSB and runs unchanged.
+The companion [wendoo-mcu](https://github.com/wendoo-lang/wendoo-mcu) repository extends Wendoo to embedded hardware, starting with the BBC micro:bit: a native C++ implementation of the bytecode VM that runs brains on the device, plus a browser simulator and CODAL-inspired web device runtime for authoring and testing. A brain you build and test in the browser flashes to a real micro:bit over WebUSB and runs unchanged.
 
 Wendoo draws inspiration from other tile-based programming systems past and present, including [Kodu Game Lab](https://www.kodugamelab.com/), [Project Spark](https://en.wikipedia.org/wiki/Project_Spark) ([Wiki](https://projectspark.fandom.com/wiki/How_the_brains_work)), and [MicroCode](https://microbit-apps.org/microcode-classic/docs/language).
 
 ## Demos
 
 - [Ecosystem Sim](https://sim.wendoo-lang.org) -- carnivores, herbivores, and plants driven by user-editable Wendoo brains
-- [Code a BBC micro:bit](https://microbit.wendoo-lang.org) -- program a micro:bit with Wendoo in your browser, then flash the brain to real hardware ([wendoo-mcu](https://github.com/humanapp/wendoo-mcu))
+- [Code a BBC micro:bit](https://microbit.wendoo-lang.org) -- program a micro:bit with Wendoo in your browser, then flash the brain to real hardware ([wendoo-mcu](https://github.com/wendoo-lang/wendoo-mcu))
 
 ## Packages
 
@@ -70,7 +70,7 @@ Documentation is a work in progress. Browse the sim demo's [language documentati
 
 ## Contributing
 
-To report a bug or request a feature, please [open an issue](https://github.com/humanapp/wendoo-lang/issues).
+To report a bug or request a feature, please [open an issue](https://github.com/wendoo-lang/wendoo-lang/issues).
 
 ## License
 

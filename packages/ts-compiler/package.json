@@ -7,13 +7,13 @@
   "author": "humanapp",
   "repository": {
     "type": "git",
-    "url": "https://github.com/humanapp/wendoo-lang.git",
+    "url": "https://github.com/wendoo-lang/wendoo-lang.git",
     "directory": "packages/ts-compiler"
   },
   "bugs": {
-    "url": "https://github.com/humanapp/wendoo-lang/issues"
+    "url": "https://github.com/wendoo-lang/wendoo-lang/issues"
   },
-  "homepage": "https://github.com/humanapp/wendoo-lang/tree/main/packages/ts-compiler#readme",
+  "homepage": "https://github.com/wendoo-lang/wendoo-lang/tree/main/packages/ts-compiler#readme",
   "keywords": [
     "wendoo",
     "visual-programming",

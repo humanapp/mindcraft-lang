@@ -1,4 +1,4 @@
-[![Publish @wendoo-lang/core](https://github.com/humanapp/wendoo-lang/actions/workflows/publish-core.yml/badge.svg)](https://github.com/humanapp/wendoo-lang/actions/workflows/publish-core.yml)
+[![Publish @wendoo-lang/core](https://github.com/wendoo-lang/wendoo-lang/actions/workflows/publish-core.yml/badge.svg)](https://github.com/wendoo-lang/wendoo-lang/actions/workflows/publish-core.yml)
 
 # @wendoo-lang/core
 
@@ -41,7 +41,7 @@ Layers follow a strict bottom-up dependency hierarchy: `primitives -> platform -
 
 ## Integration
 
-To use this package in your own app, see the [Integration Guide](https://github.com/humanapp/wendoo-lang/blob/main/INTEGRATION.md).
+To use this package in your own app, see the [Integration Guide](https://github.com/wendoo-lang/wendoo-lang/blob/main/INTEGRATION.md).
 
 The main app integration entry point is `createWendooEnvironment()`:
 

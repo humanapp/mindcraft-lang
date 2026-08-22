@@ -754,7 +754,7 @@ export function Sidebar({
       {/* GitHub link */}
       <div className="border-t border-border p-3 flex justify-end">
         <a
-          href="https://github.com/humanapp/wendoo-lang"
+          href="https://github.com/wendoo-lang/wendoo-lang"
           target="_blank"
           rel="noopener noreferrer"
           className="text-muted-foreground hover:text-foreground transition-colors"

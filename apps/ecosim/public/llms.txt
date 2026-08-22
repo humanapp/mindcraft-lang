@@ -40,4 +40,4 @@ Wendoo programs are written by arranging tiles into rules. Each rule has a WHEN 
 
 - Main product site: https://wendoo-lang.org
 - Language documentation: https://sim.wendoo-lang.org/docs
-- Open source on GitHub: https://github.com/humanapp/wendoo-lang
+- Open source on GitHub: https://github.com/wendoo-lang/wendoo-lang

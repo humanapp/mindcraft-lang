@@ -1,7 +1,7 @@
 **Wendoo** is a tile-based programming language for creative coding applications. Programs are built by arranging **tiles** -- typed, composable tokens -- into **rules**. A collection of rules forms a **brain**, which drives the behavior of systems ranging from video game characters to physical devices like robots.
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/humanapp/wendoo-lang/main/assets/rule.png" alt="Brain Rule" width="80%">
+  <img src="https://raw.githubusercontent.com/wendoo-lang/wendoo-lang/main/assets/rule.png" alt="Brain Rule" width="80%">
 </div>
 
 ## What This Extension Does
@@ -13,7 +13,7 @@ This extension lets you **author custom brain tiles in TypeScript** and use them
 
 _Example: Authoring a "teleport" actuator in TypeScript:_
 <div align="center">
-  <img src="https://raw.githubusercontent.com/humanapp/wendoo-lang/main/assets/vscode.png" alt="Coding in TypeScript" width="80%">
+  <img src="https://raw.githubusercontent.com/wendoo-lang/wendoo-lang/main/assets/vscode.png" alt="Coding in TypeScript" width="80%">
 </div>
 
 ## Getting Started in the Browser

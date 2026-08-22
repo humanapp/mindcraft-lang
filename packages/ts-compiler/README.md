@@ -1,1 +1,1 @@
-[![Publish @wendoo-lang/ts-compiler](https://github.com/humanapp/wendoo-lang/actions/workflows/publish-ts-compiler.yml/badge.svg)](https://github.com/humanapp/wendoo-lang/actions/workflows/publish-ts-compiler.yml)
+[![Publish @wendoo-lang/ts-compiler](https://github.com/wendoo-lang/wendoo-lang/actions/workflows/publish-ts-compiler.yml/badge.svg)](https://github.com/wendoo-lang/wendoo-lang/actions/workflows/publish-ts-compiler.yml)

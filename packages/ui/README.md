@@ -1,4 +1,4 @@
-[![Publish @wendoo-lang/ui](https://github.com/humanapp/wendoo-lang/actions/workflows/publish-ui.yml/badge.svg)](https://github.com/humanapp/wendoo-lang/actions/workflows/publish-ui.yml)
+[![Publish @wendoo-lang/ui](https://github.com/wendoo-lang/wendoo-lang/actions/workflows/publish-ui.yml/badge.svg)](https://github.com/wendoo-lang/wendoo-lang/actions/workflows/publish-ui.yml)
 
 # @wendoo-lang/ui
 
@@ -14,7 +14,7 @@ Shared React UI components for **Wendoo** web applications. This package provide
 
 This is a **source-only package** -- there is no build step. Consuming apps resolve the source directly via Vite aliases and tsconfig path mappings.
 
-For step-by-step setup instructions in your own project, see the [Integration Guide](https://github.com/humanapp/wendoo-lang/blob/main/INTEGRATION.md).
+For step-by-step setup instructions in your own project, see the [Integration Guide](https://github.com/wendoo-lang/wendoo-lang/blob/main/INTEGRATION.md).
 
 ### Vite config
 
