@@ -15,11 +15,7 @@ import type { AssistantChannel } from "@wendoo/assistant-panel/session/channel";
 import { AssistantMachine, AssistantStatus } from "@wendoo/assistant-panel/session/machine";
 import type { ScriptedService } from "@wendoo/assistant-panel/testing/scripted-service";
 import { runScriptedService } from "@wendoo/assistant-panel/testing/scripted-service";
-import type {
-  ConversationAssistantEntry,
-  ConversationRecord,
-  ConversationToolCall,
-} from "@wendoo/assistant-relay";
+import type { ConversationAssistantEntry, ConversationRecord, ConversationToolCall } from "@wendoo/assistant-relay";
 import type { RelayLoopback } from "@wendoo/assistant-relay/testing";
 import { createRelayLoopback } from "@wendoo/assistant-relay/testing";
 import { coreModule, createWendooEnvironment, List } from "@wendoo/core/app";

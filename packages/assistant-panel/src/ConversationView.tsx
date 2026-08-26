@@ -1,15 +1,20 @@
-import type {
-  ConversationEntry,
-  ConversationRecord,
-  ConversationTurnEnding,
-  ConversationTurnStep,
-} from "@wendoo/assistant-relay";
+import type { ProjectTile } from "@wendoo/assistant-bridge";
+import type { ConversationEntry, ConversationRecord, ConversationTurnEnding } from "@wendoo/assistant-relay";
 import { ConversationTurnFailureCode, RelayTurnEndCode } from "@wendoo/assistant-relay";
 import { kBrainDeskFill } from "@wendoo/ui/brain-editor/brain-desk";
+import { kSentenceTypeClasses } from "@wendoo/ui/brain-editor/sentence-type";
 import { SafeMarkdown } from "@wendoo/ui/markdown/SafeMarkdown";
-import { useEffect, useRef } from "react";
-import type { ToolActivity } from "./conversation/activity";
-import { toolActivity } from "./conversation/activity";
+import { type ReactNode, useEffect, useMemo, useRef } from "react";
+import type {
+  ConversationBlock,
+  LookupsBlock,
+  ReceiptBlock,
+  ReceiptRule,
+  SnagBlock,
+  TranscriptContext,
+} from "./conversation/blocks";
+import { ConversationBlockKind, conversationBlocks, transcriptContext } from "./conversation/blocks";
+import type { EditSide } from "./conversation/edit-story";
 import { AssistantStatus } from "./session/machine";
 
 /** What the conversation surface shows, and the controls it hands back. */
@@ -59,38 +64,188 @@ const entityBubbleClasses = "max-w-[85%] self-start rounded-[14px] rounded-bl-[4
 /** The bubble what the person asked is drawn in, standing at the side of the transcript they speak from. */
 const askBubbleClasses = "max-w-[85%] self-end rounded-[14px] rounded-br-[4px] bg-primary/20 px-3 py-2";
 
-/** One thing a turn did, as the transcript lays it out. */
-type LaidOutStep =
-  | { readonly kind: "narration"; readonly text: string }
-  | {
-      readonly kind: "activity";
-      readonly activity: ToolActivity;
-      /** Calls the line stands for; above one, the line says how many. */
-      readonly repeats: number;
-    };
+/** The surface every block that is not the entity's own voice is drawn on. */
+const cardClasses = "w-full self-start rounded-[14px] border border-border bg-brain-ink/5 px-3 py-2";
 
-/** Whether two activity lines read identically, so one line can stand for both. */
-function readsTheSame(one: ToolActivity, other: ToolActivity): boolean {
-  return one.kind === other.kind && one.text === other.text;
+/** The tint a tile chip reads in, by the rule side it sits on. */
+const tileChipClasses: Record<EditSide, string> = {
+  when: "border-brain-ink/20 bg-brain-ink/10",
+  do: "border-brain-accent/40 bg-brain-accent/20",
+};
+
+/** Pixels a rule is indented per rule it stands under. */
+const ruleIndentPx = 12;
+
+/**
+ * A block drawn as a card: the glance layer the reader takes in without
+ * choosing to, and whatever fold stands beneath it.
+ */
+function Card({ kind, children }: { kind: string; children: ReactNode }) {
+  return (
+    <div data-assistant-card={kind} className={`${cardClasses} flex flex-col gap-1.5`}>
+      {children}
+    </div>
+  );
 }
 
-/** `steps` in arrival order, with each run of identical activity lines folded into one line. */
-function laidOut(steps: readonly ConversationTurnStep[]): LaidOutStep[] {
-  const lines: LaidOutStep[] = [];
-  for (const step of steps) {
-    if (step.kind === "narration") {
-      lines.push({ kind: "narration", text: step.text });
-      continue;
-    }
-    const activity = toolActivity(step.call);
-    const last = lines[lines.length - 1];
-    if (last?.kind === "activity" && readsTheSame(last.activity, activity)) {
-      lines[lines.length - 1] = { ...last, repeats: last.repeats + 1 };
-      continue;
-    }
-    lines.push({ kind: "activity", activity, repeats: 1 });
+/**
+ * A disclosure the reader opens to read the long form of the block it sits in.
+ * Whether it stands open is held by the element itself.
+ */
+function Fold({ kind, summary, children }: { kind: string; summary: string; children: ReactNode }) {
+  return (
+    <details data-assistant-fold={kind} className="text-xs text-muted-foreground">
+      <summary className="cursor-pointer list-none pointer-coarse:min-h-11 pointer-coarse:py-2">{summary}</summary>
+      <div className="mt-1 flex flex-col gap-0.5 border-border border-l pl-2">{children}</div>
+    </details>
+  );
+}
+
+/** One tile of a rule, as the word it reads by on the side it sits on. */
+function TileChip({ tile, side }: { tile: ProjectTile; side: EditSide }) {
+  return (
+    <span
+      data-assistant-tile={tile.tileId}
+      className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-card-foreground ${tileChipClasses[side]}`}
+    >
+      <span data-assistant-tile-word>{tile.label}</span>
+    </span>
+  );
+}
+
+/** One side of a rule: the word it opens with, and the tiles standing on it. */
+function RuleSide({ side, tiles }: { side: EditSide; tiles: readonly ProjectTile[] }) {
+  if (tiles.length === 0) return null;
+  return (
+    <span data-assistant-side={side} className="inline-flex flex-wrap items-center gap-1">
+      <span className="text-muted-foreground">{side}</span>
+      {tiles.map((tile, at) => (
+        <TileChip key={`${tile.tileId}-${at}`} tile={tile} side={side} />
+      ))}
+    </span>
+  );
+}
+
+/** One rule a receipt shows, standing in as far as the rules it is nested under. */
+function RuleSentence({ rule }: { rule: ReceiptRule }) {
+  return (
+    <div
+      data-assistant-rule={rule.ruleId}
+      data-assistant-rule-depth={rule.depth}
+      style={{ marginLeft: rule.depth * ruleIndentPx }}
+      className={`flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm ${kSentenceTypeClasses}`}
+    >
+      <RuleSide side="when" tiles={rule.when} />
+      <RuleSide side="do" tiles={rule.do} />
+    </div>
+  );
+}
+
+/** What the edits gathered on one page left standing, and the story of how they got there. */
+function ReceiptView({ block }: { block: ReceiptBlock }) {
+  return (
+    <Card kind={ConversationBlockKind.Receipt}>
+      <div
+        data-assistant-glance
+        {...(block.page ? { "data-assistant-receipt-page": block.page.pageId } : {})}
+        data-assistant-receipt-edits={block.story.length}
+        className="flex flex-col gap-1.5"
+      >
+        <div className="flex items-baseline gap-2">
+          <p className="grow text-card-foreground text-sm">{block.page ? block.page.name : "In your rules"}</p>
+          {block.compiles && (
+            <span data-assistant-compiles="ok" className="shrink-0 text-muted-foreground text-xs">
+              builds [ok]
+            </span>
+          )}
+        </div>
+        {block.rules.map((rule) => (
+          <RuleSentence key={rule.ruleId} rule={rule} />
+        ))}
+      </div>
+      {block.story.length > 0 && (
+        <Fold kind="edits" summary={`${block.story.length} edits -- show how`}>
+          {block.story.map((row, at) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: a story only ever appends, so a row keeps its position
+            <p key={`edit-${at}`} data-assistant-step={row.op}>
+              {row.text}
+              {row.side && ` (${row.side})`}
+            </p>
+          ))}
+        </Fold>
+      )}
+    </Card>
+  );
+}
+
+/** One way a proposal was refused, and how many proposals asked for that very thing. */
+function SnagView({ block }: { block: SnagBlock }) {
+  return (
+    <Card kind={ConversationBlockKind.Snag}>
+      <div
+        data-assistant-glance
+        data-assistant-snag={block.code}
+        data-assistant-snag-repeats={block.repeats}
+        {...(block.ruleId ? { "data-assistant-snag-rule": block.ruleId } : {})}
+        {...(block.tileId ? { "data-assistant-snag-tile": block.tileId } : {})}
+        className="flex flex-wrap items-center gap-1.5 text-card-foreground text-sm"
+      >
+        <span>Hit a wall:</span>
+        {block.tileId && <TileChip tile={{ tileId: block.tileId, label: block.tileLabel ?? block.tileId }} side="do" />}
+        <span>does not fit there.</span>
+        {block.repeats > 1 && <span className="text-muted-foreground text-xs">{`(x${block.repeats})`}</span>}
+      </div>
+      <Fold kind="diagnostic" summary="what the editor said">
+        {Object.entries(block.params).map(([key, value]) => (
+          <p key={key} data-assistant-diag-param={key}>
+            {`${key}: ${Array.isArray(value) ? value.join(", ") : String(value)}`}
+          </p>
+        ))}
+      </Fold>
+    </Card>
+  );
+}
+
+/** Everything a turn looked at without changing, gathered under one fold. */
+function LookupsView({ block }: { block: LookupsBlock }) {
+  const total = block.steps.reduce((count, step) => count + step.repeats, 0);
+  return (
+    <div data-assistant-card={ConversationBlockKind.Lookups} data-assistant-lookups={total} className="w-full">
+      <Fold kind="lookups" summary={`${total} look-ups`}>
+        {block.steps.map((step, at) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: a fold only ever appends, so a row keeps its position
+          <p key={`lookup-${at}`} data-assistant-step={step.name}>
+            {step.text}
+            {step.repeats > 1 && ` (x${step.repeats})`}
+          </p>
+        ))}
+      </Fold>
+    </div>
+  );
+}
+
+/** One block of a turn, drawn in the idiom its kind reads in. */
+function BlockView({ block }: { block: ConversationBlock }) {
+  switch (block.kind) {
+    case ConversationBlockKind.Narration:
+      return (
+        <div
+          data-assistant-card={ConversationBlockKind.Narration}
+          data-assistant-bubble="entity"
+          className={entityBubbleClasses}
+        >
+          <div data-assistant-narration className="text-card-foreground text-sm">
+            <SafeMarkdown text={block.text} />
+          </div>
+        </div>
+      );
+    case ConversationBlockKind.Receipt:
+      return <ReceiptView block={block} />;
+    case ConversationBlockKind.Snag:
+      return <SnagView block={block} />;
+    case ConversationBlockKind.Lookups:
+      return <LookupsView block={block} />;
   }
-  return lines;
 }
 
 /**
@@ -197,31 +352,16 @@ function PresenceMark() {
   );
 }
 
-/** One thing a turn did: a run of narration, or an activity line and how many calls it stands for. */
-function StepView({ step }: { step: LaidOutStep }) {
-  if (step.kind === "narration") {
-    return (
-      <div data-assistant-bubble="entity" className={entityBubbleClasses}>
-        <div data-assistant-narration className="text-sm text-card-foreground">
-          <SafeMarkdown text={step.text} />
-        </div>
-      </div>
-    );
-  }
-  return (
-    <p
-      data-assistant-activity={step.activity.kind}
-      data-assistant-activity-repeats={step.repeats}
-      className="text-xs text-muted-foreground"
-    >
-      {step.activity.text}
-      {step.repeats > 1 && ` (x${step.repeats})`}
-    </p>
-  );
-}
-
 /** One entry of the conversation: what the person said, or one of the entity's turns. */
-function EntryView({ entry, onAskAgain }: { entry: ConversationEntry; onAskAgain?: (() => void) | undefined }) {
+function EntryView({
+  entry,
+  context,
+  onAskAgain,
+}: {
+  entry: ConversationEntry;
+  context: TranscriptContext;
+  onAskAgain?: (() => void) | undefined;
+}) {
   if (entry.kind === "user") {
     return (
       <p
@@ -236,10 +376,10 @@ function EntryView({ entry, onAskAgain }: { entry: ConversationEntry; onAskAgain
   const { ending } = entry;
   const note = ending ? endingNote(ending) : undefined;
   return (
-    <div data-assistant-entry="assistant" className="flex flex-col items-start gap-2">
-      {laidOut(entry.steps).map((step, at) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: a turn only ever appends, so a step keeps its position
-        <StepView key={`step-${at}`} step={step} />
+    <div data-assistant-entry="assistant" className="flex w-full flex-col items-start gap-2">
+      {conversationBlocks(entry.steps, context).map((block, at) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: a turn only ever appends, so a block keeps its position
+        <BlockView key={`block-${at}`} block={block} />
       ))}
       {ending && note && (
         <div className="flex w-full items-center gap-2">
@@ -287,6 +427,7 @@ export function ConversationView(props: ConversationViewProps) {
     opensByPerson,
   } = props;
   const entries = record?.entries ?? [];
+  const context = useMemo(() => transcriptContext(record), [record]);
   const running = status === AssistantStatus.TurnActive;
   const connection = connectionNote(status);
   const transcript = useRef<HTMLDivElement>(null);
@@ -360,7 +501,7 @@ export function ConversationView(props: ConversationViewProps) {
         ) : (
           entries.map((entry, at) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: a record only ever appends, so an entry keeps its position
-            <EntryView key={`entry-${at}`} entry={entry} onAskAgain={onAskAgain} />
+            <EntryView key={`entry-${at}`} entry={entry} context={context} onAskAgain={onAskAgain} />
           ))
         )}
         {running && <PresenceMark />}

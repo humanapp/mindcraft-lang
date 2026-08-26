@@ -1,0 +1,54 @@
+{
+  // Solution-style index of every TypeScript project in this repo. No build
+  // reads this file: tsc is always invoked with an explicit project or from
+  // a package directory, and the build driver runs per-package scripts.
+  //
+  // It exists for the EDITOR. Spec files are excluded from every package's
+  // tsconfig.json (they must not enter build programs), so without an
+  // ancestor config referencing the tsconfig.spec.json projects, tsserver
+  // assigns opened spec files to an inferred project and shows bogus
+  // diagnostics. tsserver walks ancestor directories until a config owns
+  // the file, then searches these references for the owning project.
+  //
+  // Keep the pairing per package: the build config, then its spec config.
+  // The build-config entries make this an honest index of the repo; the
+  // spec-config entries are the load-bearing ones. scripts/
+  // editor-projects.spec.js enforces that every tsconfig.spec.json in the
+  // tree is listed here and that the editor places every package's specs
+  // correctly -- run it after config changes.
+  "files": [],
+  "references": [
+    { "path": "./packages/app-host/tsconfig.json" },
+    { "path": "./packages/app-host/tsconfig.spec.json" },
+    { "path": "./packages/assistant-bridge/tsconfig.json" },
+    { "path": "./packages/assistant-bridge/tsconfig.spec.json" },
+    { "path": "./packages/assistant-panel/tsconfig.json" },
+    { "path": "./packages/assistant-panel/tsconfig.spec.json" },
+    { "path": "./packages/assistant-relay/tsconfig.json" },
+    { "path": "./packages/assistant-relay/tsconfig.spec.json" },
+    { "path": "./packages/bridge-app/tsconfig.json" },
+    { "path": "./packages/bridge-app/tsconfig.spec.json" },
+    { "path": "./packages/bridge-client/tsconfig.json" },
+    { "path": "./packages/bridge-client/tsconfig.spec.json" },
+    { "path": "./packages/bridge-protocol/tsconfig.json" },
+    { "path": "./packages/cli/tsconfig.json" },
+    { "path": "./packages/cli/tsconfig.spec.json" },
+    { "path": "./packages/core/tsconfig.json" },
+    { "path": "./packages/core/tsconfig.spec.json" },
+    { "path": "./packages/docs/tsconfig.json" },
+    { "path": "./packages/docs/tsconfig.spec.json" },
+    { "path": "./packages/service-api/tsconfig.json" },
+    { "path": "./packages/service-api/tsconfig.spec.json" },
+    { "path": "./packages/ts-compiler/tsconfig.json" },
+    { "path": "./packages/ts-compiler/tsconfig.spec.json" },
+    { "path": "./packages/ui/tsconfig.json" },
+    { "path": "./packages/ui/tsconfig.spec.json" },
+    { "path": "./apps/ecosim/tsconfig.json" },
+    { "path": "./apps/ecosim/tsconfig.spec.json" },
+    { "path": "./apps/ecosim-rbx/tsconfig.json" },
+    { "path": "./apps/vscode-bridge/tsconfig.json" },
+    { "path": "./apps/vscode-bridge/tsconfig.spec.json" },
+    { "path": "./apps/vscode-extension/tsconfig.json" },
+    { "path": "./apps/vscode-extension/tsconfig.spec.json" }
+  ]
+}

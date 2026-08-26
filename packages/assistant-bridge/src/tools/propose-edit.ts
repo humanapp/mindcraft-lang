@@ -39,6 +39,13 @@ export interface EditOutcome {
   readonly rule?: ProjectRule;
   /** The page `addPage` minted, or the page `deletePage` removed. Absent for every other command. */
   readonly page?: ProjectPageRef;
+  /**
+   * The page the rule under {@link EditOutcome.rule} stands on, read as the
+   * command left it, or as it stood the moment before a removed rule went.
+   * `pageIndex` is that page's position at that moment. Absent for a command
+   * that removed a page, and for a rule the document holds on no page.
+   */
+  readonly onPage?: ProjectPageRef;
   /** What the command took out of the document; absent for a command that added or changed. */
   readonly removed?: "rule" | "page";
 }
@@ -247,13 +254,23 @@ interface BuiltEdit {
   readonly historyLabel?: string;
 }
 
+/**
+ * The page `rule` stands on, at the position that page holds right now, or
+ * `undefined` when the document holds `rule` on no page.
+ */
+function pageOf(brainDef: BrainDef, rule: BrainRuleDef): ProjectPageRef | undefined {
+  const page = rule.page();
+  if (!page) return undefined;
+  return { pageId: page.pageId(), pageIndex: brainDef.pages().indexOf(page), name: page.name() };
+}
+
 /** The landing of an edit that leaves `located` standing and shows it where it is. */
-function ruleLanding(located: RuleRef): EditLanding {
-  const pageId = located.rule.page()?.pageId();
+function ruleLanding(brainDef: BrainDef, located: RuleRef): EditLanding {
+  const onPage = pageOf(brainDef, located.rule);
   return {
     judged: located,
-    outcome: {},
-    ...(pageId === undefined ? {} : { landed: { pageId, ruleId: located.ruleId } }),
+    outcome: onPage === undefined ? {} : { onPage },
+    ...(onPage === undefined ? {} : { landed: { pageId: onPage.pageId, ruleId: located.ruleId } }),
   };
 }
 
@@ -306,7 +323,7 @@ function buildEdit(
       land: () => {
         const rules = page.children();
         const rule = rules.get(rules.size() - 1) as BrainRuleDef;
-        return ruleLanding({ ruleId: rule.ruleId(), rule });
+        return ruleLanding(workspace.brainDef, { ruleId: rule.ruleId(), rule });
       },
     };
   }
@@ -315,12 +332,12 @@ function buildEdit(
   if (input.op === "deletePage") return deletePageEdit(workspace, input.pageId);
 
   const located = target as RuleRef;
-  if (input.op === "addChildRule") return nestedEdit(located, input);
+  if (input.op === "addChildRule") return nestedEdit(workspace, located, input);
   if (input.op === "deleteRule") return deleteRuleEdit(workspace, located);
 
   const side = toRuleSide(input.side);
   const tileCount = located.rule.side(side).tiles().size();
-  const land = () => ruleLanding(located);
+  const land = () => ruleLanding(workspace.brainDef, located);
 
   if (input.op === "deleteTile") {
     if (input.position >= tileCount)
@@ -361,9 +378,14 @@ function addPageEdit(workspace: AuthoringWorkspace, name?: string): BuiltEdit | 
       const page = command.page();
       const opening = page?.children().get(0) as BrainRuleDef | undefined;
       if (!page || !opening) return undefined;
+      const minted: ProjectPageRef = {
+        pageId: page.pageId(),
+        pageIndex: brainDef.pages().indexOf(page),
+        name: page.name(),
+      };
       return {
         judged: { ruleId: opening.ruleId(), rule: opening },
-        outcome: { page: { pageId: page.pageId(), pageIndex: brainDef.pages().indexOf(page), name: page.name() } },
+        outcome: { page: minted, onPage: minted },
         landed: { pageId: page.pageId(), ruleId: opening.ruleId() },
       };
     },
@@ -378,12 +400,12 @@ function addPageEdit(workspace: AuthoringWorkspace, name?: string): BuiltEdit | 
  */
 function deleteRuleEdit(workspace: AuthoringWorkspace, located: RuleRef): BuiltEdit {
   const rule = readRule(located.rule, workspace.environment.appServices.localizer);
-  const pageId = located.rule.page()?.pageId();
+  const onPage = pageOf(workspace.brainDef, located.rule);
   return {
     commands: [new DeleteRuleCommand(located.rule)],
     land: () => ({
-      outcome: { rule, removed: "rule" },
-      ...(pageId === undefined ? {} : { landed: { pageId, ruleId: located.ruleId } }),
+      outcome: { rule, removed: "rule", ...(onPage === undefined ? {} : { onPage }) },
+      ...(onPage === undefined ? {} : { landed: { pageId: onPage.pageId, ruleId: located.ruleId } }),
     }),
   };
 }
@@ -432,13 +454,13 @@ function deletePageEdit(workspace: AuthoringWorkspace, pageId: string): BuiltEdi
 }
 
 /** The edit that nests a new rule under `parent`. */
-function nestedEdit(parent: RuleRef, input: AddChildRuleInput): BuiltEdit {
+function nestedEdit(workspace: AuthoringWorkspace, parent: RuleRef, input: AddChildRuleInput): BuiltEdit {
   const command = new NestRuleCommand(parent.rule);
   return {
     commands: [command],
     land: () => {
       const nested = command.nestedRule();
-      return nested ? ruleLanding({ ruleId: nested.ruleId(), rule: nested }) : undefined;
+      return nested ? ruleLanding(workspace.brainDef, { ruleId: nested.ruleId(), rule: nested }) : undefined;
     },
     absent: { ok: false, error: "rule_nesting_too_deep", named: input.parentRuleId },
   };
@@ -473,7 +495,7 @@ function tileRunEdit(
   );
   return {
     commands,
-    land: () => ruleLanding(located),
+    land: () => ruleLanding(workspace.brainDef, located),
     historyLabel: commands.length === 1 ? "Place tile" : `Place ${commands.length} tiles`,
   };
 }

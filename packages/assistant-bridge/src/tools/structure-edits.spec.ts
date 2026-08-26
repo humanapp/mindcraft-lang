@@ -511,3 +511,94 @@ describe("a batch empties a brain completely", () => {
     assert.equal(readProject(ws).pages[0]!.rules.length, firstPage!.rules.length);
   });
 });
+
+describe("an accepted edit says which page it landed on", () => {
+  /** A workspace holding a second page, with the ids of both pages. */
+  function twoPages(): { readonly ws: AuthoringWorkspace; readonly first: string; readonly second: string } {
+    const ws = workspace();
+    const added = proposeEdit(ws, { op: "addPage", name: "Scared" }) as ProposalAccepted;
+    assert.equal(added.ok, true, JSON.stringify(added));
+    return { ws, first: readProject(ws).pages[0]!.pageId, second: added.page!.pageId };
+  }
+
+  test("a tile placement names the page holding the rule it changed, by id, position, and name", () => {
+    const ws = workspace();
+    const page = readProject(ws).pages[0]!;
+
+    const result = proposeEdit(ws, {
+      op: "placeTiles",
+      ruleId: firstRuleId(ws),
+      side: "when",
+      tileIds: [tiles.sensor],
+    }) as ProposalAccepted;
+
+    assert.equal(result.ok, true, JSON.stringify(result));
+    assert.deepEqual(result.onPage, { pageId: page.pageId, pageIndex: 0, name: page.name });
+  });
+
+  test("edits on different pages name different pages", () => {
+    const { ws, first, second } = twoPages();
+
+    const here = proposeEdit(ws, { op: "addRule", pageIndex: 0 }) as ProposalAccepted;
+    const there = proposeEdit(ws, { op: "addRule", pageIndex: 1 }) as ProposalAccepted;
+
+    assert.equal(here.onPage?.pageId, first);
+    assert.equal(there.onPage?.pageId, second);
+    assert.equal(there.onPage?.name, "Scared");
+  });
+
+  test("a nested rule names the page its parent stands on", () => {
+    const { ws, second } = twoPages();
+    const parent = proposeEdit(ws, { op: "addRule", pageIndex: 1 }) as ProposalAccepted;
+
+    const result = proposeEdit(ws, { op: "addChildRule", parentRuleId: parent.rule!.ruleId }) as ProposalAccepted;
+
+    assert.equal(result.onPage?.pageId, second);
+  });
+
+  test("addPage names the page it minted as the page its opening rule stands on", () => {
+    const ws = workspace();
+
+    const result = proposeEdit(ws, { op: "addPage", name: "Wandering" }) as ProposalAccepted;
+
+    assert.deepEqual(result.onPage, result.page);
+  });
+
+  test("a removed rule names the page it stood on the moment before it went", () => {
+    const { ws, second } = twoPages();
+    const rule = proposeEdit(ws, { op: "addRule", pageIndex: 1 }) as ProposalAccepted;
+
+    const result = proposeEdit(ws, { op: "deleteRule", ruleId: rule.rule!.ruleId }) as ProposalAccepted;
+
+    assert.equal(result.removed, "rule");
+    assert.equal(result.onPage?.pageId, second);
+  });
+
+  test("a removed page names no page it landed on, having left none", () => {
+    const { ws, second } = twoPages();
+
+    const result = proposeEdit(ws, { op: "deletePage", pageId: second }) as ProposalAccepted;
+
+    assert.equal(result.removed, "page");
+    assert.equal(result.onPage, undefined);
+  });
+
+  test("a batch names a page per command, so its commands sort by the page each touched", async () => {
+    const { ws, first, second } = twoPages();
+
+    const result = (await proposeEditBatch(ws, {
+      op: "batch",
+      commands: [
+        { op: "addRule", pageIndex: 1 },
+        { op: "placeTiles", ruleId: firstRuleId(ws), side: "when", tileIds: [tiles.sensor] },
+        { op: "addRule", pageIndex: 0 },
+      ],
+    })) as BatchAccepted;
+
+    assert.equal(result.ok, true, JSON.stringify(result));
+    assert.deepEqual(
+      result.results.map((outcome) => outcome.onPage?.pageId),
+      [second, first, first]
+    );
+  });
+});

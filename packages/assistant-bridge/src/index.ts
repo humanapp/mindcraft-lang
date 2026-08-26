@@ -43,6 +43,7 @@ export { executeToolCall, isToolName, ToolCallErrorCode } from "./tools/dispatch
 export type {
   BatchAccepted,
   BatchResult,
+  EditOutcome,
   ProposalAccepted,
   ProposalRejected,
   ProposalResult,
@@ -51,7 +52,7 @@ export type {
 export { batchReplayStepMs, proposeEdit, proposeEditBatch, resolveRunEntry } from "./tools/propose-edit.js";
 export type { CatalogTile, CatalogView } from "./tools/read-catalog.js";
 export { readCatalog } from "./tools/read-catalog.js";
-export type { ProjectPage, ProjectRule, ProjectTile, ProjectView } from "./tools/read-project.js";
+export type { ProjectPage, ProjectPageRef, ProjectRule, ProjectTile, ProjectView } from "./tools/read-project.js";
 export { readProject, readRule } from "./tools/read-project.js";
 export type { PolicyDecision, ProposalPolicyEntry, ProposalVerdict } from "./tools/rejection-policy.js";
 export { acceptedDiagCodes, decideProposal, proposalPolicy, proposalVerdict } from "./tools/rejection-policy.js";

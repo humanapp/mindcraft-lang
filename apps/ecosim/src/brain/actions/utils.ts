@@ -1,12 +1,5 @@
 import type { ExecutionContext, NumberValue, StructValue } from "@wendoo/core/app";
-import {
-  CoreTypeIds,
-  getRuleVariable,
-  isNilValue,
-  type ReadonlyList,
-  type Value,
-  Vector2,
-} from "@wendoo/core/app";
+import { CoreTypeIds, getRuleVariable, isNilValue, type ReadonlyList, type Value, Vector2 } from "@wendoo/core/app";
 import type { Actor } from "@/brain/actor";
 import { getActor } from "@/brain/execution-context-types";
 import { EcosimTypeIds, extractVector2, resolveActor } from "@/brain/type-system";
