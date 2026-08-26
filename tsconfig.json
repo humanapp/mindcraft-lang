@@ -14,8 +14,13 @@
   // The build-config entries make this an honest index of the repo; the
   // spec-config entries are the load-bearing ones. scripts/
   // editor-projects.spec.js enforces that every tsconfig.spec.json in the
-  // tree is listed here and that the editor places every package's specs
-  // correctly -- run it after config changes.
+  // tree is editor-reachable -- from here, or from a tsconfig.json inside
+  // its own package -- run it after config changes.
+  //
+  // packages/core is absent deliberately: it is post-processed, and no
+  // config outside it may reference into it (the post-processed-references
+  // guard). Its own solution-style tsconfig.json indexes its spec project,
+  // which the editor's nearest-config walk finds first anyway.
   "files": [],
   "references": [
     { "path": "./packages/app-host/tsconfig.json" },
@@ -33,8 +38,6 @@
     { "path": "./packages/bridge-protocol/tsconfig.json" },
     { "path": "./packages/cli/tsconfig.json" },
     { "path": "./packages/cli/tsconfig.spec.json" },
-    { "path": "./packages/core/tsconfig.json" },
-    { "path": "./packages/core/tsconfig.spec.json" },
     { "path": "./packages/docs/tsconfig.json" },
     { "path": "./packages/docs/tsconfig.spec.json" },
     { "path": "./packages/service-api/tsconfig.json" },

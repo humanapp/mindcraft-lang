@@ -3,6 +3,7 @@
   "references": [
     { "path": "./tsconfig.esm.json" },
     { "path": "./tsconfig.node.json" },
-    { "path": "./tsconfig.rbx.json" }
+    { "path": "./tsconfig.rbx.json" },
+    { "path": "./tsconfig.spec.json" }
   ]
 }

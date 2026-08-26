@@ -48,6 +48,17 @@ export interface SubjectStateChannel {
    * value: what the encoding means, and what a value of it tells the reader.
    */
   readonly description: string;
+  /**
+   * What this channel contributes to the state a run is at, derived from the
+   * value it reports. Two thinks are at the same state when every channel
+   * contributes the same thing, so a value carrying anything that moves on its
+   * own -- a counter, a timestamp -- derives that part away here. Absent
+   * contributes the reported value itself.
+   *
+   * @param reported The value the channel reported, as it stands in
+   * {@link ThinkObservation.state} after the `name=` prefix.
+   */
+  readonly identityValue?: (reported: string) => string;
 }
 
 /**

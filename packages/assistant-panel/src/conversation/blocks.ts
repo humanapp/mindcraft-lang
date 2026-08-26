@@ -5,8 +5,10 @@ import { toolActivity } from "./activity";
 import { callIdentity } from "./call-identity";
 import type { EditStoryRow } from "./edit-story";
 import { editCommands, editStoryRow } from "./edit-story";
-import type { RefusedProposal } from "./tool-payloads";
-import { asProjectRule, compiledClean, landedCommands, refusedProposal, tileLabels } from "./tool-payloads";
+import type { RunEvidence } from "./run";
+import { runEvidence } from "./run";
+import type { BuildDiagnostic, RefusedProposal } from "./tool-payloads";
+import { asProjectRule, compiledClean, dirtyBuild, landedCommands, refusedProposal, tileLabels } from "./tool-payloads";
 
 /** What one block of a turn stands for. */
 export const ConversationBlockKind = {
@@ -16,6 +18,10 @@ export const ConversationBlockKind = {
   Receipt: "receipt",
   /** A proposal the editor refused, and what it was refused for. */
   Snag: "snag",
+  /** One rehearsal the turn asked for, and what it did think by think. */
+  Run: "run",
+  /** A build that came back dirty, and everything it reported. */
+  Build: "build",
   /** Everything the turn looked at without changing, gathered under one fold. */
   Lookups: "lookups",
 } as const;
@@ -91,8 +97,27 @@ export interface LookupsBlock {
   readonly steps: readonly LookupStep[];
 }
 
+/** One rehearsal a turn asked for, and what the run did. */
+export interface RunBlock {
+  readonly kind: typeof ConversationBlockKind.Run;
+  readonly run: RunEvidence;
+  /** `true` when a later rehearsal in the same turn stands in this one's place. */
+  readonly superseded: boolean;
+}
+
+/** One way a build came back dirty, and every later build that came back the very same way. */
+export interface BuildBlock {
+  readonly kind: typeof ConversationBlockKind.Build;
+  /** Everything the build reported, in report order. */
+  readonly diagnostics: readonly BuildDiagnostic[];
+  /** How many of {@link BuildBlock.diagnostics} are what stops the brain building. */
+  readonly errors: number;
+  /** Builds that came back reporting the very same things. */
+  readonly repeats: number;
+}
+
 /** One block of a turn, as the transcript lays it out. */
-export type ConversationBlock = NarrationBlock | ReceiptBlock | SnagBlock | LookupsBlock;
+export type ConversationBlock = NarrationBlock | ReceiptBlock | SnagBlock | RunBlock | BuildBlock | LookupsBlock;
 
 /**
  * What a turn's blocks are read against: everything the conversation as a whole
@@ -104,6 +129,12 @@ export interface TranscriptContext {
   readonly labels: ReadonlyMap<string, string>;
   /** The rule each nested rule stands under, keyed by the nested rule's durable id. */
   readonly parentOf: ReadonlyMap<string, string>;
+  /**
+   * The name each page reads by, keyed by the position it stands at. A run
+   * names the pages it moved between by position, so a page renamed or moved
+   * since is read under the last name the conversation saw at that position.
+   */
+  readonly pageNames: ReadonlyMap<number, string>;
 }
 
 /** Rules a nesting walk follows before it calls the document circular. */
@@ -118,7 +149,7 @@ function collectNesting(rule: ProjectRule, parentOf: Map<string, string>): void 
 }
 
 /** Every tool call the conversation has carried, in the order they were made. */
-function toolCalls(record: ConversationRecord | undefined): ConversationToolCall[] {
+export function recordToolCalls(record: ConversationRecord | undefined): ConversationToolCall[] {
   const calls: ConversationToolCall[] = [];
   for (const entry of record?.entries ?? []) {
     if (entry.kind !== "assistant") continue;
@@ -136,13 +167,15 @@ function toolCalls(record: ConversationRecord | undefined): ConversationToolCall
  * host has not named a brain for yet has none, and comes back empty.
  */
 export function transcriptContext(record: ConversationRecord | undefined): TranscriptContext {
-  const calls = toolCalls(record);
+  const calls = recordToolCalls(record);
   const parentOf = new Map<string, string>();
+  const pageNames = new Map<number, string>();
   for (const call of calls) {
     if (call.outcome.kind === "ok" && call.outcome.isError !== true) {
       for (const page of asPages(call.outcome.payload)) {
         for (const rule of page) collectNesting(rule, parentOf);
       }
+      collectPageNames(call.outcome.payload, pageNames);
     }
     const landed = landedCommands(call);
     if (!landed) continue;
@@ -156,7 +189,19 @@ export function transcriptContext(record: ConversationRecord | undefined): Trans
       }
     }
   }
-  return { labels: tileLabels(calls), parentOf };
+  return { labels: tileLabels(calls), parentOf, pageNames };
+}
+
+/** Record the name of every page `value` names, however deeply, in `into`, latest naming winning. */
+function collectPageNames(value: unknown, into: Map<number, string>): void {
+  if (Array.isArray(value)) {
+    for (const entry of value) collectPageNames(entry, into);
+    return;
+  }
+  if (typeof value !== "object" || value === null) return;
+  const held = value as { pageIndex?: unknown; name?: unknown };
+  if (typeof held.pageIndex === "number" && typeof held.name === "string") into.set(held.pageIndex, held.name);
+  for (const entry of Object.values(value)) collectPageNames(entry, into);
 }
 
 /** The rule runs `payload` holds as a document read back, page by page. */
@@ -233,22 +278,63 @@ interface SnagDraft {
   repeats: number;
 }
 
+/** A run card being gathered, before it knows whether a later run stands in its place. */
+interface RunDraft {
+  readonly kind: typeof ConversationBlockKind.Run;
+  readonly run: RunEvidence;
+  superseded: boolean;
+}
+
+/** A dirty build being gathered, before it knows how many builds it stands for. */
+interface BuildDraft {
+  readonly kind: typeof ConversationBlockKind.Build;
+  readonly diagnostics: readonly BuildDiagnostic[];
+  readonly errors: number;
+  repeats: number;
+}
+
 /** One block while a turn is still being read. */
-type BlockDraft = NarrationBlock | ReceiptDraft | SnagDraft;
+type BlockDraft = NarrationBlock | ReceiptDraft | SnagDraft | RunDraft | BuildDraft;
+
+/** How much a diagnostic is graded at when it is what stops a brain building. */
+const stoppingSeverity = "error";
+
+/**
+ * The identity two dirty builds share when they came back reporting the very
+ * same things: every diagnostic's code and the rule it falls in, sorted so the
+ * order they were reported in never changes the identity.
+ */
+function buildIdentity(diagnostics: readonly BuildDiagnostic[]): string {
+  return diagnostics
+    .map((diagnostic) => `${diagnostic.code}@${diagnostic.ruleId ?? ""}`)
+    .sort((a, b) => (a < b ? -1 : 1))
+    .join(",");
+}
 
 /** The key a receipt gathers under: the page its edits landed on, and `""` for edits that named none. */
 function receiptKey(page: ProjectPageRef | undefined): string {
   return page?.pageId ?? "";
 }
 
-/** `draft` as the receipt the transcript renders, with its rules laid out at the depth each stands. */
-function laidOutReceipt(draft: ReceiptDraft, parentOf: ReadonlyMap<string, string>): ReceiptBlock {
-  const rules: ReceiptRule[] = [...draft.rules.values()].map((rule) => ({
+/**
+ * `rules` laid out for a receipt to show, each at the depth it stands in the
+ * document, in the order they were gathered.
+ */
+export function receiptRules(
+  rules: ReadonlyMap<string, ProjectRule>,
+  parentOf: ReadonlyMap<string, string>
+): ReceiptRule[] {
+  return [...rules.values()].map((rule) => ({
     ruleId: rule.ruleId,
     depth: ruleDepth(rule.ruleId, parentOf),
     when: rule.when,
     do: rule.do,
   }));
+}
+
+/** `draft` as the receipt the transcript renders, with its rules laid out at the depth each stands. */
+function laidOutReceipt(draft: ReceiptDraft, parentOf: ReadonlyMap<string, string>): ReceiptBlock {
+  const rules = receiptRules(draft.rules, parentOf);
   return {
     kind: ConversationBlockKind.Receipt,
     ...(draft.page ? { page: draft.page } : {}),
@@ -261,14 +347,16 @@ function laidOutReceipt(draft: ReceiptDraft, parentOf: ReadonlyMap<string, strin
 /**
  * Lay one turn out as the blocks the transcript draws: its narration in the
  * order it arrived, one receipt per page its accepted edits landed on, one snag
- * per way a proposal was refused, and one fold gathering everything it looked at
- * without changing.
+ * per way a proposal was refused, one card per rehearsal it asked for, one card
+ * per way a build came back dirty, and one fold gathering everything it looked
+ * at without changing.
  *
  * A receipt stands where the turn first touched its page and gathers every later
  * edit to that page. A snag stands where the turn was first refused that way and
  * counts every later proposal asking for the very same thing, however much
- * narration falls between them. A clean build marks every receipt the turn has
- * opened by then.
+ * narration falls between them. A dirty build counts the same way, on the things
+ * the build reported. Every rehearsal but the turn's last is marked superseded.
+ * A clean build marks every receipt the turn has opened by then.
  */
 export function conversationBlocks(
   steps: readonly ConversationTurnStep[],
@@ -277,6 +365,8 @@ export function conversationBlocks(
   const drafts: BlockDraft[] = [];
   const receipts = new Map<string, ReceiptDraft>();
   const snags = new Map<string, SnagDraft>();
+  const builds = new Map<string, BuildDraft>();
+  const runs: RunDraft[] = [];
   const lookups: LookupDraft[] = [];
   const lookupsById = new Map<string, LookupDraft>();
 
@@ -344,8 +434,36 @@ export function conversationBlocks(
       return;
     }
 
+    const run = runEvidence(call);
+    if (run) {
+      const draft: RunDraft = { kind: ConversationBlockKind.Run, run, superseded: false };
+      for (const earlier of runs) earlier.superseded = true;
+      runs.push(draft);
+      drafts.push(draft);
+      return;
+    }
+
     if (compiledClean(call)) {
       for (const receipt of receipts.values()) receipt.compiles = true;
+      return;
+    }
+
+    const dirty = dirtyBuild(call);
+    if (dirty) {
+      const identity = buildIdentity(dirty);
+      const seen = builds.get(identity);
+      if (seen) {
+        seen.repeats++;
+        return;
+      }
+      const build: BuildDraft = {
+        kind: ConversationBlockKind.Build,
+        diagnostics: dirty,
+        errors: dirty.filter((diagnostic) => diagnostic.severity === stoppingSeverity).length,
+        repeats: 1,
+      };
+      builds.set(identity, build);
+      drafts.push(build);
       return;
     }
 
@@ -360,21 +478,33 @@ export function conversationBlocks(
     gather(step.call);
   }
 
-  const blocks: ConversationBlock[] = drafts.map((draft) =>
-    draft.kind === ConversationBlockKind.Receipt
-      ? laidOutReceipt(draft, context.parentOf)
-      : draft.kind === ConversationBlockKind.Snag
-        ? {
-            kind: ConversationBlockKind.Snag,
-            code: draft.code,
-            ...(draft.ruleId === undefined ? {} : { ruleId: draft.ruleId }),
-            ...(draft.tileId === undefined ? {} : { tileId: draft.tileId }),
-            ...(draft.tileLabel === undefined ? {} : { tileLabel: draft.tileLabel }),
-            params: draft.params,
-            repeats: draft.repeats,
-          }
-        : draft
-  );
+  const blocks: ConversationBlock[] = drafts.map((draft): ConversationBlock => {
+    switch (draft.kind) {
+      case ConversationBlockKind.Receipt:
+        return laidOutReceipt(draft, context.parentOf);
+      case ConversationBlockKind.Snag:
+        return {
+          kind: ConversationBlockKind.Snag,
+          code: draft.code,
+          ...(draft.ruleId === undefined ? {} : { ruleId: draft.ruleId }),
+          ...(draft.tileId === undefined ? {} : { tileId: draft.tileId }),
+          ...(draft.tileLabel === undefined ? {} : { tileLabel: draft.tileLabel }),
+          params: draft.params,
+          repeats: draft.repeats,
+        };
+      case ConversationBlockKind.Run:
+        return { kind: ConversationBlockKind.Run, run: draft.run, superseded: draft.superseded };
+      case ConversationBlockKind.Build:
+        return {
+          kind: ConversationBlockKind.Build,
+          diagnostics: draft.diagnostics,
+          errors: draft.errors,
+          repeats: draft.repeats,
+        };
+      default:
+        return draft;
+    }
+  });
   if (lookups.length > 0) blocks.push({ kind: ConversationBlockKind.Lookups, steps: lookups });
   return blocks;
 }

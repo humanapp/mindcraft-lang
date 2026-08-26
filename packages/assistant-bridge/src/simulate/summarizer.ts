@@ -1,11 +1,14 @@
 import type { DiagCode } from "@wendoo/core/brain/compiler";
-import type { DispatchObservation, SimulationRun, ThinkObservation } from "../target/adapter.js";
+import type { DispatchObservation, SimulationRun, SubjectStateChannel, ThinkObservation } from "../target/adapter.js";
 
 /** Spans a summary keeps before it stops and reports itself truncated. */
 const maxSpans = 80;
 
 /** State changes a summary keeps before it stops and reports itself truncated. */
 const maxStateChanges = 80;
+
+/** States a summary keeps before it stops and reports itself truncated. */
+const maxStateIdentities = 80;
 
 /** One think of the brain under study, in the form the summary compresses. */
 export interface ThinkSummary {
@@ -85,6 +88,17 @@ export interface TraceSummary {
   readonly state?: readonly string[];
   /** `true` when {@link state} was cut at its budget and does not cover the whole run. */
   readonly stateTruncated?: boolean;
+  /**
+   * The state the run stood in, as `think hash` entries in think order: one for
+   * the run's first think, and one for every think the state changed on. The
+   * hash covers the page the brain is on and what every reported state channel
+   * contributes, so two thinks carry the same hash exactly when the run stood
+   * in the same state on both, and a run that never leaves its state carries a
+   * single entry.
+   */
+  readonly identity: readonly string[];
+  /** `true` when {@link identity} was cut at its budget and does not cover the whole run. */
+  readonly identityTruncated?: boolean;
   readonly world: SimulationRun["world"];
   /**
    * Rules the run was staged without, sorted by id. Every claim the account
@@ -283,16 +297,109 @@ function stateChanges(observations: readonly ThinkObservation[]): { changes: str
   return { changes, truncated: false };
 }
 
+/** Offset the 32-bit FNV-1a hash starts from. */
+const hashOffsetBasis = 0x811c9dc5;
+
+/** Prime the 32-bit FNV-1a hash multiplies by. */
+const hashPrime = 0x01000193;
+
+/** `text` as a stable 32-bit FNV-1a hash, in eight hex digits. */
+function hashOf(text: string): string {
+  let hash = hashOffsetBasis;
+  for (let at = 0; at < text.length; at++) {
+    hash ^= text.charCodeAt(at);
+    hash = Math.imul(hash, hashPrime);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+/**
+ * The page the run stood on before it changed page for the first time, and
+ * `undefined` for a run that never named a page at all.
+ */
+function openingPage(observations: readonly ThinkObservation[]): number | undefined {
+  for (const observation of observations) {
+    const change = observation.pageSwitch;
+    if (change) return change.from ?? change.to;
+  }
+  return undefined;
+}
+
+/** What each channel contributes to a state, keyed by channel name, for the channels deriving one. */
+function identityDerivations(
+  channels: readonly SubjectStateChannel[]
+): ReadonlyMap<string, (reported: string) => string> {
+  const derivations = new Map<string, (reported: string) => string>();
+  for (const channel of channels) {
+    if (channel.identityValue) derivations.set(channel.name, channel.identityValue);
+  }
+  return derivations;
+}
+
+/**
+ * The state the run stood in as `think hash` entries in think order, stopping
+ * at the state budget. The page and every reported channel take part; a channel
+ * `channels` gives a derivation for contributes what that derivation makes of
+ * its value, and every other channel contributes the value it reported.
+ */
+function stateIdentities(
+  observations: readonly ThinkObservation[],
+  channels: readonly SubjectStateChannel[]
+): { identities: string[]; truncated: boolean } {
+  const derivations = identityDerivations(channels);
+  const contributions = new Map<string, string>();
+  const identities: string[] = [];
+  let page = openingPage(observations);
+  let standing: string | undefined;
+
+  for (let think = 0; think < observations.length; think++) {
+    const observation = observations[think]!;
+    if (observation.pageSwitch) page = observation.pageSwitch.to;
+    for (const change of observation.state ?? []) {
+      const split = change.indexOf("=");
+      if (split === -1) continue;
+      const name = change.slice(0, split);
+      const reported = change.slice(split + 1);
+      contributions.set(name, derivations.get(name)?.(reported) ?? reported);
+    }
+    const material = [...contributions.entries()]
+      .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+      .map(([name, contribution]) => `${name}=${contribution}`);
+    const hash = hashOf([`page=${page ?? ""}`, ...material].join("|"));
+    if (hash === standing) continue;
+    if (identities.length === maxStateIdentities) return { identities, truncated: true };
+    identities.push(`${think} ${hash}`);
+    standing = hash;
+  }
+  return { identities, truncated: false };
+}
+
+/** What a run is summarized against, beyond the run itself. */
+export interface RunSummaryContext {
+  /**
+   * Rules the run was staged without, so the account states what its claims are
+   * scoped to. Absent for a run that covered the whole document.
+   */
+  readonly excludedRules?: readonly ExcludedRule[];
+  /**
+   * The state channels the target reporting this run declares, read for what
+   * each contributes to {@link TraceSummary.identity}. Absent leaves every
+   * reported channel contributing the value it reported.
+   */
+  readonly stateChannels?: readonly SubjectStateChannel[];
+}
+
 /**
  * Reduce one rehearsal to the bounded account `simulate` returns: per-rule
- * totals, dispatch totals, run-length compressed per-think detail, and the
- * subject's state changes over the run. Pass `excludedRules` when the run was
- * staged without some of the document's rules, so the account states what its
- * claims are scoped to.
+ * totals, dispatch totals, run-length compressed per-think detail, the
+ * subject's state changes over the run, and the state the run stood in think by
+ * think.
  */
-export function summarizeRun(run: SimulationRun, excludedRules?: readonly ExcludedRule[]): TraceSummary {
+export function summarizeRun(run: SimulationRun, context: RunSummaryContext = {}): TraceSummary {
+  const { excludedRules, stateChannels } = context;
   const { spans, truncated } = compress(run.observations);
   const state = stateChanges(run.observations);
+  const identity = stateIdentities(run.observations, stateChannels ?? []);
   return {
     runId: run.runId,
     thinks: run.thinks,
@@ -302,6 +409,8 @@ export function summarizeRun(run: SimulationRun, excludedRules?: readonly Exclud
     spansTruncated: truncated,
     ...(state.changes.length > 0 ? { state: state.changes } : {}),
     ...(state.truncated ? { stateTruncated: true } : {}),
+    identity: identity.identities,
+    ...(identity.truncated ? { identityTruncated: true } : {}),
     world: run.world,
     ...(excludedRules && excludedRules.length > 0 ? { excludedRules } : {}),
   };

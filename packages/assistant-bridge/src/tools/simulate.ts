@@ -101,5 +101,5 @@ export async function simulate(workspace: AuthoringWorkspace, input: ToolInput<"
     ...(excludedRules.length > 0 ? { excludedRules: excludedRules.map((rule) => rule.ruleId) } : {}),
     ...(actionBundle ? { actionBundle } : {}),
   });
-  return { ok: true, summary: summarizeRun(run, excludedRules) };
+  return { ok: true, summary: summarizeRun(run, { excludedRules, stateChannels: workspace.adapter.stateChannels() }) };
 }

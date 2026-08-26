@@ -1,20 +1,31 @@
 import type { ProjectTile } from "@wendoo/assistant-bridge";
-import type { ConversationEntry, ConversationRecord, ConversationTurnEnding } from "@wendoo/assistant-relay";
+import type {
+  ConversationAssistantEntry,
+  ConversationEntry,
+  ConversationRecord,
+  ConversationTurnEnding,
+} from "@wendoo/assistant-relay";
 import { ConversationTurnFailureCode, RelayTurnEndCode } from "@wendoo/assistant-relay";
 import { kBrainDeskFill } from "@wendoo/ui/brain-editor/brain-desk";
 import { kSentenceTypeClasses } from "@wendoo/ui/brain-editor/sentence-type";
 import { SafeMarkdown } from "@wendoo/ui/markdown/SafeMarkdown";
 import { type ReactNode, useEffect, useMemo, useRef } from "react";
 import type {
+  BuildBlock,
   ConversationBlock,
   LookupsBlock,
   ReceiptBlock,
   ReceiptRule,
+  RunBlock,
   SnagBlock,
   TranscriptContext,
 } from "./conversation/blocks";
 import { ConversationBlockKind, conversationBlocks, transcriptContext } from "./conversation/blocks";
 import type { EditSide } from "./conversation/edit-story";
+import type { RunActivity, RunCell, RunEvidence, RunMarker } from "./conversation/run";
+import { RunMarkerKind } from "./conversation/run";
+import type { StandingState } from "./conversation/standing";
+import { answerless, standingHolds, standingState } from "./conversation/standing";
 import { AssistantStatus } from "./session/machine";
 
 /** What the conversation surface shows, and the controls it hands back. */
@@ -75,6 +86,45 @@ const tileChipClasses: Record<EditSide, string> = {
 
 /** Pixels a rule is indented per rule it stands under. */
 const ruleIndentPx = 12;
+
+/**
+ * How bright a stretch of a run reads, by what the brain was doing over it, as
+ * the share of the panel's accent it is drawn in.
+ */
+const activityWeight: Record<RunActivity, number> = {
+  quiet: 0.16,
+  watching: 0.36,
+  waiting: 0.58,
+  acting: 0.92,
+};
+
+/** How tall a stretch of a run stands in the timeline, by what the brain was doing over it. */
+const activityHeight: Record<RunActivity, string> = {
+  quiet: "30%",
+  watching: "52%",
+  waiting: "72%",
+  acting: "100%",
+};
+
+/** Hues the states of a run are drawn in, spread around the panel's own accent. */
+const identityHues = 24;
+
+/** The hue a state is drawn in, as degrees around the panel's accent. */
+function identityTurn(identity: string | undefined): number {
+  if (identity === undefined) return 0;
+  const hashed = Number.parseInt(identity, 16);
+  return Number.isNaN(hashed) ? 0 : (hashed % identityHues) * (360 / identityHues);
+}
+
+/** The fill one stretch of a run is drawn in: its state as a hue, what it did as a weight. */
+function cellFill(cell: RunCell): string {
+  return `oklch(from var(--color-brain-accent) l c calc(h + ${identityTurn(cell.identity)}) / ${activityWeight[cell.activity]})`;
+}
+
+/** The step a state is drawn at, which the same state comes back to whenever a run returns to it. */
+function identityStep(identity: string | undefined): number {
+  return identity === undefined ? 0 : identityTurn(identity) / (360 / identityHues);
+}
 
 /**
  * A block drawn as a card: the glance layer the reader takes in without
@@ -206,6 +256,214 @@ function SnagView({ block }: { block: SnagBlock }) {
   );
 }
 
+/** The word a page reads by at the position a run named it, and its position when nothing named it. */
+function pageWord(at: number, context: TranscriptContext): string {
+  return context.pageNames.get(at) ?? `page ${at}`;
+}
+
+/** What one marker on a run's timeline stands for, for the reader. */
+function markerText(marker: RunMarker, context: TranscriptContext): string {
+  if (marker.kind === RunMarkerKind.Page) {
+    const entered = pageWord(marker.toPage ?? 0, context);
+    return marker.fromPage === undefined ? `to ${entered}` : `${pageWord(marker.fromPage, context)} -> ${entered}`;
+  }
+  return `${marker.inputKind ?? ""} = ${marker.inputValue ?? ""}`;
+}
+
+/** The thinks one stretch of a run covers, as the fold names them. */
+function cellThinks(cell: RunCell): string {
+  return cell.thinks === 1 ? `think ${cell.from}` : `thinks ${cell.from}-${cell.from + cell.thinks - 1}`;
+}
+
+/** The timeline of a run: one cell per stretch of thinks doing one thing in one state. */
+function RunTimeline({ run, context }: { run: RunEvidence; context: TranscriptContext }) {
+  const uncovered = Math.max(run.thinks - run.covered, 0);
+  return (
+    <div className="flex flex-col gap-1">
+      <div data-assistant-timeline={run.thinks} className="relative flex h-4 w-full items-end gap-px">
+        {run.cells.map((cell) => (
+          <span
+            key={`cell-${cell.from}`}
+            data-assistant-cell-activity={cell.activity}
+            data-assistant-cell-thinks={cell.thinks}
+            {...(cell.identity === undefined ? {} : { "data-assistant-cell-identity": identityStep(cell.identity) })}
+            style={{ flexGrow: cell.thinks, height: activityHeight[cell.activity], background: cellFill(cell) }}
+            className="min-w-[3px] rounded-[2px]"
+          />
+        ))}
+        {uncovered > 0 && (
+          <span
+            data-assistant-timeline-cut={uncovered}
+            style={{ flexGrow: uncovered }}
+            className="h-full min-w-[3px] rounded-[2px] border border-border border-dashed"
+          />
+        )}
+        {run.markers.map((marker, at) => (
+          <span
+            key={`tick-${marker.kind}-${marker.at}-${at}`}
+            aria-hidden="true"
+            style={{ left: `${(marker.at / Math.max(run.thinks, 1)) * 100}%` }}
+            className="pointer-events-none absolute top-0 bottom-0 w-px bg-brain-ink/70"
+          />
+        ))}
+      </div>
+      {run.markers.length > 0 && (
+        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-muted-foreground text-xs">
+          {run.markers.map((marker, at) => (
+            <span
+              key={`marker-${marker.kind}-${marker.at}-${at}`}
+              data-assistant-marker={marker.kind}
+              data-assistant-marker-at={marker.at}
+              {...(marker.inputKind ? { "data-assistant-marker-kind": marker.inputKind } : {})}
+              {...(marker.toPage === undefined ? {} : { "data-assistant-marker-page": marker.toPage })}
+            >
+              {`${marker.at}: ${markerText(marker, context)}`}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** One rehearsal a turn asked for: what the run did, and the whole record of it under a fold. */
+function RunView({ block, context }: { block: RunBlock; context: TranscriptContext }) {
+  const { run } = block;
+  const ran = run.blocked === undefined;
+  const pageChanges = run.markers.filter((marker) => marker.kind === RunMarkerKind.Page).length;
+  return (
+    <Card kind={ConversationBlockKind.Run}>
+      <div
+        data-assistant-glance
+        data-assistant-run={run.runId}
+        data-assistant-run-state={ran ? "ran" : "blocked"}
+        {...(run.blocked === undefined ? {} : { "data-assistant-run-blocked": run.blocked })}
+        {...(block.superseded ? { "data-assistant-run-superseded": "true" } : {})}
+        data-assistant-run-thinks={run.thinks}
+        {...(run.asked === undefined || run.asked === run.thinks ? {} : { "data-assistant-run-asked": run.asked })}
+        {...(run.covered < run.thinks ? { "data-assistant-run-truncated": "true" } : {})}
+        className="flex flex-col gap-1.5"
+      >
+        <div className="flex items-baseline gap-2">
+          <p className="grow text-card-foreground text-sm">{ran ? "I watched it run." : "I could not run it."}</p>
+          {ran && <span className="shrink-0 text-muted-foreground text-xs">{`${run.thinks} thinks`}</span>}
+        </div>
+        {ran && <RunTimeline run={run} context={context} />}
+        <div className="flex flex-wrap gap-x-3 text-muted-foreground text-xs">
+          {run.asked !== undefined && run.asked !== run.thinks && (
+            <span>{`stopped after ${run.thinks} of ${run.asked}`}</span>
+          )}
+          {pageChanges > 0 && <span>{`${pageChanges} page changes`}</span>}
+          {run.covered < run.thinks && <span>the record stops part way</span>}
+          {run.excludedRules.length > 0 && <span>{`${run.excludedRules.length} rules left out`}</span>}
+        </div>
+      </div>
+      {run.cells.length > 0 && (
+        <Fold kind="run" summary="open the run">
+          {run.cells.map((cell) => (
+            <p key={`step-${cell.from}`} data-assistant-run-step={cell.activity}>
+              {`${cellThinks(cell)}: ${cell.activity}`}
+            </p>
+          ))}
+          {run.dispatchTotals.map((total) => {
+            const split = total.lastIndexOf("=");
+            const call = split === -1 ? total : total.slice(0, split);
+            return (
+              <p
+                key={`total-${total}`}
+                data-assistant-dispatch={call}
+                data-assistant-dispatch-count={total.slice(split + 1)}
+              >
+                {total}
+              </p>
+            );
+          })}
+          {run.world && (
+            <p data-assistant-run-world={run.world.brainsExecuted}>
+              {`${run.world.brainsExecuted} brains ran, ${run.world.initialPopulation} standing at the start and ${run.world.finalPopulation} at the end`}
+            </p>
+          )}
+        </Fold>
+      )}
+    </Card>
+  );
+}
+
+/** One way a build came back dirty, and everything the builder reported about it. */
+function BuildView({ block }: { block: BuildBlock }) {
+  return (
+    <Card kind={ConversationBlockKind.Build}>
+      <div
+        data-assistant-glance
+        data-assistant-build-errors={block.errors}
+        data-assistant-build-repeats={block.repeats}
+        className="flex flex-wrap items-center gap-1.5 text-card-foreground text-sm"
+      >
+        <span>It does not build yet.</span>
+        {block.repeats > 1 && <span className="text-muted-foreground text-xs">{`(x${block.repeats})`}</span>}
+      </div>
+      <Fold kind="build" summary="what the builder said">
+        {block.diagnostics.map((diagnostic, at) => (
+          <p
+            // biome-ignore lint/suspicious/noArrayIndexKey: a build reports its diagnostics in a fixed order
+            key={`diag-${at}`}
+            data-assistant-build-diag={diagnostic.code}
+            data-assistant-build-severity={diagnostic.severity}
+            {...(diagnostic.ruleId ? { "data-assistant-build-rule": diagnostic.ruleId } : {})}
+          >
+            {`${diagnostic.severity} ${diagnostic.code}${diagnostic.ruleId ? ` in ${diagnostic.ruleId}` : ""}`}
+          </p>
+        ))}
+      </Fold>
+    </Card>
+  );
+}
+
+/**
+ * Where the whole conversation got to, standing above the note about how a turn
+ * that left no answer ended.
+ */
+function GotToView({ state }: { state: StandingState }) {
+  return (
+    <Card kind="gotto">
+      <div
+        data-assistant-glance
+        data-assistant-gotto-rules={state.rules}
+        data-assistant-gotto-pages={state.pages.length}
+        data-assistant-gotto-snags={state.snags}
+        {...(state.builds === undefined ? {} : { "data-assistant-gotto-builds": state.builds ? "ok" : "no" })}
+        className="flex flex-col gap-1.5"
+      >
+        <p className="text-card-foreground text-sm">Here is what you have so far.</p>
+        {state.pages.map((page, at) => (
+          <div key={`standing-${page.page?.pageId ?? at}`} className="flex flex-col gap-1">
+            <p
+              {...(page.page ? { "data-assistant-gotto-page": page.page.pageId } : {})}
+              className="text-muted-foreground text-xs"
+            >
+              {page.page ? page.page.name : "In your rules"}
+            </p>
+            {page.rules.map((rule) => (
+              <RuleSentence key={rule.ruleId} rule={rule} />
+            ))}
+          </div>
+        ))}
+        <div className="flex flex-wrap gap-x-3 text-muted-foreground text-xs">
+          {state.builds !== undefined && <span>{state.builds ? "it builds" : "it does not build yet"}</span>}
+          {state.lastRun && (
+            <span>
+              {state.lastRun.blocked === undefined
+                ? `last run: ${state.lastRun.thinks} thinks`
+                : "the last run did not happen"}
+            </span>
+          )}
+          {state.snags > 0 && <span>{`${state.snags} things the editor would not take`}</span>}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 /** Everything a turn looked at without changing, gathered under one fold. */
 function LookupsView({ block }: { block: LookupsBlock }) {
   const total = block.steps.reduce((count, step) => count + step.repeats, 0);
@@ -225,7 +483,7 @@ function LookupsView({ block }: { block: LookupsBlock }) {
 }
 
 /** One block of a turn, drawn in the idiom its kind reads in. */
-function BlockView({ block }: { block: ConversationBlock }) {
+function BlockView({ block, context }: { block: ConversationBlock; context: TranscriptContext }) {
   switch (block.kind) {
     case ConversationBlockKind.Narration:
       return (
@@ -243,6 +501,10 @@ function BlockView({ block }: { block: ConversationBlock }) {
       return <ReceiptView block={block} />;
     case ConversationBlockKind.Snag:
       return <SnagView block={block} />;
+    case ConversationBlockKind.Run:
+      return <RunView block={block} context={context} />;
+    case ConversationBlockKind.Build:
+      return <BuildView block={block} />;
     case ConversationBlockKind.Lookups:
       return <LookupsView block={block} />;
   }
@@ -352,14 +614,125 @@ function PresenceMark() {
   );
 }
 
+/** How many blocks of `kind` a turn laid out. */
+function countKind(blocks: readonly ConversationBlock[], kind: ConversationBlockKind): number {
+  return blocks.filter((block) => block.kind === kind).length;
+}
+
+/** What a folded turn says of itself: the work it left, counted by the kind of thing it is. */
+function turnHeader(blocks: readonly ConversationBlock[]): string {
+  const parts: string[] = [];
+  const receipts = countKind(blocks, ConversationBlockKind.Receipt);
+  const runs = countKind(blocks, ConversationBlockKind.Run);
+  const snags = countKind(blocks, ConversationBlockKind.Snag);
+  if (receipts > 0) parts.push(receipts === 1 ? "1 page changed" : `${receipts} pages changed`);
+  if (runs > 0) parts.push(runs === 1 ? "1 run" : `${runs} runs`);
+  if (snags > 0) parts.push(snags === 1 ? "1 snag" : `${snags} snags`);
+  return parts.length === 0 ? "nothing changed" : parts.join(", ");
+}
+
+/** The note about how a turn ended, and the offer to be asked again where it broke off. */
+function EndingView({
+  ending,
+  note,
+  onAskAgain,
+}: {
+  ending: ConversationTurnEnding;
+  note: string;
+  onAskAgain?: (() => void) | undefined;
+}) {
+  return (
+    <div className="flex w-full items-center gap-2">
+      <div data-assistant-bubble="entity" className={entityBubbleClasses}>
+        <p data-assistant-ending={ending.code} className="text-sm text-muted-foreground italic">
+          {note}
+        </p>
+      </div>
+      {brokeOff(ending) && onAskAgain && (
+        <button
+          type="button"
+          data-assistant-ask-again
+          onClick={onAskAgain}
+          className="shrink-0 rounded-md border border-border px-2 py-1 text-xs text-card-foreground pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+        >
+          Try again
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * One of the entity's turns: every block it laid out, where it got to when it
+ * left no answer, and how it ended. A turn a later one stands after is folded to
+ * its header until the reader opens it; the newest turn always stands open.
+ */
+function TurnView({
+  entry,
+  context,
+  standing,
+  folded,
+  onAskAgain,
+}: {
+  entry: ConversationAssistantEntry;
+  context: TranscriptContext;
+  standing: StandingState;
+  folded: boolean;
+  onAskAgain?: (() => void) | undefined;
+}) {
+  const { ending } = entry;
+  const note = ending ? endingNote(ending) : undefined;
+  const blocks = conversationBlocks(entry.steps, context);
+  const gotTo = ending && answerless(ending) && standingHolds(standing);
+  const body = (
+    <>
+      {blocks.map((block, at) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: a turn only ever appends, so a block keeps its position
+        <BlockView key={`block-${at}`} block={block} context={context} />
+      ))}
+      {gotTo && <GotToView state={standing} />}
+      {ending && note && <EndingView ending={ending} note={note} onAskAgain={onAskAgain} />}
+    </>
+  );
+
+  if (!folded) {
+    return (
+      <div
+        data-assistant-entry="assistant"
+        data-assistant-turn="latest"
+        className="flex w-full flex-col items-start gap-2"
+      >
+        {body}
+      </div>
+    );
+  }
+  return (
+    <details
+      data-assistant-entry="assistant"
+      data-assistant-turn="folded"
+      data-assistant-fold="turn"
+      className="w-full"
+    >
+      <summary className="cursor-pointer list-none text-muted-foreground text-xs pointer-coarse:min-h-11 pointer-coarse:py-2">
+        {turnHeader(blocks)}
+      </summary>
+      <div className="mt-2 flex w-full flex-col items-start gap-2">{body}</div>
+    </details>
+  );
+}
+
 /** One entry of the conversation: what the person said, or one of the entity's turns. */
 function EntryView({
   entry,
   context,
+  standing,
+  folded,
   onAskAgain,
 }: {
   entry: ConversationEntry;
   context: TranscriptContext;
+  standing: StandingState;
+  folded: boolean;
   onAskAgain?: (() => void) | undefined;
 }) {
   if (entry.kind === "user") {
@@ -373,35 +746,7 @@ function EntryView({
       </p>
     );
   }
-  const { ending } = entry;
-  const note = ending ? endingNote(ending) : undefined;
-  return (
-    <div data-assistant-entry="assistant" className="flex w-full flex-col items-start gap-2">
-      {conversationBlocks(entry.steps, context).map((block, at) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: a turn only ever appends, so a block keeps its position
-        <BlockView key={`block-${at}`} block={block} />
-      ))}
-      {ending && note && (
-        <div className="flex w-full items-center gap-2">
-          <div data-assistant-bubble="entity" className={entityBubbleClasses}>
-            <p data-assistant-ending={ending.code} className="text-sm text-muted-foreground italic">
-              {note}
-            </p>
-          </div>
-          {brokeOff(ending) && onAskAgain && (
-            <button
-              type="button"
-              data-assistant-ask-again
-              onClick={onAskAgain}
-              className="shrink-0 rounded-md border border-border px-2 py-1 text-xs text-card-foreground pointer-coarse:min-h-11 pointer-coarse:min-w-11"
-            >
-              Try again
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  );
+  return <TurnView entry={entry} context={context} standing={standing} folded={folded} onAskAgain={onAskAgain} />;
 }
 
 /**
@@ -428,6 +773,8 @@ export function ConversationView(props: ConversationViewProps) {
   } = props;
   const entries = record?.entries ?? [];
   const context = useMemo(() => transcriptContext(record), [record]);
+  const standing = useMemo(() => standingState(record, context), [record, context]);
+  const newestTurn = entries.reduce((at, entry, index) => (entry.kind === "assistant" ? index : at), -1);
   const running = status === AssistantStatus.TurnActive;
   const connection = connectionNote(status);
   const transcript = useRef<HTMLDivElement>(null);
@@ -500,8 +847,15 @@ export function ConversationView(props: ConversationViewProps) {
           </p>
         ) : (
           entries.map((entry, at) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: a record only ever appends, so an entry keeps its position
-            <EntryView key={`entry-${at}`} entry={entry} context={context} onAskAgain={onAskAgain} />
+            <EntryView
+              // biome-ignore lint/suspicious/noArrayIndexKey: a record only ever appends, so an entry keeps its position
+              key={`entry-${at}`}
+              entry={entry}
+              context={context}
+              standing={standing}
+              folded={at !== newestTurn}
+              onAskAgain={onAskAgain}
+            />
           ))
         )}
         {running && <PresenceMark />}

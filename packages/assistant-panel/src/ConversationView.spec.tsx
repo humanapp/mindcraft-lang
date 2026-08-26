@@ -2,11 +2,13 @@
  * Pins the structure the conversation surface renders for each state a session
  * can be in: which card each thing a turn did is drawn as and in what order,
  * how edits gather into a receipt per page, how repeated refusals collapse into
- * one snag, where a turn's look-ups go, what marks a turn that did not simply
- * finish, when the entity's presence stands at the live edge, which control the
- * intent box stands beside, what a lost session offers, which lines read markup
- * in what they carry, and which opens of the panel land the keyboard in the
- * intent box.
+ * one snag, what a rehearsal's timeline is cut into and what marks it, how a
+ * dirty build reads, where a turn's look-ups go, which turns stand folded to
+ * their header, where the account of what a conversation kept stands, what
+ * marks a turn that did not simply finish, when the entity's presence stands at
+ * the live edge, which control the intent box stands beside, what a lost
+ * session offers, which lines read markup in what they carry, and which opens
+ * of the panel land the keyboard in the intent box.
  */
 
 import assert from "node:assert/strict";
@@ -105,6 +107,56 @@ const cleanBuild: ConversationToolCall = {
   input: {},
   outcome: { kind: "ok", payload: { ok: true, diagnostics: [] } },
 };
+
+/** One stretch of a rehearsal, as an account reports it. */
+function span(from: number, thinks: number, think: Record<string, unknown>): Record<string, unknown> {
+  return { from, thinks, think: { fired: [], when: [], dispatched: [], ...think } };
+}
+
+/** The scenario every rehearsal in this file is asked for, unless one asks for its own. */
+const scenario = { scenario: { seed: 1, subject: "herbivore" }, thinks: 20 };
+
+/** A rehearsal that ran and came back reporting `summary`, over the scenario `input` asked for. */
+function rehearsed(summary: Record<string, unknown>, input: unknown = scenario): ConversationToolCall {
+  return {
+    name: "simulate",
+    input,
+    outcome: {
+      kind: "ok",
+      payload: {
+        ok: true,
+        summary: {
+          runId: "run-1",
+          thinks: 20,
+          rules: [],
+          dispatchTotals: [],
+          spans: [span(0, 20, { fired: ["rule-1"], when: ["rule-1=true"] })],
+          spansTruncated: false,
+          identity: ["0 00000001"],
+          world: { initialPopulation: 1, finalPopulation: 1, brainsExecuted: 1 },
+          ...summary,
+        },
+      },
+    },
+  };
+}
+
+/** A rehearsal the target refused to stage, under the code that stopped it. */
+function rehearsalRefused(error: string): ConversationToolCall {
+  return {
+    name: "simulate",
+    input: { scenario: { seed: 1, subject: "ghost" }, thinks: 10 },
+    outcome: { kind: "ok", payload: { ok: false, error, named: "ghost", subjects: ["herbivore"] } },
+  };
+}
+
+/** A build that came back dirty, reporting `diagnostics`. */
+function dirtyBuild(diagnostics: readonly Record<string, unknown>[]): ConversationToolCall {
+  return { name: "compile", input: {}, outcome: { kind: "ok", payload: { ok: false, diagnostics } } };
+}
+
+/** The one thing a dirty build in this file reports, unless it reports its own. */
+const droppedTile = { code: 1016, severity: "error", ruleId: "rule-1", params: {} };
 
 /** A catalog read, which reads as looking at something. */
 const catalogRead: ConversationToolCall = {
@@ -810,5 +862,456 @@ describe("the keyboard when the panel is opened", () => {
   test("the box the view stands is the one an open lands the keyboard in, once per open counted", () => {
     assert.match(viewSource, /landKeyboardInIntent\(intentBox\.current,\s*opensByPerson\)/);
     assert.match(viewSource, /\},\s*\[opensByPerson\]\)/);
+  });
+});
+
+describe("the rehearsals a turn ran", () => {
+  test("stands each rehearsal as a card of its own, out of the look-ups fold", () => {
+    const markup = render({
+      record: record([{ kind: "assistant", steps: [{ kind: "toolCall", call: rehearsed({}) }] }]),
+    });
+
+    assert.deepEqual(cardKinds(markup), ["run"]);
+    assert.match(markup, /data-assistant-run-state="ran"/);
+    assert.doesNotMatch(markup, /data-assistant-lookups/);
+  });
+
+  test("cuts the timeline into one cell per stretch, keeping the thinks each stretch covers", () => {
+    const markup = render({
+      record: record([
+        {
+          kind: "assistant",
+          steps: [
+            {
+              kind: "toolCall",
+              call: rehearsed({
+                spans: [
+                  span(0, 4, { when: ["rule-1=false"] }),
+                  span(4, 16, { fired: ["rule-1"], when: ["rule-1=true"], dispatched: ["actuator.move()=1@rule-1"] }),
+                ],
+              }),
+            },
+          ],
+        },
+      ]),
+    });
+
+    assert.deepEqual(valuesOf(markup, "data-assistant-cell-thinks"), ["4", "16"]);
+    assert.deepEqual(valuesOf(markup, "data-assistant-cell-activity"), ["watching", "acting"]);
+    assert.match(markup, /data-assistant-timeline="20"/);
+  });
+
+  test("reads a gate's own sensor call as watching, and a rule that reached no gate as acting", () => {
+    const gateReads = rehearsed({
+      spans: [span(0, 20, { when: ["rule-1=false"], dispatched: ["sensor.see(a carnivore=1)=1@rule-1"] })],
+    });
+    const ungated = rehearsed({ spans: [span(0, 20, { dispatched: ["actuator.move()=1@rule-9"] })] });
+    const parked = rehearsed({ spans: [span(0, 20, { waiting: ["rule-1"] })] });
+    const idle = rehearsed({ spans: [span(0, 20, {})] });
+
+    const activityOf = (call: ConversationToolCall): string[] =>
+      valuesOf(
+        render({ record: record([{ kind: "assistant", steps: [{ kind: "toolCall", call }] }]) }),
+        "data-assistant-cell-activity"
+      );
+
+    assert.deepEqual(activityOf(gateReads), ["watching"]);
+    assert.deepEqual(activityOf(ungated), ["acting"]);
+    assert.deepEqual(activityOf(parked), ["waiting"]);
+    assert.deepEqual(activityOf(idle), ["quiet"]);
+  });
+
+  test("cuts a stretch again where the run changed state, bringing a state it returns to back", () => {
+    const markup = render({
+      record: record([
+        {
+          kind: "assistant",
+          steps: [
+            {
+              kind: "toolCall",
+              call: rehearsed({
+                thinks: 3,
+                spans: [span(0, 3, { fired: ["rule-1"], when: ["rule-1=true"] })],
+                identity: ["0 00000001", "1 00000002", "2 00000001"],
+              }),
+            },
+          ],
+        },
+      ]),
+    });
+
+    const steps = valuesOf(markup, "data-assistant-cell-identity");
+    assert.equal(steps.length, 3, "one cell per state the run stood in");
+    assert.equal(steps[0], steps[2], "the state it came back to reads as the state it started in");
+    assert.notEqual(steps[0], steps[1]);
+    assert.deepEqual(valuesOf(markup, "data-assistant-cell-thinks"), ["1", "1", "1"]);
+  });
+
+  test("leaves the cells of a run that logged no state carrying none", () => {
+    const markup = render({
+      record: record([{ kind: "assistant", steps: [{ kind: "toolCall", call: rehearsed({ identity: [] }) }] }]),
+    });
+
+    assert.match(markup, /data-assistant-cell-activity/);
+    assert.doesNotMatch(markup, /data-assistant-cell-identity/);
+  });
+
+  test("marks the page the brain moved to and the percepts the scenario delivered, in think order", () => {
+    const markup = render({
+      record: record([
+        {
+          kind: "assistant",
+          steps: [
+            {
+              kind: "toolCall",
+              call: rehearsed(
+                {
+                  spans: [span(0, 5, { when: ["rule-1=false"] }), span(5, 15, { when: ["rule-1=true"], page: "0->1" })],
+                },
+                {
+                  scenario: {
+                    seed: 1,
+                    subject: "herbivore",
+                    inputs: [{ kind: "carnivore-ahead", at: 2, value: 60 }],
+                  },
+                  thinks: 20,
+                }
+              ),
+            },
+          ],
+        },
+      ]),
+    });
+
+    assert.deepEqual(valuesOf(markup, "data-assistant-marker"), ["input", "page"]);
+    assert.deepEqual(valuesOf(markup, "data-assistant-marker-at"), ["2", "5"]);
+    assert.deepEqual(valuesOf(markup, "data-assistant-marker-kind"), ["carnivore-ahead"]);
+    assert.deepEqual(valuesOf(markup, "data-assistant-marker-page"), ["1"]);
+  });
+
+  test("says so where the record of a run stops before the run did", () => {
+    const cut = rehearsed({ thinks: 400, spansTruncated: true, spans: [span(0, 30, { when: ["rule-1=true"] })] });
+
+    const markup = render({ record: record([{ kind: "assistant", steps: [{ kind: "toolCall", call: cut }] }]) });
+
+    assert.match(markup, /data-assistant-run-truncated="true"/);
+    assert.match(markup, /data-assistant-timeline-cut="370"/);
+  });
+
+  test("says a run stopped short of the thinks it was asked for, and says nothing when it did not", () => {
+    const short = rehearsed({ thinks: 6 });
+    const whole = rehearsed({});
+
+    assert.match(
+      render({ record: record([{ kind: "assistant", steps: [{ kind: "toolCall", call: short }] }]) }),
+      /data-assistant-run-asked="20"/
+    );
+    assert.doesNotMatch(
+      render({ record: record([{ kind: "assistant", steps: [{ kind: "toolCall", call: whole }] }]) }),
+      /data-assistant-run-asked/
+    );
+  });
+
+  test("opens to the stretch-by-stretch record and what the run dispatched in all", () => {
+    const call = rehearsed({ dispatchTotals: ["actuator.move(wandering=1)=17", "sensor.see()=20"] });
+
+    const markup = render({ record: record([{ kind: "assistant", steps: [{ kind: "toolCall", call }] }]) });
+
+    assert.equal(countOf(markup, /data-assistant-fold="run"/), 1);
+    assert.deepEqual(valuesOf(markup, "data-assistant-run-step"), ["acting"]);
+    assert.deepEqual(valuesOf(markup, "data-assistant-dispatch-count"), ["17", "20"]);
+    assert.deepEqual(valuesOf(markup, "data-assistant-dispatch"), [
+      escaped("actuator.move(wandering=1)"),
+      escaped("sensor.see()"),
+    ]);
+  });
+
+  test("keeps a rehearsal that never ran as a card carrying the code that stopped it, with no timeline", () => {
+    const markup = render({
+      record: record([{ kind: "assistant", steps: [{ kind: "toolCall", call: rehearsalRefused("unknown_subject") }] }]),
+    });
+
+    assert.deepEqual(cardKinds(markup), ["run"]);
+    assert.match(markup, /data-assistant-run-state="blocked"/);
+    assert.match(markup, /data-assistant-run-blocked="unknown_subject"/);
+    assert.doesNotMatch(markup, /data-assistant-timeline=/);
+    assert.doesNotMatch(markup, /data-assistant-lookups/);
+  });
+
+  test("keeps a rehearsal the bridge could not serve out of the look-ups fold too", () => {
+    const unserved: ConversationToolCall = {
+      name: "simulate",
+      input: scenario,
+      outcome: { kind: "ok", payload: { error: "invalid_input", detail: "thinks: too_small" }, isError: true },
+    };
+
+    const markup = render({ record: record([{ kind: "assistant", steps: [{ kind: "toolCall", call: unserved }] }]) });
+
+    assert.deepEqual(cardKinds(markup), ["run"]);
+    assert.match(markup, /data-assistant-run-blocked="invalid_input"/);
+  });
+
+  test("stands the newest run full and folds every run it stands after to a line of its own", () => {
+    const markup = render({
+      record: record([
+        {
+          kind: "assistant",
+          steps: [
+            { kind: "toolCall", call: rehearsed({ runId: "run-1" }) },
+            { kind: "toolCall", call: rehearsed({ runId: "run-2", thinks: 12 }) },
+          ],
+        },
+      ]),
+    });
+
+    assert.deepEqual(cardKinds(markup), ["run", "run"]);
+    assert.deepEqual(valuesOf(markup, "data-assistant-run"), ["run-1", "run-2"]);
+    assert.deepEqual(valuesOf(markup, "data-assistant-run-superseded"), ["true"]);
+    assert.equal(countOf(markup, /data-assistant-fold="run"/), 2, "a superseded run still opens to its record");
+  });
+});
+
+describe("a build that came back dirty", () => {
+  test("stands as a card of its own, out of the look-ups fold, counting what stops the build", () => {
+    const markup = render({
+      record: record([
+        {
+          kind: "assistant",
+          steps: [
+            {
+              kind: "toolCall",
+              call: dirtyBuild([droppedTile, { code: 3002, severity: "warning", ruleId: "rule-1", params: {} }]),
+            },
+          ],
+        },
+      ]),
+    });
+
+    assert.deepEqual(cardKinds(markup), ["build"]);
+    assert.match(markup, /data-assistant-build-errors="1"/);
+    assert.deepEqual(valuesOf(markup, "data-assistant-build-diag"), ["1016", "3002"]);
+    assert.deepEqual(valuesOf(markup, "data-assistant-build-severity"), ["error", "warning"]);
+    assert.doesNotMatch(markup, /data-assistant-lookups/);
+  });
+
+  test("counts builds that came back reporting the very same things as one card", () => {
+    const markup = render({
+      record: record([
+        {
+          kind: "assistant",
+          steps: [
+            { kind: "toolCall", call: dirtyBuild([droppedTile]) },
+            { kind: "toolCall", call: dirtyBuild([droppedTile]) },
+            { kind: "toolCall", call: dirtyBuild([{ code: 1015, severity: "error", ruleId: "rule-2", params: {} }]) },
+          ],
+        },
+      ]),
+    });
+
+    assert.deepEqual(cardKinds(markup), ["build", "build"]);
+    assert.deepEqual(valuesOf(markup, "data-assistant-build-repeats"), ["2", "1"]);
+  });
+
+  test("leaves a clean build ticking the receipts standing, saying nothing of its own", () => {
+    const markup = render({
+      record: record([
+        {
+          kind: "assistant",
+          steps: [
+            { kind: "toolCall", call: appliedEdit },
+            { kind: "toolCall", call: cleanBuild },
+            { kind: "toolCall", call: dirtyBuild([droppedTile]) },
+          ],
+        },
+      ]),
+    });
+
+    assert.deepEqual(cardKinds(markup), ["receipt", "build"]);
+    assert.equal(countOf(markup, /data-assistant-compiles="ok"/), 1, "the tick a clean build left stands");
+  });
+});
+
+describe("the turns a conversation stands after", () => {
+  test("folds every turn but the newest to a header the keyboard opens", () => {
+    const markup = render({
+      record: record([
+        { kind: "user", text: "make me hide" },
+        {
+          kind: "assistant",
+          steps: [{ kind: "toolCall", call: appliedEdit }],
+          ending: { kind: "end", code: RelayTurnEndCode.Complete },
+        },
+        { kind: "user", text: "now run away" },
+        { kind: "assistant", steps: [{ kind: "narration", text: "On it." }] },
+      ]),
+    });
+
+    assert.deepEqual(valuesOf(markup, "data-assistant-turn"), ["folded", "latest"]);
+    assert.equal(countOf(markup, /<details[^>]*data-assistant-fold="turn"/), 1);
+    assert.equal(countOf(markup, /data-assistant-fold="turn"/), 1);
+  });
+
+  test("leaves a lone turn standing full", () => {
+    const markup = render({
+      record: record([
+        { kind: "user", text: "make me hide" },
+        { kind: "assistant", steps: [{ kind: "narration", text: "On it." }] },
+      ]),
+    });
+
+    assert.deepEqual(valuesOf(markup, "data-assistant-turn"), ["latest"]);
+    assert.doesNotMatch(markup, /data-assistant-fold="turn"/);
+  });
+
+  test("keeps every block of a folded turn behind its header", () => {
+    const markup = render({
+      record: record([
+        {
+          kind: "assistant",
+          steps: [
+            { kind: "toolCall", call: appliedEdit },
+            { kind: "toolCall", call: rehearsed({}) },
+          ],
+          ending: { kind: "end", code: RelayTurnEndCode.Complete },
+        },
+        { kind: "assistant", steps: [{ kind: "narration", text: "On it." }] },
+      ]),
+    });
+
+    assert.deepEqual(cardKinds(markup), ["receipt", "run", "narration"]);
+    assert.equal(countOf(markup, /<summary/), 3, "the turn's own header, its edits fold, and its run fold");
+  });
+});
+
+describe("where a conversation got to when a turn left no answer", () => {
+  const kept: readonly ConversationTurnStep[] = [
+    { kind: "toolCall", call: placedOn(wandering, "rule-1", [moveTile]) },
+    { kind: "toolCall", call: cleanBuild },
+    { kind: "toolCall", call: rehearsed({}) },
+  ];
+
+  test("stands an account of what is kept above the note on every ending that left none", () => {
+    const answerless = [RelayTurnEndCode.Stopped, RelayTurnEndCode.Truncated, RelayTurnEndCode.Failed] as const;
+
+    for (const code of answerless) {
+      const markup = render({ record: record([{ kind: "assistant", steps: kept, ending: { kind: "end", code } }]) });
+      assert.match(markup, /data-assistant-card="gotto"/, code);
+      assert.match(markup, /data-assistant-gotto-rules="1"/, code);
+    }
+    for (const code of Object.values(ConversationTurnFailureCode)) {
+      const cut = record([{ kind: "assistant", steps: kept, ending: { kind: "failure", code } }]);
+      assert.match(render({ record: cut }), /data-assistant-card="gotto"/, code);
+    }
+  });
+
+  test("says nothing of the kind about a turn that simply finished", () => {
+    const finished = record([
+      { kind: "assistant", steps: kept, ending: { kind: "end", code: RelayTurnEndCode.Complete } },
+    ]);
+
+    assert.doesNotMatch(render({ record: finished }), /data-assistant-card="gotto"/);
+  });
+
+  test("stands above the note about how the turn ended, not below it", () => {
+    const stopped = record([
+      { kind: "assistant", steps: kept, ending: { kind: "end", code: RelayTurnEndCode.Stopped } },
+    ]);
+
+    const markup = render({ record: stopped });
+    assert.ok(
+      markup.indexOf('data-assistant-card="gotto"') < markup.indexOf("data-assistant-ending="),
+      "the account of what is kept comes first"
+    );
+  });
+
+  test("carries what every turn left standing, including the turns folded away", () => {
+    const markup = render({
+      record: record([
+        {
+          kind: "assistant",
+          steps: [{ kind: "toolCall", call: placedOn(wandering, "rule-1", [moveTile]) }],
+          ending: { kind: "end", code: RelayTurnEndCode.Complete },
+        },
+        {
+          kind: "assistant",
+          steps: [{ kind: "toolCall", call: placedOn(scared, "rule-2", [seeTile]) }],
+          ending: { kind: "end", code: RelayTurnEndCode.Truncated },
+        },
+      ]),
+    });
+
+    assert.match(markup, /data-assistant-gotto-rules="2"/);
+    assert.match(markup, /data-assistant-gotto-pages="2"/);
+    assert.deepEqual(valuesOf(markup, "data-assistant-gotto-page"), [wandering.pageId, scared.pageId]);
+  });
+
+  test("takes a rule a later turn deleted back out of what is kept", () => {
+    const removed: ConversationToolCall = {
+      name: "propose_edit",
+      input: { op: "deleteRule", ruleId: "rule-1" },
+      outcome: {
+        kind: "ok",
+        payload: {
+          ok: true,
+          historyDepth: 2,
+          onPage: wandering,
+          removed: "rule",
+          rule: { ruleId: "rule-1", when: [], do: [], children: [] },
+        },
+      },
+    };
+    const entries: readonly ConversationEntry[] = [
+      {
+        kind: "assistant",
+        steps: [
+          { kind: "toolCall", call: placedOn(wandering, "rule-1", [moveTile]) },
+          { kind: "toolCall", call: placedOn(scared, "rule-2", [seeTile]) },
+        ],
+        ending: { kind: "end", code: RelayTurnEndCode.Complete },
+      },
+      {
+        kind: "assistant",
+        steps: [{ kind: "toolCall", call: removed }],
+        ending: { kind: "end", code: RelayTurnEndCode.Stopped },
+      },
+    ];
+
+    const kept = render({ record: record(entries) });
+    const before = render({
+      record: record([{ ...entries[0], ending: { kind: "end", code: RelayTurnEndCode.Stopped } } as ConversationEntry]),
+    });
+
+    assert.match(before, /data-assistant-gotto-rules="2"/, "both rules stand before the delete");
+    assert.match(kept, /data-assistant-gotto-rules="1"/);
+    assert.deepEqual(valuesOf(kept, "data-assistant-gotto-page"), [scared.pageId]);
+  });
+
+  test("says nothing at all when a turn that left no answer kept nothing either", () => {
+    const nothing = record([
+      { kind: "assistant", steps: [], ending: { kind: "failure", code: ConversationTurnFailureCode.NotConnected } },
+    ]);
+
+    const markup = render({ record: nothing });
+    assert.doesNotMatch(markup, /data-assistant-card="gotto"/);
+    assert.match(markup, /data-assistant-ending="not_connected"/);
+  });
+
+  test("counts the ways the editor refused a proposal that nothing took back", () => {
+    const markup = render({
+      record: record([
+        {
+          kind: "assistant",
+          steps: [
+            { kind: "toolCall", call: refusedEdit },
+            { kind: "toolCall", call: refusedEdit },
+            { kind: "toolCall", call: refusedFor(moveTile.tileId) },
+            { kind: "toolCall", call: appliedEdit },
+          ],
+          ending: { kind: "end", code: RelayTurnEndCode.Truncated },
+        },
+      ]),
+    });
+
+    assert.match(markup, /data-assistant-gotto-snags="2"/);
   });
 });

@@ -361,3 +361,113 @@ describe("trace summary", () => {
     assert.equal(summary.state?.[79], "79 display=79");
   });
 });
+
+/** The think each entry of a state log falls on. */
+function thinksOf(identities: readonly string[]): number[] {
+  return identities.map((entry) => Number(entry.slice(0, entry.indexOf(" "))));
+}
+
+/** The hash each entry of a state log carries. */
+function hashesOf(identities: readonly string[]): string[] {
+  return identities.map((entry) => entry.slice(entry.indexOf(" ") + 1));
+}
+
+describe("the state a run stood in", () => {
+  test("carries one entry for a run that never leaves the state it started in", () => {
+    const summary = summarizeRun(run(Array.from({ length: 40 }, () => think("0/0", true, "true"))));
+
+    assert.deepEqual(thinksOf(summary.identity), [0]);
+    assert.equal(summary.identityTruncated, undefined);
+  });
+
+  test("logs the state again on each think it changed on, and on no other", () => {
+    const observations: ThinkObservation[] = [
+      { gates: [], dispatches: [], state: ["display=00000"] },
+      { gates: [], dispatches: [] },
+      { gates: [], dispatches: [], state: ["display=09990"] },
+      { gates: [], dispatches: [] },
+    ];
+
+    const summary = summarizeRun(run(observations));
+
+    assert.deepEqual(thinksOf(summary.identity), [0, 2]);
+  });
+
+  test("brings the first hash back when the run returns to a state it already stood in", () => {
+    const observations: ThinkObservation[] = [
+      { gates: [], dispatches: [], state: ["display=00000"] },
+      { gates: [], dispatches: [], state: ["display=09990"] },
+      { gates: [], dispatches: [], state: ["display=00000"] },
+    ];
+
+    const hashes = hashesOf(summarizeRun(run(observations)).identity);
+
+    assert.equal(hashes.length, 3);
+    assert.equal(hashes[0], hashes[2]);
+    assert.notEqual(hashes[0], hashes[1]);
+  });
+
+  test("changes state where the brain changed page, whatever its channels did", () => {
+    const observations: ThinkObservation[] = [
+      { gates: [], dispatches: [] },
+      { gates: [], dispatches: [], pageSwitch: { from: 0, to: 1 } },
+      { gates: [], dispatches: [], pageSwitch: { from: 1, to: 0 } },
+    ];
+
+    const hashes = hashesOf(summarizeRun(run(observations)).identity);
+
+    assert.deepEqual(thinksOf(summarizeRun(run(observations)).identity), [0, 1, 2]);
+    assert.equal(hashes[0], hashes[2], "the page it came back to is the page it started on");
+  });
+
+  test("holds one state for a run that reports nothing and never changes page", () => {
+    const summary = summarizeRun(run([think("0/0", true, "true"), think("0/0", false, "false")]));
+
+    assert.deepEqual(thinksOf(summary.identity), [0]);
+  });
+
+  test("takes what a channel declares it contributes over the value it reported", () => {
+    const observations: ThinkObservation[] = [
+      { gates: [], dispatches: [], state: ["speaker=giggle#1"] },
+      { gates: [], dispatches: [], state: ["speaker=giggle#2"] },
+      { gates: [], dispatches: [], state: ["speaker=idle"] },
+    ];
+    const stateChannels = [
+      {
+        name: "speaker",
+        description: "the sound playing",
+        identityValue: (reported: string) => reported.split("#")[0] ?? reported,
+      },
+    ];
+
+    const derived = hashesOf(summarizeRun(run(observations), { stateChannels }).identity);
+    const raw = hashesOf(summarizeRun(run(observations)).identity);
+
+    assert.equal(derived.length, 2, "the counter alone does not change the state");
+    assert.equal(raw.length, 3, "the counter alone changes the value reported");
+    assert.deepEqual(thinksOf(summarizeRun(run(observations), { stateChannels }).identity), [0, 2]);
+  });
+
+  test("leaves a channel declaring no contribution reporting its own value", () => {
+    const observations: ThinkObservation[] = [
+      { gates: [], dispatches: [], state: ["display=00000"] },
+      { gates: [], dispatches: [], state: ["display=09990"] },
+    ];
+    const stateChannels = [{ name: "display", description: "the screen" }];
+
+    assert.equal(summarizeRun(run(observations), { stateChannels }).identity.length, 2);
+  });
+
+  test("cuts the log at its budget when the state changes every think", () => {
+    const busy = Array.from(
+      { length: 200 },
+      (_, i): ThinkObservation => ({ gates: [], dispatches: [], state: [`display=${i}`] })
+    );
+
+    const summary = summarizeRun(run(busy));
+
+    assert.equal(summary.identity.length, 80);
+    assert.equal(summary.identityTruncated, true);
+    assert.deepEqual(thinksOf(summary.identity).slice(0, 3), [0, 1, 2]);
+  });
+});

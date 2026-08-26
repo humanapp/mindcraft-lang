@@ -112,16 +112,26 @@ describe("editor project coverage", () => {
     server.stop();
   });
 
-  test("root tsconfig.json references every tsconfig.spec.json", () => {
+  test("every tsconfig.spec.json is editor-reachable via a reference", () => {
     const ts = require(join(typescriptDir, "lib", "typescript.js"));
-    const rootConfigPath = join(repoRoot, "tsconfig.json");
-    const rootConfig = ts.readConfigFile(rootConfigPath, (p) => readFileSync(p, "utf8"));
-    assert.equal(rootConfig.error, undefined);
-    const referenced = new Set(
-      (rootConfig.config.references ?? []).map((ref) => relative(repoRoot, resolve(repoRoot, ref.path)))
-    );
+    const readReferences = (configPath) => {
+      const parsed = ts.readConfigFile(configPath, (p) => readFileSync(p, "utf8"));
+      assert.equal(parsed.error, undefined, `${relative(repoRoot, configPath)} must parse`);
+      return new Set(
+        (parsed.config.references ?? []).map((ref) => relative(repoRoot, resolve(dirname(configPath), ref.path)))
+      );
+    };
+    const rootReferenced = readReferences(join(repoRoot, "tsconfig.json"));
     for (const config of specConfigs) {
-      assert.ok(referenced.has(config), `root tsconfig.json must reference ${config}`);
+      if (rootReferenced.has(config)) continue;
+      // A package may index its own spec project instead (required for
+      // post-processed packages, which no outside config may reference).
+      const packageConfig = join(repoRoot, dirname(config), "tsconfig.json");
+      assert.ok(existsSync(packageConfig), `nothing references ${config} and its package has no tsconfig.json`);
+      assert.ok(
+        readReferences(packageConfig).has(config),
+        `${config} must be referenced by the root tsconfig.json or its package's own tsconfig.json`
+      );
     }
   });
 
