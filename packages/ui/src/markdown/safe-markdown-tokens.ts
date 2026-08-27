@@ -1,12 +1,28 @@
+/** The kinds of thing a reference in the text points at, by the word it opens with. */
+export const MarkdownReferenceForm = {
+  Tile: "tile",
+  Rule: "rule",
+  Page: "page",
+} as const;
+
+/** The kinds of thing a reference in the text points at. */
+export type MarkdownReferenceForm = (typeof MarkdownReferenceForm)[keyof typeof MarkdownReferenceForm];
+
+/** The forms a reference opens with, as the alternation the pattern reads them by. */
+const referenceForms = Object.values(MarkdownReferenceForm).join("|");
+
 /**
  * One run of inline content inside a block. `text` carries the characters the
- * run stands for, with the markers that named it already removed.
+ * run stands for, with the markers that named it already removed. A `reference`
+ * run carries the durable id it names, which the surface draws the thing itself
+ * for.
  */
 export type MarkdownSpan =
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "strong"; readonly text: string }
   | { readonly kind: "emphasis"; readonly text: string }
-  | { readonly kind: "code"; readonly text: string };
+  | { readonly kind: "code"; readonly text: string }
+  | { readonly kind: "reference"; readonly form: MarkdownReferenceForm; readonly id: string };
 
 /**
  * One block of the safe subset: a paragraph, a header the subset reads as an
@@ -30,10 +46,15 @@ interface InlinePattern {
  *
  * This table and `renderSpan` in `SafeMarkdown.tsx` are the two places a new
  * inline form is added: a pattern here, and the element its span kind draws as
- * there. An inline tile reference takes the `tile:` form `packages/docs`
- * DocMarkdown already reads, so the same text reads alike in both.
+ * there. A reference takes the backticked `tile:` / `rule:` / `page:` form, and
+ * stands ahead of the plain code form so a backticked reference is never read as
+ * code.
  */
 const inlinePatterns: readonly InlinePattern[] = [
+  {
+    pattern: new RegExp(`\`(${referenceForms}):([^\`\\n]+)\``),
+    span: (match) => ({ kind: "reference", form: match[1] as MarkdownReferenceForm, id: match[2]! }),
+  },
   { pattern: /`([^`\n]+)`/, span: (match) => ({ kind: "code", text: match[1] }) },
   { pattern: /\*\*([^\n]+?)\*\*/, span: (match) => ({ kind: "strong", text: match[1] }) },
   { pattern: /\*([^\s*][^\n*]*?)\*/, span: (match) => ({ kind: "emphasis", text: match[1] }) },
@@ -77,7 +98,7 @@ function inlineSpans(text: string): MarkdownSpan[] {
     appendText(spans, text.slice(at, claim.match.index));
     const span = claim.span(claim.match);
     if (span.kind === "text") appendText(spans, span.text);
-    else if (span.text.length > 0) spans.push(span);
+    else if (span.kind === "reference" || span.text.length > 0) spans.push(span);
     at = claim.match.index + claim.match[0].length;
   }
   appendText(spans, text.slice(at));

@@ -5,11 +5,16 @@
     "noEmit": true,
     "types": ["node"]
   },
+  /* A spec's JSX is transformed under these options only where the file is included, so every
+     source a spec renders is listed -- the shared packages' included too. */
   "include": [
     "src/vite-env.d.ts",
     "src/build-defines.d.ts",
     "src/phaser-matter.d.ts",
     "src/**/*.spec.ts",
+    "../../packages/docs/src/**/*.tsx",
+    "../../packages/assistant-panel/src/**/*.tsx",
+    "../../packages/ui/src/markdown/**/*.tsx",
     "src/components/BrainDiagnostics.tsx",
     "src/components/CompileDiagnosticsConsole.tsx",
     "src/components/ConsoleOutputList.tsx",

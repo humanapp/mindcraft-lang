@@ -21,8 +21,16 @@
   // config outside it may reference into it (the post-processed-references
   // guard). Its own solution-style tsconfig.json indexes its spec project,
   // which the editor's nearest-config walk finds first anyway.
+  // ORDERING CONSTRAINT: the editor assigns a file to the FIRST listed
+  // project that contains it, so a package whose sources another
+  // package's spec config includes (ui, whose markdown sources
+  // assistant-panel's spec renders) must list its own configs BEFORE the
+  // including package. The editor-projects gate asserts ownership and
+  // fails if this order regresses.
   "files": [],
   "references": [
+    { "path": "./packages/ui/tsconfig.json" },
+    { "path": "./packages/ui/tsconfig.spec.json" },
     { "path": "./packages/app-host/tsconfig.json" },
     { "path": "./packages/app-host/tsconfig.spec.json" },
     { "path": "./packages/assistant-bridge/tsconfig.json" },
@@ -44,8 +52,6 @@
     { "path": "./packages/service-api/tsconfig.spec.json" },
     { "path": "./packages/ts-compiler/tsconfig.json" },
     { "path": "./packages/ts-compiler/tsconfig.spec.json" },
-    { "path": "./packages/ui/tsconfig.json" },
-    { "path": "./packages/ui/tsconfig.spec.json" },
     { "path": "./apps/ecosim/tsconfig.json" },
     { "path": "./apps/ecosim/tsconfig.spec.json" },
     { "path": "./apps/ecosim-rbx/tsconfig.json" },

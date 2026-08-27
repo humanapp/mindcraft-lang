@@ -102,3 +102,36 @@ describe("what the renderer refuses to make live", () => {
     assert.doesNotMatch(markup, /javascript:/);
   });
 });
+
+describe("references", () => {
+  test("stands a reference the caller draws nothing for as the id it names, marked unresolved", () => {
+    const markup = render("my `rule:rule-0` fired");
+
+    assert.match(markup, /<code[^>]*text-warning[^>]*>rule-0<\/code>/);
+    assert.doesNotMatch(markup, /rule:/);
+  });
+
+  test("stands what the caller draws for a reference in its place", () => {
+    const markup = renderToStaticMarkup(
+      <SafeMarkdown
+        text="my `tile:sensor.see` sees"
+        renderReference={(span) => <b data-drawn={span.form}>{span.id}</b>}
+      />
+    );
+
+    assert.match(markup, /<b data-drawn="tile">sensor.see<\/b>/);
+    assert.doesNotMatch(markup, /text-warning/);
+  });
+
+  test("falls back to the unresolved form for a reference the caller draws nothing for", () => {
+    const markup = renderToStaticMarkup(
+      <SafeMarkdown
+        text="`page:gone` and `tile:here`"
+        renderReference={(span) => (span.form === "tile" ? <b /> : undefined)}
+      />
+    );
+
+    assert.match(markup, /<code[^>]*text-warning[^>]*>gone<\/code>/);
+    assert.match(markup, /<b><\/b>/);
+  });
+});

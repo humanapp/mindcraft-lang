@@ -35,9 +35,11 @@ import {
   NarrationRole,
   RelayTurnEndCode,
 } from "@wendoo/assistant-relay";
+import type { IBrainTileDef, ITileCatalog } from "@wendoo/core/brain";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ConversationViewProps } from "./ConversationView";
 import { ConversationView, intentKeyAction, landKeyboardInIntent } from "./ConversationView";
+import type { BrainSurface } from "./conversation/tile-visuals";
 import { AssistantStatus } from "./session/machine";
 
 /** The brain every record in this file belongs to. */
@@ -1563,5 +1565,138 @@ describe("where a conversation got to when a turn left no answer", () => {
     });
 
     assert.match(markup, /data-assistant-gotto-snags="2"/);
+  });
+});
+
+describe("the things the entity names", () => {
+  /** A catalog answering `get` from `defs`. */
+  function catalogOf(defs: readonly IBrainTileDef[]): ITileCatalog {
+    const held = new Map(defs.map((def) => [def.tileId, def]));
+    return { get: (tileId: string) => held.get(tileId) } as unknown as ITileCatalog;
+  }
+
+  /** A tile definition carrying the visual the host reads it by. */
+  function definition(tile: NamedTile, iconUrl: string, hue: string): IBrainTileDef {
+    return {
+      tileId: tile.tileId,
+      kind: "sensor",
+      metadata: { label: tile.label, iconUrl, colorDef: { when: hue, do: hue } },
+    } as unknown as IBrainTileDef;
+  }
+
+  /** The brain the host stands: both tiles, each with its own icon and hue. */
+  const surface: BrainSurface = {
+    tileCatalogs: [
+      catalogOf([definition(seeTile, "/icons/see.svg", "#AA94EB"), definition(moveTile, "/icons/move.svg", "#93A6EB")]),
+    ],
+  };
+
+  /** A document read back, holding `ruleIds` on `page`. */
+  function readProject(page: NamedPage, ruleIds: readonly string[]): ConversationToolCall {
+    return {
+      name: "read_project",
+      input: {},
+      outcome: {
+        kind: "ok",
+        payload: {
+          brainName: "Herbivore",
+          pages: [{ ...page, rules: ruleIds.map((ruleId) => ({ ruleId, when: [], do: [], children: [] })) }],
+        },
+      },
+    };
+  }
+
+  /** A run of the entity's own words, as the record holds one. */
+  function said(text: string): ConversationTurnStep {
+    return { kind: "narration", text };
+  }
+
+  test("draws each side of a rule as a band opened by that side's capsule", () => {
+    const markup = render({
+      record: record([
+        {
+          kind: "assistant",
+          steps: [{ kind: "toolCall", call: placedOn(wandering, "rule-1", [moveTile]) }],
+        },
+      ]),
+    });
+
+    assert.deepEqual(valuesOf(markup, "data-assistant-side"), ["do"]);
+    assert.match(markup, /bg-brain-capsule/);
+    assert.match(markup, />DO</);
+  });
+
+  test("reads a tile by the word the conversation carried while the host stands no brain", () => {
+    const markup = render({
+      record: record([
+        { kind: "assistant", steps: [{ kind: "toolCall", call: placedOn(wandering, "rule-1", [moveTile]) }] },
+      ]),
+    });
+
+    assert.match(markup, new RegExp(`data-assistant-tile-word[^>]*>${moveTile.label}<`));
+    assert.doesNotMatch(markup, /<img/);
+  });
+
+  test("draws a tile in its own icon and hue where the host stands the brain it belongs to", () => {
+    const markup = render({
+      brainSurface: surface,
+      record: record([
+        { kind: "assistant", steps: [{ kind: "toolCall", call: placedOn(wandering, "rule-1", [moveTile]) }] },
+      ]),
+    });
+
+    assert.match(markup, /<img src="\/icons\/move.svg"/);
+    assert.match(markup, /border-color:#93A6EB/);
+  });
+
+  test("numbers a rule whose page the conversation has read, and leaves one it has only seen edited unnumbered", () => {
+    const read = render({
+      record: record([
+        {
+          kind: "assistant",
+          steps: [
+            { kind: "toolCall", call: readProject(wandering, ["rule-0", "rule-1"]) },
+            { kind: "toolCall", call: placedOn(wandering, "rule-1", [moveTile]) },
+          ],
+        },
+      ]),
+    });
+    const unread = render({
+      record: record([
+        { kind: "assistant", steps: [{ kind: "toolCall", call: placedOn(wandering, "rule-1", [moveTile]) }] },
+      ]),
+    });
+
+    assert.match(read, /bg-brain-pill/);
+    assert.doesNotMatch(unread, /bg-brain-pill/);
+  });
+
+  test("draws a tile, a rule and a page the entity named in its words as the chips standing for them", () => {
+    const markup = render({
+      brainSurface: surface,
+      record: record([
+        {
+          kind: "assistant",
+          steps: [
+            { kind: "toolCall", call: readProject(wandering, ["rule-0", "rule-1"]) },
+            said("my `tile:tile.sensor->see` saw it, `rule:rule-1` fired, and I went to `page:page-wandering`"),
+          ],
+        },
+      ]),
+    });
+
+    assert.deepEqual(valuesOf(markup, "data-assistant-tile"), [escaped(seeTile.tileId)]);
+    assert.deepEqual(valuesOf(markup, "data-assistant-reference"), ["rule", "page"]);
+    assert.deepEqual(valuesOf(markup, "data-assistant-reference-id"), ["rule-1", "page-wandering"]);
+    assert.match(markup, new RegExp(`data-assistant-reference-word[^>]*>${wandering.name}<`));
+  });
+
+  test("leaves a reference to something the conversation has never seen as the id it names", () => {
+    const markup = render({
+      record: record([{ kind: "assistant", steps: [said("my `rule:rule-gone` fired")] }]),
+    });
+
+    assert.deepEqual(valuesOf(markup, "data-assistant-reference"), []);
+    assert.match(markup, /<code[^>]*text-warning[^>]*>rule-gone<\/code>/);
   });
 });

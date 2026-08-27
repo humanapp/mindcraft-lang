@@ -2,6 +2,7 @@ import type { ConversationRecord } from "@wendoo/assistant-relay";
 import { useState } from "react";
 import { useAssistant } from "./assistant-context";
 import { ConversationView } from "./ConversationView";
+import type { BrainSurface } from "./conversation/tile-visuals";
 import { AssistantStatus } from "./session/machine";
 
 /** What the host tells the surface about the entity it presents. */
@@ -21,6 +22,12 @@ export interface AssistantSurfaceProps {
    * for, which lands the keyboard nowhere.
    */
   opensByPerson?: number | undefined;
+  /**
+   * The brain the tiles the entity names are drawn against, built from the
+   * host's editor config and the brain its editor stands. Absent while the host
+   * stands none, which reads every tile by the word the conversation carried.
+   */
+  brainSurface?: BrainSurface | undefined;
 }
 
 /** The last thing the person asked for, or `undefined` when they have asked for nothing yet. */
@@ -38,7 +45,7 @@ function lastAsked(record: ConversationRecord | undefined): string | undefined {
  * brain's conversation, sends what is typed, and stops a running turn. Mounting
  * it starts no session, and it never takes the keyboard on its own.
  */
-export function AssistantSurface({ name, onLeaveIntent, opensByPerson }: AssistantSurfaceProps) {
+export function AssistantSurface({ name, onLeaveIntent, opensByPerson, brainSurface }: AssistantSurfaceProps) {
   const { status, record, send, stop, openSession } = useAssistant();
   const [intent, setIntent] = useState("");
 
@@ -67,6 +74,7 @@ export function AssistantSurface({ name, onLeaveIntent, opensByPerson }: Assista
       onAskAgain={askAgain}
       onLeaveIntent={onLeaveIntent}
       opensByPerson={opensByPerson}
+      brainSurface={brainSurface}
     />
   );
 }

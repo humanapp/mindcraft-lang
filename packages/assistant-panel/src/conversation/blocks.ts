@@ -162,6 +162,14 @@ export interface TranscriptContext {
    * since is read under the last name the conversation saw at that position.
    */
   readonly pageNames: ReadonlyMap<number, string>;
+  /** Each page the conversation has seen, keyed by its durable id. */
+  readonly pages: ReadonlyMap<string, ProjectPageRef>;
+  /**
+   * The position each rule stands at on its page, counting the rules nested
+   * under others in the same sequence. A rule the conversation has only ever
+   * seen through an edit, never in a document read back, is absent.
+   */
+  readonly ruleLines: ReadonlyMap<string, number>;
 }
 
 /** Rules a nesting walk follows before it calls the document circular. */
@@ -197,10 +205,14 @@ export function transcriptContext(record: ConversationRecord | undefined): Trans
   const calls = recordToolCalls(record);
   const parentOf = new Map<string, string>();
   const pageNames = new Map<number, string>();
+  const pages = new Map<string, ProjectPageRef>();
+  const ruleLines = new Map<string, number>();
   for (const call of calls) {
     if (call.outcome.kind === "ok" && call.outcome.isError !== true) {
-      for (const page of asPages(call.outcome.payload)) {
-        for (const rule of page) collectNesting(rule, parentOf);
+      for (const read of asPages(call.outcome.payload)) {
+        for (const rule of read.rules) collectNesting(rule, parentOf);
+        collectRuleLines(read.rules, ruleLines);
+        if (read.page) pages.set(read.page.pageId, read.page);
       }
       collectPageNames(call.outcome.payload, pageNames);
     }
@@ -209,6 +221,8 @@ export function transcriptContext(record: ConversationRecord | undefined): Trans
     const commands = editCommands(call.input);
     for (const [at, outcome] of landed.entries()) {
       if (outcome.rule) collectNesting(outcome.rule, parentOf);
+      if (outcome.onPage) pages.set(outcome.onPage.pageId, outcome.onPage);
+      if (outcome.page) pages.set(outcome.page.pageId, outcome.page);
       const parentRuleId = (commands[at] as { op?: unknown; parentRuleId?: unknown } | undefined)?.parentRuleId;
       // A batch may name its parent as "#N", which no durable id answers to.
       if (outcome.rule && typeof parentRuleId === "string" && !parentRuleId.startsWith("#")) {
@@ -216,7 +230,17 @@ export function transcriptContext(record: ConversationRecord | undefined): Trans
       }
     }
   }
-  return { labels: tileLabels(calls), parentOf, pageNames };
+  return { labels: tileLabels(calls), parentOf, pageNames, pages, ruleLines };
+}
+
+/** Record the position each of `rules` stands at on its page in `into`, counting the rules nested under others. */
+function collectRuleLines(rules: readonly ProjectRule[], into: Map<string, number>): void {
+  let line = 1;
+  const walk = (rule: ProjectRule): void => {
+    into.set(rule.ruleId, line++);
+    for (const child of rule.children) walk(child);
+  };
+  for (const rule of rules) walk(rule);
 }
 
 /** Record the name of every page `value` names, however deeply, in `into`, latest naming winning. */
@@ -231,16 +255,30 @@ function collectPageNames(value: unknown, into: Map<number, string>): void {
   for (const entry of Object.values(value)) collectPageNames(entry, into);
 }
 
-/** The rule runs `payload` holds as a document read back, page by page. */
-function asPages(payload: unknown): ProjectRule[][] {
+/** One page of a document read back: the page itself, and the rules standing on it. */
+interface ReadPage {
+  /** The page these rules stand on; absent when the read named none. */
+  readonly page?: ProjectPageRef;
+  readonly rules: readonly ProjectRule[];
+}
+
+/** The pages `payload` holds as a document read back, each with the rules on it. */
+function asPages(payload: unknown): ReadPage[] {
   if (typeof payload !== "object" || payload === null) return [];
   const pages = (payload as { pages?: unknown }).pages;
   if (!Array.isArray(pages)) return [];
-  const read: ProjectRule[][] = [];
+  const read: ReadPage[] = [];
   for (const page of pages) {
-    const rules = (page as { rules?: unknown } | null)?.rules;
-    if (!Array.isArray(rules)) continue;
-    read.push(rules.map((rule) => asProjectRule(rule)).filter((rule): rule is ProjectRule => rule !== undefined));
+    const held = page as { rules?: unknown; pageId?: unknown; pageIndex?: unknown; name?: unknown } | null;
+    if (!Array.isArray(held?.rules)) continue;
+    const named =
+      typeof held.pageId === "string" && typeof held.pageIndex === "number" && typeof held.name === "string"
+        ? { pageId: held.pageId, pageIndex: held.pageIndex, name: held.name }
+        : undefined;
+    read.push({
+      ...(named ? { page: named } : {}),
+      rules: held.rules.map((rule) => asProjectRule(rule)).filter((rule): rule is ProjectRule => rule !== undefined),
+    });
   }
   return read;
 }

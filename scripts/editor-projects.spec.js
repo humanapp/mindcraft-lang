@@ -33,20 +33,27 @@ function discoverSpecConfigs() {
   return found;
 }
 
-/** First *.spec.ts / *.spec.tsx under the package's src tree, or undefined. */
-function firstSpecFile(packageDir) {
+/**
+ * One spec file per extension under the package's src tree: the first
+ * *.spec.ts and the first *.spec.tsx found. Probing per extension matters
+ * because the two are covered by different config globs and can be owned
+ * by different projects while one of them is wrong.
+ */
+function specFilesPerExtension(packageDir) {
   const src = join(repoRoot, packageDir, "src");
-  if (!existsSync(src)) return undefined;
+  if (!existsSync(src)) return [];
+  const found = new Map();
   const stack = [src];
   while (stack.length > 0) {
     const dir = stack.pop();
     for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
       const full = join(dir, entry.name);
       if (entry.isDirectory()) stack.push(full);
-      else if (/\.spec\.tsx?$/.test(entry.name)) return full;
+      else if (/\.spec\.ts$/.test(entry.name) && !found.has("ts")) found.set("ts", full);
+      else if (/\.spec\.tsx$/.test(entry.name) && !found.has("tsx")) found.set("tsx", full);
     }
   }
-  return undefined;
+  return [...found.values()];
 }
 
 /** A tsserver session speaking the wire protocol over stdio. */
@@ -137,21 +144,23 @@ describe("editor project coverage", () => {
 
   for (const config of specConfigs) {
     const packageDir = dirname(config);
-    const specFile = firstSpecFile(packageDir);
-    test(`${packageDir}: a spec file belongs to its spec project and is clean`, { skip: !specFile }, async () => {
-      server.notify("open", { file: specFile });
-      const info = await server.request("projectInfo", { file: specFile, needFileNameList: false });
-      const diagnostics = await server.request("semanticDiagnosticsSync", { file: specFile });
-      server.notify("close", { file: specFile });
-      const project = info.body?.configFileName ?? "(none)";
-      assert.equal(
-        relative(repoRoot, project),
-        config,
-        `${relative(repoRoot, specFile)} landed in ${project} -- an editor-orphaned spec shows bogus diagnostics`
-      );
-      const codes = (diagnostics.body ?? []).map((d) => `TS${d.code}`);
-      assert.deepEqual(codes, [], `${relative(repoRoot, specFile)} has editor diagnostics: ${codes.join(", ")}`);
-    });
+    for (const specFile of specFilesPerExtension(packageDir)) {
+      const name = relative(repoRoot, specFile);
+      test(`${name}: belongs to its own spec project and is clean`, async () => {
+        server.notify("open", { file: specFile });
+        const info = await server.request("projectInfo", { file: specFile, needFileNameList: false });
+        const diagnostics = await server.request("semanticDiagnosticsSync", { file: specFile });
+        server.notify("close", { file: specFile });
+        const project = info.body?.configFileName ?? "(none)";
+        assert.equal(
+          relative(repoRoot, project),
+          config,
+          `${name} landed in ${project} -- wrong-project specs show bogus editor diagnostics`
+        );
+        const codes = (diagnostics.body ?? []).map((d) => `TS${d.code}`);
+        assert.deepEqual(codes, [], `${name} has editor diagnostics: ${codes.join(", ")}`);
+      });
+    }
   }
 
   test("a package source file still belongs to its build project", async () => {

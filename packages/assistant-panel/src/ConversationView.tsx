@@ -12,9 +12,10 @@ import {
   RelayTurnEndCode,
 } from "@wendoo/assistant-relay";
 import { kBrainDeskFill } from "@wendoo/ui/brain-editor/brain-desk";
-import { kSentenceTypeClasses } from "@wendoo/ui/brain-editor/sentence-type";
+import type { RenderMarkdownReference } from "@wendoo/ui/markdown/SafeMarkdown";
 import { SafeMarkdown } from "@wendoo/ui/markdown/SafeMarkdown";
-import { type ReactNode, useEffect, useMemo, useRef } from "react";
+import { MarkdownReferenceForm } from "@wendoo/ui/markdown/safe-markdown-tokens";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef } from "react";
 import type {
   BuildBlock,
   ConversationBlock,
@@ -32,6 +33,9 @@ import type { RunActivity, RunCell, RunEvidence, RunMarker } from "./conversatio
 import { RunMarkerKind } from "./conversation/run";
 import type { StandingState } from "./conversation/standing";
 import { answerless, standingHolds, standingState } from "./conversation/standing";
+import { ReferenceChip, TileChip } from "./conversation/TileChip";
+import type { BrainSurface, TileLook } from "./conversation/tile-visuals";
+import { BrainSurfaceProvider, unresolvedTileLook, useTileLooks } from "./conversation/tile-visuals";
 import { AssistantStatus } from "./session/machine";
 
 /** What the conversation surface shows, and the controls it hands back. */
@@ -64,6 +68,12 @@ export interface ConversationViewProps {
    * for, which lands the keyboard nowhere.
    */
   opensByPerson?: number | undefined;
+  /**
+   * The brain the tiles the entity names are drawn against. Absent while the
+   * host stands none, which reads every tile by the word the conversation
+   * carried, with no icon and no hue of its own.
+   */
+  brainSurface?: BrainSurface | undefined;
 }
 
 /** Pixels of slack at the foot of the transcript that still count as being at the bottom. */
@@ -83,12 +93,6 @@ const askBubbleClasses = "max-w-[85%] self-end rounded-[14px] rounded-br-[4px] b
 
 /** The surface every block that is not the entity's own voice is drawn on. */
 const cardClasses = "w-full self-start rounded-[14px] border border-border bg-brain-ink/5 px-3 py-2";
-
-/** The tint a tile chip reads in, by the rule side it sits on. */
-const tileChipClasses: Record<EditSide, string> = {
-  when: "border-brain-ink/20 bg-brain-ink/10",
-  do: "border-brain-accent/40 bg-brain-accent/20",
-};
 
 /** How much of itself a block a later one stands in the place of keeps on screen. */
 const supersededClasses = "opacity-60";
@@ -117,7 +121,10 @@ const verdictClasses: Record<NarrationJudgment, string> = {
 };
 
 /** Pixels a rule is indented per rule it stands under. */
-const ruleIndentPx = 12;
+const ruleIndentPx = 16;
+
+/** The gradient a rule is drawn on. */
+const ruleCardFill = "linear-gradient(55deg, var(--color-brain-rule-from) 0%, var(--color-brain-rule-to) 100%)";
 
 /**
  * How bright a stretch of a run reads, by what the brain was doing over it, as
@@ -194,48 +201,118 @@ function VerdictPill({ judgment }: { judgment: NarrationJudgment }) {
   );
 }
 
-/** One tile of a rule, as the word it reads by on the side it sits on. */
-function TileChip({ tile, side }: { tile: ProjectTile; side: EditSide }) {
+/** The number a rule stands at on its page, drawn as a pill. */
+function LinePill({ line }: { line: number }) {
   return (
     <span
-      data-assistant-tile={tile.tileId}
-      className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-card-foreground ${tileChipClasses[side]}`}
+      className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-brain-pill-edge bg-brain-pill font-semibold text-[11px] text-brain-pill-ink"
+      aria-hidden="true"
     >
-      <span data-assistant-tile-word>{tile.label}</span>
+      {line}
     </span>
   );
 }
 
-/** One side of a rule: the word it opens with, and the tiles standing on it. */
-function RuleSide({ side, tiles }: { side: EditSide; tiles: readonly ProjectTile[] }) {
+/** The compact capsule opening one side of a rule, reading WHEN or DO. */
+function SideCap({ side }: { side: EditSide }) {
+  return (
+    <span
+      className="inline-flex shrink-0 items-center rounded-sm rounded-l-md border border-brain-capsule-edge bg-brain-capsule px-1 py-px font-semibold text-[10px] text-brain-capsule-ink tracking-wide"
+      aria-hidden="true"
+    >
+      {side.toUpperCase()}
+    </span>
+  );
+}
+
+/** One side of a rule: the capsule opening it, and the tiles standing on it, wrapping as one band. */
+function RuleBand({
+  side,
+  tiles,
+  looks,
+}: {
+  side: EditSide;
+  tiles: readonly ProjectTile[];
+  looks: readonly TileLook[];
+}) {
   if (tiles.length === 0) return null;
   return (
-    <span data-assistant-side={side} className="inline-flex flex-wrap items-center gap-1">
-      <span className="text-muted-foreground">{side}</span>
+    <span data-assistant-side={side} className="flex flex-wrap items-center gap-1">
+      <SideCap side={side} />
       {tiles.map((tile, at) => (
-        <TileChip key={`${tile.tileId}-${at}`} tile={tile} side={side} />
+        <TileChip key={`${tile.tileId}-${at}`} tileId={tile.tileId} look={looks[at] as TileLook} />
       ))}
     </span>
   );
 }
 
-/** One rule a receipt shows, standing in as far as the rules it is nested under. */
-function RuleSentence({ rule }: { rule: ReceiptRule }) {
+/** How a rule reads aloud, for a reader who is given the whole line at once. */
+function ruleReading(when: readonly TileLook[], done: readonly TileLook[]): string {
+  const side = (word: string, looks: readonly TileLook[]): string =>
+    looks.length === 0 ? "" : `${word} ${looks.map((look) => look.label).join(", ")}`;
+  return [side("when", when), side("do", done)].filter((part) => part.length > 0).join(", ");
+}
+
+/**
+ * One rule a receipt shows, standing in as far as the rules it is nested under:
+ * its number where the conversation has seen the page it stands on, and one
+ * wrapping band per side, each opened by that side's capsule.
+ */
+function RuleSentence({ rule, context }: { rule: ReceiptRule; context: TranscriptContext }) {
+  const look = useTileLooks();
+  const when = rule.when.map((tile) => look(tile.tileId, "when") ?? unresolvedTileLook(tile.label));
+  const done = rule.do.map((tile) => look(tile.tileId, "do") ?? unresolvedTileLook(tile.label));
+  const line = context.ruleLines.get(rule.ruleId);
   return (
     <div
       data-assistant-rule={rule.ruleId}
       data-assistant-rule-depth={rule.depth}
-      style={{ marginLeft: rule.depth * ruleIndentPx }}
-      className={`flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm ${kSentenceTypeClasses}`}
+      role="img"
+      aria-label={ruleReading(when, done)}
+      style={{ marginLeft: rule.depth * ruleIndentPx, background: ruleCardFill }}
+      className="flex items-start gap-1.5 rounded-lg border border-border px-1.5 py-1 text-sm shadow-sm"
     >
-      <RuleSide side="when" tiles={rule.when} />
-      <RuleSide side="do" tiles={rule.do} />
+      {line !== undefined && (
+        <span className="flex h-5 items-center">
+          <LinePill line={line} />
+        </span>
+      )}
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <RuleBand side="when" tiles={rule.when} looks={when} />
+        <RuleBand side="do" tiles={rule.do} looks={done} />
+      </span>
     </div>
   );
 }
 
+/**
+ * Draws each thing the entity names in its own words as the chip its surface
+ * stands for it: a tile as its own chip, a rule as its number, a page as its
+ * name. A reference to something the conversation has never seen is left to the
+ * unresolved form the renderer falls back to.
+ */
+function useReferenceRenderer(context: TranscriptContext): RenderMarkdownReference {
+  const look = useTileLooks();
+  return useCallback(
+    (span) => {
+      if (span.form === MarkdownReferenceForm.Tile) {
+        const word = context.labels.get(span.id);
+        const found = look(span.id) ?? (word === undefined ? undefined : unresolvedTileLook(word));
+        return found === undefined ? undefined : <TileChip tileId={span.id} look={found} />;
+      }
+      if (span.form === MarkdownReferenceForm.Page) {
+        const page = context.pages.get(span.id);
+        return page === undefined ? undefined : <ReferenceChip form={span.form} id={span.id} label={page.name} />;
+      }
+      const line = context.ruleLines.get(span.id);
+      return line === undefined ? undefined : <ReferenceChip form={span.form} id={span.id} label={`rule ${line}`} />;
+    },
+    [look, context]
+  );
+}
+
 /** What the edits gathered on one page left standing, and the story of how they got there. */
-function ReceiptView({ block }: { block: ReceiptBlock }) {
+function ReceiptView({ block, context }: { block: ReceiptBlock; context: TranscriptContext }) {
   return (
     <Card kind={ConversationBlockKind.Receipt}>
       <div
@@ -253,7 +330,7 @@ function ReceiptView({ block }: { block: ReceiptBlock }) {
           )}
         </div>
         {block.rules.map((rule) => (
-          <RuleSentence key={rule.ruleId} rule={rule} />
+          <RuleSentence key={rule.ruleId} rule={rule} context={context} />
         ))}
       </div>
       {block.story.length > 0 && (
@@ -276,7 +353,9 @@ function ReceiptView({ block }: { block: ReceiptBlock }) {
  * thing. The entity's own words about the refusal stand as the line the card
  * reads as where it said any; the fixed line stands where it has not.
  */
-function SnagView({ block }: { block: SnagBlock }) {
+function SnagView({ block, context }: { block: SnagBlock; context: TranscriptContext }) {
+  const look = useTileLooks();
+  const renderReference = useReferenceRenderer(context);
   return (
     <Card kind={ConversationBlockKind.Snag}>
       <div
@@ -292,13 +371,16 @@ function SnagView({ block }: { block: SnagBlock }) {
           <>
             <span>Hit a wall:</span>
             {block.tileId && (
-              <TileChip tile={{ tileId: block.tileId, label: block.tileLabel ?? block.tileId }} side="do" />
+              <TileChip
+                tileId={block.tileId}
+                look={look(block.tileId, "do") ?? unresolvedTileLook(block.tileLabel ?? block.tileId)}
+              />
             )}
             <span>does not fit there.</span>
           </>
         ) : (
           <span className="grow">
-            <SafeMarkdown text={block.caption} />
+            <SafeMarkdown text={block.caption} renderReference={renderReference} />
           </span>
         )}
         {block.repeats > 1 && <span className="text-muted-foreground text-xs">{`(x${block.repeats})`}</span>}
@@ -514,7 +596,7 @@ function BuildView({ block }: { block: BuildBlock }) {
  * Where the whole conversation got to, standing above the note about how a turn
  * that left no answer ended.
  */
-function GotToView({ state }: { state: StandingState }) {
+function GotToView({ state, context }: { state: StandingState; context: TranscriptContext }) {
   return (
     <Card kind="gotto">
       <div
@@ -535,7 +617,7 @@ function GotToView({ state }: { state: StandingState }) {
               {page.page ? page.page.name : "In your rules"}
             </p>
             {page.rules.map((rule) => (
-              <RuleSentence key={rule.ruleId} rule={rule} />
+              <RuleSentence key={rule.ruleId} rule={rule} context={context} />
             ))}
           </div>
         ))}
@@ -579,7 +661,8 @@ function LookupsView({ block }: { block: LookupsBlock }) {
  * -- the plan it means to follow, and what it learned -- stand on a card of
  * their own; everything else stands in the entity's speaking bubble.
  */
-function NarrationCardView({ block }: { block: NarrationBlock }) {
+function NarrationCardView({ block, context }: { block: NarrationBlock; context: TranscriptContext }) {
+  const renderReference = useReferenceRenderer(context);
   const carded = block.role !== undefined && cardedRoles.includes(block.role);
   const surface = carded ? `${cardClasses} flex flex-col gap-1.5` : entityBubbleClasses;
   return (
@@ -593,12 +676,12 @@ function NarrationCardView({ block }: { block: NarrationBlock }) {
       className={block.superseded ? `${surface} ${supersededClasses}` : surface}
     >
       <div data-assistant-narration className="text-card-foreground text-sm">
-        <SafeMarkdown text={block.text} />
+        <SafeMarkdown text={block.text} renderReference={renderReference} />
       </div>
       {block.body !== undefined && (
         <Fold kind="narration" summary="the long story">
           <div data-assistant-narration-body>
-            <SafeMarkdown text={block.body} />
+            <SafeMarkdown text={block.body} renderReference={renderReference} />
           </div>
         </Fold>
       )}
@@ -610,11 +693,11 @@ function NarrationCardView({ block }: { block: NarrationBlock }) {
 function BlockView({ block, context }: { block: ConversationBlock; context: TranscriptContext }) {
   switch (block.kind) {
     case ConversationBlockKind.Narration:
-      return <NarrationCardView block={block} />;
+      return <NarrationCardView block={block} context={context} />;
     case ConversationBlockKind.Receipt:
-      return <ReceiptView block={block} />;
+      return <ReceiptView block={block} context={context} />;
     case ConversationBlockKind.Snag:
-      return <SnagView block={block} />;
+      return <SnagView block={block} context={context} />;
     case ConversationBlockKind.Run:
       return <RunView block={block} context={context} />;
     case ConversationBlockKind.Build:
@@ -804,7 +887,7 @@ function TurnView({
         // biome-ignore lint/suspicious/noArrayIndexKey: a turn only ever appends, so a block keeps its position
         <BlockView key={`block-${at}`} block={block} context={context} />
       ))}
-      {gotTo && <GotToView state={standing} />}
+      {gotTo && <GotToView state={standing} context={context} />}
       {ending && note && <EndingView ending={ending} note={note} onAskAgain={onAskAgain} />}
     </>
   );
@@ -884,6 +967,7 @@ export function ConversationView(props: ConversationViewProps) {
     onAskAgain,
     onLeaveIntent,
     opensByPerson,
+    brainSurface,
   } = props;
   const entries = record?.entries ?? [];
   const context = useMemo(() => transcriptContext(record), [record]);
@@ -938,91 +1022,93 @@ export function ConversationView(props: ConversationViewProps) {
   });
 
   return (
-    <div
-      ref={surface}
-      tabIndex={-1}
-      className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border outline-none"
-      style={{ background: kBrainDeskFill }}
-    >
-      <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
-        <span className="h-8 w-8 shrink-0 rounded-full border border-border bg-muted" aria-hidden="true" />
-        <span data-assistant-entity className="truncate text-sm font-semibold text-card-foreground">
-          {name}
-        </span>
-      </header>
+    <BrainSurfaceProvider value={brainSurface}>
       <div
-        ref={transcript}
-        onScroll={noteScroll}
-        className="flex min-h-0 grow flex-col gap-3 overflow-y-auto px-3 py-4"
+        ref={surface}
+        tabIndex={-1}
+        className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border outline-none"
+        style={{ background: kBrainDeskFill }}
       >
-        {entries.length === 0 ? (
-          <p data-assistant-resting className="text-sm text-muted-foreground">
-            Hi! What should we build?
-          </p>
-        ) : (
-          entries.map((entry, at) => (
-            <EntryView
-              // biome-ignore lint/suspicious/noArrayIndexKey: a record only ever appends, so an entry keeps its position
-              key={`entry-${at}`}
-              entry={entry}
-              context={context}
-              standing={standing}
-              folded={at !== newestTurn}
-              onAskAgain={onAskAgain}
-            />
-          ))
+        <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
+          <span className="h-8 w-8 shrink-0 rounded-full border border-border bg-muted" aria-hidden="true" />
+          <span data-assistant-entity className="truncate text-sm font-semibold text-card-foreground">
+            {name}
+          </span>
+        </header>
+        <div
+          ref={transcript}
+          onScroll={noteScroll}
+          className="flex min-h-0 grow flex-col gap-3 overflow-y-auto px-3 py-4"
+        >
+          {entries.length === 0 ? (
+            <p data-assistant-resting className="text-sm text-muted-foreground">
+              Hi! What should we build?
+            </p>
+          ) : (
+            entries.map((entry, at) => (
+              <EntryView
+                // biome-ignore lint/suspicious/noArrayIndexKey: a record only ever appends, so an entry keeps its position
+                key={`entry-${at}`}
+                entry={entry}
+                context={context}
+                standing={standing}
+                folded={at !== newestTurn}
+                onAskAgain={onAskAgain}
+              />
+            ))
+          )}
+          {running && <PresenceMark />}
+        </div>
+        {connection && (
+          <div className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-1.5">
+            <p data-assistant-connection={status} className="grow text-xs text-muted-foreground">
+              {connection}
+            </p>
+            {onRetry && (
+              <button
+                type="button"
+                data-assistant-retry
+                onClick={onRetry}
+                className="shrink-0 rounded-md border border-border px-2 py-1 text-xs text-card-foreground pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+              >
+                Try again
+              </button>
+            )}
+          </div>
         )}
-        {running && <PresenceMark />}
-      </div>
-      {connection && (
-        <div className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-1.5">
-          <p data-assistant-connection={status} className="grow text-xs text-muted-foreground">
-            {connection}
-          </p>
-          {onRetry && (
+        <div className="flex shrink-0 items-end gap-2 border-t border-border p-2">
+          <textarea
+            ref={intentBox}
+            data-assistant-intent
+            className="min-h-16 grow resize-none rounded-md border border-input bg-background px-2 py-1.5 text-sm text-foreground placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 pointer-coarse:text-base"
+            rows={2}
+            value={intent}
+            onChange={(event) => onIntentChange(event.target.value)}
+            aria-label="What we should build"
+            placeholder="Tell me your idea..."
+          />
+          {running ? (
             <button
               type="button"
-              data-assistant-retry
-              onClick={onRetry}
-              className="shrink-0 rounded-md border border-border px-2 py-1 text-xs text-card-foreground pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+              data-assistant-stop
+              onClick={onStop}
+              className="shrink-0 rounded-md border border-border px-3 py-1.5 text-sm font-medium text-card-foreground pointer-coarse:min-h-11 pointer-coarse:min-w-11"
             >
-              Try again
+              Stop
+            </button>
+          ) : (
+            <button
+              type="button"
+              data-assistant-send
+              onClick={onSend}
+              disabled={intent.trim().length === 0}
+              className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50 pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+            >
+              Send
             </button>
           )}
         </div>
-      )}
-      <div className="flex shrink-0 items-end gap-2 border-t border-border p-2">
-        <textarea
-          ref={intentBox}
-          data-assistant-intent
-          className="min-h-16 grow resize-none rounded-md border border-input bg-background px-2 py-1.5 text-sm text-foreground placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 pointer-coarse:text-base"
-          rows={2}
-          value={intent}
-          onChange={(event) => onIntentChange(event.target.value)}
-          aria-label="What we should build"
-          placeholder="Tell me your idea..."
-        />
-        {running ? (
-          <button
-            type="button"
-            data-assistant-stop
-            onClick={onStop}
-            className="shrink-0 rounded-md border border-border px-3 py-1.5 text-sm font-medium text-card-foreground pointer-coarse:min-h-11 pointer-coarse:min-w-11"
-          >
-            Stop
-          </button>
-        ) : (
-          <button
-            type="button"
-            data-assistant-send
-            onClick={onSend}
-            disabled={intent.trim().length === 0}
-            className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50 pointer-coarse:min-h-11 pointer-coarse:min-w-11"
-          >
-            Send
-          </button>
-        )}
       </div>
-    </div>
+    </BrainSurfaceProvider>
   );
 }

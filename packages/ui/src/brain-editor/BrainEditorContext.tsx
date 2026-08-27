@@ -130,6 +130,14 @@ export function useBrainEditorConfig(): BrainEditorConfig {
   return config;
 }
 
+/**
+ * Read the active {@link BrainEditorConfig}, and `undefined` where no
+ * {@link BrainEditorProvider} stands.
+ */
+export function useOptionalBrainEditorConfig(): BrainEditorConfig | undefined {
+  return useContext(BrainEditorContext) ?? undefined;
+}
+
 /** The default localizer used when the host config supplies none. */
 const fallbackLocalizer = createDefaultLocalizer();
 

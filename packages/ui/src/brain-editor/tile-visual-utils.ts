@@ -97,13 +97,18 @@ function defaultTileLabel(tileDef: IBrainTileDef): string {
 
 /**
  * Resolve the visual (label, icon, colors) for a tile by merging the tile's
- * intrinsic metadata with the app-supplied `resolveTileVisual` from `config`.
- * The label falls back to a kind-specific default (literal value, variable
- * name, accessor field name) when neither source provides a meaningful one.
+ * intrinsic metadata with `appResolver`'s reading of it, the app's reading
+ * winning field by field. The label falls back to a kind-specific default
+ * (literal value, variable name, accessor field name, output name) when neither
+ * source provides a meaningful one. Pass `undefined` for `appResolver` where the
+ * host supplies none, which resolves the tile from its own metadata alone.
  */
-export function resolveTileVisual(config: BrainEditorConfig, tileDef: IBrainTileDef): TileVisual {
+export function resolveTileVisualFrom(
+  appResolver: ((tileDef: IBrainTileDef) => TileVisual | undefined) | undefined,
+  tileDef: IBrainTileDef
+): TileVisual {
   const intrinsicVisual = tileDef.metadata as TileVisual | undefined;
-  const appVisual = config.resolveTileVisual?.(tileDef);
+  const appVisual = appResolver?.(tileDef);
   const appLabel = appVisual?.label;
   const appResolvedLabel = appLabel && appLabel !== getCatalogFallbackLabel(tileDef) ? appLabel : undefined;
   const intrinsicLabel = intrinsicVisual?.label;
@@ -115,6 +120,15 @@ export function resolveTileVisual(config: BrainEditorConfig, tileDef: IBrainTile
     ...(appVisual ?? {}),
     label: appResolvedLabel ?? intrinsicResolvedLabel ?? defaultTileLabel(tileDef),
   };
+}
+
+/**
+ * Resolve the visual (label, icon, colors) for a tile by merging its intrinsic
+ * metadata with `config`'s own reading of it, the config's reading winning field
+ * by field, and falling back to a kind-specific default label.
+ */
+export function resolveTileVisual(config: BrainEditorConfig, tileDef: IBrainTileDef): TileVisual {
+  return resolveTileVisualFrom(config.resolveTileVisual, tileDef);
 }
 
 /** How a tile reads to assistive technology: the kind of tile it is, and the label it shows. */

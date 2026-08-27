@@ -1,7 +1,7 @@
 import type { EditedBrainWorkspaces } from "@wendoo/assistant-panel";
-import { AssistantSurface, useAssistant } from "@wendoo/assistant-panel";
-import { useEditedBrain } from "@wendoo/ui";
-import { useEffect } from "react";
+import { AssistantSurface, brainSurfaceOf, useAssistant } from "@wendoo/assistant-panel";
+import { useEditedBrain, useOptionalBrainEditorConfig } from "@wendoo/ui";
+import { useEffect, useMemo } from "react";
 
 /** What the side region's tenant is given by the app that put it there. */
 export interface AssistantSidePanelProps {
@@ -27,8 +27,10 @@ export interface AssistantSidePanelProps {
  */
 export function AssistantSidePanel({ isOpen, fallbackName, workspaces, opensByPerson }: AssistantSidePanelProps) {
   const edited = useEditedBrain();
+  const editorConfig = useOptionalBrainEditorConfig();
   const { setActiveBrain, openSession } = useAssistant();
   const brainId = edited?.brainDef.id();
+  const brainSurface = useMemo(() => brainSurfaceOf(editorConfig, edited?.brainDef.catalog()), [editorConfig, edited]);
 
   useEffect(() => {
     workspaces.setEditedBrain(edited);
@@ -48,6 +50,7 @@ export function AssistantSidePanel({ isOpen, fallbackName, workspaces, opensByPe
       name={edited?.brainDef.name() ?? fallbackName}
       onLeaveIntent={edited?.takeKeyboard}
       opensByPerson={opensByPerson}
+      brainSurface={brainSurface}
     />
   );
 }

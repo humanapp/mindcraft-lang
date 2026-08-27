@@ -1,14 +1,8 @@
 import { assertUnreachable } from "@wendoo/core";
-import { type BrainServices, type IBrainTileDef, type ITileCatalog, LiteralDisplayFormats } from "@wendoo/core/brain";
-import {
-  applyDisplayFormat,
-  type BrainTileAccessorDef,
-  type BrainTileLiteralDef,
-  type BrainTileVariableDef,
-  getCatalogFallbackLabel,
-} from "@wendoo/core/brain/tiles";
+import type { BrainServices, IBrainTileDef, ITileCatalog } from "@wendoo/core/brain";
 import type { EditorMode } from "@wendoo/ui/brain-editor/editor-mode";
 import type { TileSourceLibrary } from "@wendoo/ui/brain-editor/tile-library-groups";
+import { resolveTileVisualFrom } from "@wendoo/ui/brain-editor/tile-visual-utils";
 import type { TileVisual } from "@wendoo/ui/brain-editor/types";
 import type { PrintTransport } from "@wendoo/ui/print/standalone-print-document";
 import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from "react";
@@ -67,36 +61,6 @@ interface DocsSidebarContextValue {
 
 const DocsSidebarContext = createContext<DocsSidebarContextValue | null>(null);
 
-function defaultTileLabel(tileDef: IBrainTileDef): string {
-  switch (tileDef.kind) {
-    case "literal": {
-      const literalDef = tileDef as BrainTileLiteralDef;
-      const format = literalDef.displayFormat;
-      return format && format !== LiteralDisplayFormats.Default && typeof literalDef.value === "number"
-        ? applyDisplayFormat(literalDef.value, format)
-        : literalDef.valueLabel || String(literalDef.value);
-    }
-    case "variable":
-      return (tileDef as BrainTileVariableDef).varName;
-    case "accessor":
-      return (tileDef as BrainTileAccessorDef).fieldName;
-    case "undefined":
-    case "sensor":
-    case "actuator":
-    case "parameter":
-    case "operator":
-    case "factory":
-    case "controlFlow":
-    case "modifier":
-    case "page":
-    case "output":
-    case "missing":
-      return getCatalogFallbackLabel(tileDef);
-    default:
-      return assertUnreachable(tileDef.kind);
-  }
-}
-
 interface DocsSidebarProviderProps {
   children: ReactNode;
   registry?: DocsRegistry;
@@ -150,21 +114,7 @@ export function DocsSidebarProvider({
   const registry = useMemo(() => externalRegistry ?? new DocsRegistry(), [externalRegistry]);
   const tileCatalog = useMemo(() => externalTileCatalog, [externalTileCatalog]);
   const resolveTileVisual = useCallback(
-    (tileDef: IBrainTileDef): TileVisual | undefined => {
-      const intrinsicVisual = tileDef.metadata as TileVisual | undefined;
-      const appVisual = resolveTileVisualProp?.(tileDef);
-      const appLabel = appVisual?.label;
-      const resolvedAppLabel = appLabel && appLabel !== getCatalogFallbackLabel(tileDef) ? appLabel : undefined;
-      const intrinsicLabel = intrinsicVisual?.label;
-      const resolvedIntrinsicLabel =
-        intrinsicLabel && intrinsicLabel !== getCatalogFallbackLabel(tileDef) ? intrinsicLabel : undefined;
-
-      return {
-        ...(intrinsicVisual ?? {}),
-        ...(appVisual ?? {}),
-        label: resolvedAppLabel ?? resolvedIntrinsicLabel ?? defaultTileLabel(tileDef),
-      };
-    },
+    (tileDef: IBrainTileDef): TileVisual | undefined => resolveTileVisualFrom(resolveTileVisualProp, tileDef),
     [resolveTileVisualProp]
   );
 

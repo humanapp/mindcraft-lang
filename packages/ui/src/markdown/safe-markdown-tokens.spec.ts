@@ -182,3 +182,47 @@ describe("lists", () => {
     ]);
   });
 });
+
+describe("references", () => {
+  test("claims a backticked tile, rule and page reference, carrying the id each names", () => {
+    assert.deepEqual(onlyBlockSpans("I took the `tile:actuator.say` out"), [
+      { kind: "text", text: "I took the " },
+      { kind: "reference", form: "tile", id: "actuator.say" },
+      { kind: "text", text: " out" },
+    ]);
+    assert.deepEqual(onlyBlockSpans("`rule:rule-0` fired"), [
+      { kind: "reference", form: "rule", id: "rule-0" },
+      { kind: "text", text: " fired" },
+    ]);
+    assert.deepEqual(onlyBlockSpans("sent me to `page:page-1`"), [
+      { kind: "text", text: "sent me to " },
+      { kind: "reference", form: "page", id: "page-1" },
+    ]);
+  });
+
+  test("reads a reference ahead of the plain code form that would also claim it", () => {
+    const spans = onlyBlockSpans("`tile:a` and `plain`");
+    assert.deepEqual(spans, [
+      { kind: "reference", form: "tile", id: "a" },
+      { kind: "text", text: " and " },
+      { kind: "code", text: "plain" },
+    ]);
+  });
+
+  test("keeps a word that is no reference form as plain code", () => {
+    assert.deepEqual(onlyBlockSpans("`brain:one`"), [{ kind: "code", text: "brain:one" }]);
+  });
+
+  test("keeps a reference with no id at all as plain code", () => {
+    assert.deepEqual(onlyBlockSpans("`tile:`"), [{ kind: "code", text: "tile:" }]);
+  });
+
+  test("reads a reference standing in a list item", () => {
+    assert.deepEqual(onlyList("- my `rule:rule-2`").items, [
+      [
+        { kind: "text", text: "my " },
+        { kind: "reference", form: "rule", id: "rule-2" },
+      ],
+    ]);
+  });
+});
