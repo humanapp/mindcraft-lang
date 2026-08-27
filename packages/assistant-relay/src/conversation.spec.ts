@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { ConversationRecord } from "./conversation.js";
 import { CONVERSATION_RECORD_VERSION, ConversationTurnFailureCode, conversationRecordSchema } from "./conversation.js";
-import { RelayTurnEndCode } from "./messages.js";
+import { NarrationJudgment, NarrationRole, RelayTurnEndCode } from "./messages.js";
 import { RelayDeclineCode, RelayTakeoverCode } from "./tool-calls.js";
 
 /** A record holding one entry of every shape the format defines. */
@@ -71,6 +71,16 @@ const record: ConversationRecord = {
     },
     { kind: "user", text: "and again" },
     { kind: "assistant", steps: [{ kind: "narration", text: "still going" }] },
+    { kind: "user", text: "and once more" },
+    {
+      kind: "assistant",
+      steps: [
+        { kind: "narration", text: "Two ways of being.", role: NarrationRole.Plan },
+        { kind: "narration", text: "It never fired.", body: "A child waits.", role: NarrationRole.Diagnosis },
+        { kind: "narration", text: "It hid.", role: NarrationRole.Verdict, judgment: NarrationJudgment.Succeeded },
+      ],
+      ending: { kind: "end", code: RelayTurnEndCode.Complete },
+    },
   ],
 };
 
@@ -106,6 +116,15 @@ describe("the conversation record", () => {
     const forged = {
       ...record,
       entries: [{ kind: "assistant", steps: [], tokens: 412 }],
+    };
+
+    assert.equal(conversationRecordSchema.safeParse(forged).success, false);
+  });
+
+  test("refuses a narration segment carrying a role the format does not define", () => {
+    const forged = {
+      ...record,
+      entries: [{ kind: "assistant", steps: [{ kind: "narration", text: "words", role: "aside" }] }],
     };
 
     assert.equal(conversationRecordSchema.safeParse(forged).success, false);

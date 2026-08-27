@@ -9,6 +9,12 @@
  * the live edge, which control the intent box stands beside, what a lost
  * session offers, which lines read markup in what they carry, and which opens
  * of the panel land the keyboard in the intent box.
+ *
+ * It pins too how what the entity said reads against the work it stands beside:
+ * which of its runs stand on cards of their own and which in its bubble, which
+ * plan dims once another takes its place, which rehearsal a verdict marks, how a
+ * diagnosis becomes the note that answered it, and how a snag takes the words
+ * said about it.
  */
 
 import assert from "node:assert/strict";
@@ -22,7 +28,13 @@ import type {
   ConversationTurnEnding,
   ConversationTurnStep,
 } from "@wendoo/assistant-relay";
-import { CONVERSATION_RECORD_VERSION, ConversationTurnFailureCode, RelayTurnEndCode } from "@wendoo/assistant-relay";
+import {
+  CONVERSATION_RECORD_VERSION,
+  ConversationTurnFailureCode,
+  NarrationJudgment,
+  NarrationRole,
+  RelayTurnEndCode,
+} from "@wendoo/assistant-relay";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ConversationViewProps } from "./ConversationView";
 import { ConversationView, intentKeyAction, landKeyboardInIntent } from "./ConversationView";
@@ -306,6 +318,49 @@ describe("a conversation with turns in it", () => {
 
     assert.deepEqual(laidOutLines(markup), ["narration", "narration"]);
     assert.deepEqual(bubbleKinds(markup), ["entity", "entity"]);
+  });
+
+  test("shows a run's headline and folds the longer form it came with beneath it", () => {
+    const markup = render({
+      record: record([
+        {
+          kind: "assistant",
+          steps: [{ kind: "narration", text: "It never fired.", body: "A child waits for its parent." }],
+        },
+      ]),
+    });
+
+    assert.match(markup, /data-assistant-narration(?!-)/);
+    assert.match(markup, /data-assistant-fold="narration"/);
+    assert.match(markup, /data-assistant-narration-body/);
+  });
+
+  test("folds nothing under a run that came with no longer form", () => {
+    const markup = render({
+      record: record([{ kind: "assistant", steps: [{ kind: "narration", text: "It never fired." }] }]),
+    });
+
+    assert.doesNotMatch(markup, /data-assistant-fold="narration"/);
+    assert.doesNotMatch(markup, /data-assistant-narration-body/);
+  });
+
+  test("marks a run with the role and judgment it carries, and leaves an unplaced run unmarked", () => {
+    const markup = render({
+      record: record([
+        {
+          kind: "assistant",
+          steps: [
+            { kind: "narration", text: "Two ways of being.", role: NarrationRole.Plan },
+            { kind: "narration", text: "It hid.", role: NarrationRole.Verdict, judgment: NarrationJudgment.Succeeded },
+            { kind: "narration", text: "Anything else." },
+          ],
+        },
+      ]),
+    });
+
+    assert.deepEqual(valuesOf(markup, "data-assistant-narration-role"), [NarrationRole.Plan, NarrationRole.Verdict]);
+    assert.deepEqual(valuesOf(markup, "data-assistant-judgment"), [NarrationJudgment.Succeeded]);
+    assert.deepEqual(cardKinds(markup), ["narration", "narration", "narration"]);
   });
 
   test("stands the work a turn did where it did it, among the narration around it", () => {
@@ -1068,6 +1123,201 @@ describe("the rehearsals a turn ran", () => {
     assert.deepEqual(valuesOf(markup, "data-assistant-run"), ["run-1", "run-2"]);
     assert.deepEqual(valuesOf(markup, "data-assistant-run-superseded"), ["true"]);
     assert.equal(countOf(markup, /data-assistant-fold="run"/), 2, "a superseded run still opens to its record");
+    assert.equal(countOf(markup, /data-assistant-fold="earlier-run"/), 1, "only the run stood after folds to a line");
+  });
+});
+
+describe("what the entity said, read against the work it stands beside", () => {
+  test("draws the runs that carry the shape of the work on cards, and the rest in its bubble", () => {
+    const markup = render({
+      record: record([
+        {
+          kind: "assistant",
+          steps: [
+            { kind: "narration", text: "Two pages.", role: NarrationRole.Plan },
+            { kind: "narration", text: "Why did it not fire?", role: NarrationRole.Diagnosis },
+            { kind: "narration", text: "It hid.", role: NarrationRole.Verdict, judgment: NarrationJudgment.Succeeded },
+            { kind: "narration", text: "Let me look." },
+          ],
+        },
+      ]),
+    });
+
+    assert.deepEqual(cardKinds(markup), ["narration", "narration", "narration", "narration"]);
+    assert.deepEqual(bubbleKinds(markup), ["entity", "entity"], "only the unshaped runs keep the bubble");
+  });
+
+  test("dims every plan the turn stood after, leaving the newest one plain", () => {
+    const markup = render({
+      record: record([
+        {
+          kind: "assistant",
+          steps: [
+            { kind: "narration", text: "Two pages.", role: NarrationRole.Plan },
+            { kind: "narration", text: "Working on it." },
+            { kind: "narration", text: "One page after all.", role: NarrationRole.Pivot },
+          ],
+        },
+      ]),
+    });
+
+    assert.deepEqual(valuesOf(markup, "data-assistant-narration-role"), [NarrationRole.Plan, NarrationRole.Pivot]);
+    assert.deepEqual(valuesOf(markup, "data-assistant-plan-superseded"), ["true"]);
+  });
+
+  test("dims no plan of a turn the conversation stood after, whose plan was carried out", () => {
+    const plan: ConversationTurnStep = { kind: "narration", text: "Two pages.", role: NarrationRole.Plan };
+    const markup = render({
+      record: record([
+        { kind: "user", text: "make me hide" },
+        { kind: "assistant", steps: [plan], ending: { kind: "end", code: RelayTurnEndCode.Complete } },
+        { kind: "user", text: "now make me run" },
+        { kind: "assistant", steps: [plan] },
+      ]),
+    });
+
+    assert.deepEqual(valuesOf(markup, "data-assistant-plan-superseded"), []);
+  });
+
+  test("gives a verdict's judgment to the rehearsal it stood after, and keeps the words it was said in", () => {
+    const markup = render({
+      record: record([
+        {
+          kind: "assistant",
+          steps: [
+            { kind: "toolCall", call: rehearsed({ runId: "run-1" }) },
+            {
+              kind: "narration",
+              text: "It hid every time.",
+              role: NarrationRole.Verdict,
+              judgment: NarrationJudgment.Succeeded,
+            },
+          ],
+        },
+      ]),
+    });
+
+    assert.deepEqual(valuesOf(markup, "data-assistant-run-judgment"), [NarrationJudgment.Succeeded]);
+    assert.deepEqual(cardKinds(markup), ["run", "narration"], "the verdict keeps a card of its own");
+  });
+
+  test("gives each rehearsal the verdict that followed it, and none to one no verdict reached", () => {
+    const markup = render({
+      record: record([
+        {
+          kind: "assistant",
+          steps: [
+            { kind: "toolCall", call: rehearsed({ runId: "run-1" }) },
+            { kind: "narration", text: "Not yet.", role: NarrationRole.Verdict, judgment: NarrationJudgment.Failed },
+            { kind: "toolCall", call: rehearsed({ runId: "run-2" }) },
+            { kind: "toolCall", call: rehearsed({ runId: "run-3" }) },
+            { kind: "narration", text: "There.", role: NarrationRole.Verdict, judgment: NarrationJudgment.Succeeded },
+          ],
+        },
+      ]),
+    });
+
+    assert.deepEqual(valuesOf(markup, "data-assistant-run"), ["run-1", "run-2", "run-3"]);
+    assert.deepEqual(valuesOf(markup, "data-assistant-run-judgment"), [
+      NarrationJudgment.Failed,
+      NarrationJudgment.Succeeded,
+    ]);
+  });
+
+  test("marks no rehearsal from a verdict standing before the turn ran one", () => {
+    const markup = render({
+      record: record([
+        {
+          kind: "assistant",
+          steps: [
+            { kind: "narration", text: "It hid.", role: NarrationRole.Verdict, judgment: NarrationJudgment.Succeeded },
+            { kind: "toolCall", call: rehearsed({ runId: "run-1" }) },
+          ],
+        },
+      ]),
+    });
+
+    assert.deepEqual(valuesOf(markup, "data-assistant-run-judgment"), []);
+  });
+
+  test("turns the diagnosis into the note that answered it, where the diagnosis stood", () => {
+    const markup = render({
+      record: record([
+        {
+          kind: "assistant",
+          steps: [
+            {
+              kind: "narration",
+              text: "Why did it not fire?",
+              body: "Both rules fired.",
+              role: NarrationRole.Diagnosis,
+            },
+            { kind: "toolCall", call: appliedEdit },
+            {
+              kind: "narration",
+              text: "A child waits for its parent.",
+              body: "So it needed its own rule.",
+              role: NarrationRole.Note,
+            },
+          ],
+        },
+      ]),
+    });
+
+    assert.deepEqual(cardKinds(markup), ["narration", "receipt"], "the note joined the card the diagnosis opened");
+    assert.deepEqual(valuesOf(markup, "data-assistant-narration-role"), [NarrationRole.Note]);
+    assert.deepEqual(valuesOf(markup, "data-assistant-note-from"), [NarrationRole.Diagnosis]);
+    const story = /data-assistant-narration-body[^>]*>([\s\S]*?)<\/div>/.exec(markup)?.[1] ?? "";
+    for (const kept of ["Why did it not fire?", "Both rules fired.", "So it needed its own rule."]) {
+      assert.ok(story.includes(kept), `the fold keeps ${JSON.stringify(kept)}`);
+    }
+  });
+
+  test("opens a card of its own for a note no diagnosis went looking for", () => {
+    const markup = render({
+      record: record([
+        {
+          kind: "assistant",
+          steps: [{ kind: "narration", text: "A child waits for its parent.", role: NarrationRole.Note }],
+        },
+      ]),
+    });
+
+    assert.deepEqual(cardKinds(markup), ["narration"]);
+    assert.deepEqual(valuesOf(markup, "data-assistant-note-from"), []);
+  });
+
+  test("gives a snag the words the entity said about it, in place of the line it reads as", () => {
+    const markup = render({
+      record: record([
+        {
+          kind: "assistant",
+          steps: [
+            { kind: "toolCall", call: refusedEdit },
+            {
+              kind: "narration",
+              text: "That tile only asks a question, so it cannot do anything.",
+              body: "I moved it to the other side.",
+              role: NarrationRole.Snag,
+            },
+          ],
+        },
+      ]),
+    });
+
+    assert.deepEqual(cardKinds(markup), ["snag"], "the snag's words joined the snag");
+    assert.deepEqual(valuesOf(markup, "data-assistant-snag-captioned"), ["true"]);
+    assert.match(markup, /data-assistant-snag-caption-body/);
+  });
+
+  test("leaves a snag no words reached reading as the line it always did", () => {
+    const markup = render({
+      record: record([{ kind: "assistant", steps: [{ kind: "toolCall", call: refusedEdit }] }]),
+    });
+
+    assert.deepEqual(cardKinds(markup), ["snag"]);
+    assert.deepEqual(valuesOf(markup, "data-assistant-snag-captioned"), []);
+    assert.deepEqual(valuesOf(markup, "data-assistant-snag-tile"), [escaped(seeTile.tileId)]);
   });
 });
 

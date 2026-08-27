@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { ConversationToolCall } from "@wendoo/assistant-relay";
-import { CONVERSATION_RECORD_VERSION, ConversationTurnFailureCode } from "@wendoo/assistant-relay";
+import {
+  CONVERSATION_RECORD_VERSION,
+  ConversationTurnFailureCode,
+  NarrationJudgment,
+  NarrationRole,
+} from "@wendoo/assistant-relay";
 import { activeRecord, emptyConversationStore, recordFor, withActiveBrain, withUpdate } from "./store";
 
 /** One served call, for the shape of a recorded tool call. */
@@ -52,6 +57,99 @@ describe("the conversation store", () => {
     assert.deepEqual(recordFor(store, "brain-a").entries, [
       { kind: "assistant", steps: [{ kind: "narration", text: "looking at it" }] },
     ]);
+  });
+
+  test("joins body fragments into the segment's body, keeping the headline apart", () => {
+    let store = withUpdate(emptyConversationStore(), "brain-a", { kind: "narration", text: "it never fired" });
+    store = withUpdate(store, "brain-a", { kind: "narration", text: "a child ", part: "body" });
+    store = withUpdate(store, "brain-a", { kind: "narration", text: "waits", part: "body" });
+
+    assert.deepEqual(recordFor(store, "brain-a").entries, [
+      {
+        kind: "assistant",
+        steps: [{ kind: "narration", text: "it never fired", body: "a child waits" }],
+      },
+    ]);
+  });
+
+  test("takes the segment's role and judgment from the first fragment carrying them", () => {
+    let store = withUpdate(emptyConversationStore(), "brain-a", {
+      kind: "narration",
+      text: "it hid",
+      role: NarrationRole.Verdict,
+      judgment: NarrationJudgment.Succeeded,
+    });
+    store = withUpdate(store, "brain-a", { kind: "narration", text: " every time", role: NarrationRole.Verdict });
+
+    assert.deepEqual(recordFor(store, "brain-a").entries, [
+      {
+        kind: "assistant",
+        steps: [
+          {
+            kind: "narration",
+            text: "it hid every time",
+            role: NarrationRole.Verdict,
+            judgment: NarrationJudgment.Succeeded,
+          },
+        ],
+      },
+    ]);
+  });
+
+  test("takes a role reaching a segment that opened without one", () => {
+    let store = withUpdate(emptyConversationStore(), "brain-a", { kind: "narration", text: "I found a problem." });
+    store = withUpdate(store, "brain-a", {
+      kind: "narration",
+      text: "both rules fired",
+      part: "body",
+      role: NarrationRole.Verdict,
+      judgment: NarrationJudgment.Failed,
+    });
+
+    const [entry] = recordFor(store, "brain-a").entries;
+    assert.deepEqual(entry?.kind === "assistant" ? entry.steps[0] : undefined, {
+      kind: "narration",
+      text: "I found a problem.",
+      body: "both rules fired",
+      role: NarrationRole.Verdict,
+      judgment: NarrationJudgment.Failed,
+    });
+  });
+
+  test("leaves the role a segment already carries where a later fragment disagrees", () => {
+    let store = withUpdate(emptyConversationStore(), "brain-a", {
+      kind: "narration",
+      text: "two pages",
+      role: NarrationRole.Plan,
+    });
+    store = withUpdate(store, "brain-a", {
+      kind: "narration",
+      text: "it switched",
+      part: "body",
+      role: NarrationRole.Verdict,
+      judgment: NarrationJudgment.Succeeded,
+    });
+
+    const [entry] = recordFor(store, "brain-a").entries;
+    assert.deepEqual(entry?.kind === "assistant" ? entry.steps[0] : undefined, {
+      kind: "narration",
+      text: "two pages",
+      body: "it switched",
+      role: NarrationRole.Plan,
+    });
+  });
+
+  test("gives a segment opened after a tool call the role of the fragment that opened it", () => {
+    let store = withUpdate(emptyConversationStore(), "brain-a", { kind: "narration", text: "before" });
+    store = withUpdate(store, "brain-a", { kind: "toolCall", call });
+    store = withUpdate(store, "brain-a", { kind: "narration", text: "after", role: NarrationRole.Note });
+
+    const [entry] = recordFor(store, "brain-a").entries;
+    assert.deepEqual(entry?.kind === "assistant" ? entry.steps[2] : undefined, {
+      kind: "narration",
+      text: "after",
+      role: NarrationRole.Note,
+    });
   });
 
   test("appends served calls to the running turn in call order", () => {

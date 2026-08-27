@@ -1,5 +1,12 @@
 import type { ProjectPageRef, ProjectRule, ProjectTile } from "@wendoo/assistant-bridge";
-import type { ConversationRecord, ConversationToolCall, ConversationTurnStep } from "@wendoo/assistant-relay";
+import type {
+  ConversationRecord,
+  ConversationToolCall,
+  ConversationTurnStep,
+  NarrationJudgment,
+  NarrationRole,
+} from "@wendoo/assistant-relay";
+import { NarrationRole as RoleCode } from "@wendoo/assistant-relay";
 import type { ToolActivity } from "./activity";
 import { toolActivity } from "./activity";
 import { callIdentity } from "./call-identity";
@@ -41,7 +48,18 @@ export interface ReceiptRule {
 /** A run of the entity's own words, exactly as it narrated them. */
 export interface NarrationBlock {
   readonly kind: typeof ConversationBlockKind.Narration;
+  /** The headline the run opens with, which the transcript always shows. */
   readonly text: string;
+  /** The longer form standing under {@link NarrationBlock.text}; absent when the run had none. */
+  readonly body?: string;
+  /** What this run is doing; absent where the service could not tell. */
+  readonly role?: NarrationRole;
+  /** How the rehearsal went; present only when {@link NarrationBlock.role} is `verdict`. */
+  readonly judgment?: NarrationJudgment;
+  /** `true` when a later plan in the same turn stands in this one's place. */
+  readonly superseded: boolean;
+  /** `true` when this note took the place of the diagnosis that went looking for it. */
+  readonly converted?: true;
 }
 
 /** Every edit of a turn that landed on one page, with the rules they left standing. */
@@ -72,6 +90,10 @@ export interface SnagBlock {
   readonly params: RefusedProposal["params"];
   /** Proposals asking for the very same thing that were refused this same way. */
   readonly repeats: number;
+  /** What the entity said the refusal was; absent while it has said nothing about it. */
+  readonly caption?: string;
+  /** The longer form standing under {@link SnagBlock.caption}; absent when it had none. */
+  readonly captionBody?: string;
 }
 
 /** One thing a turn looked at, or one call that never ran. */
@@ -103,6 +125,11 @@ export interface RunBlock {
   readonly run: RunEvidence;
   /** `true` when a later rehearsal in the same turn stands in this one's place. */
   readonly superseded: boolean;
+  /**
+   * How the entity judged this rehearsal, taken from the verdict it narrated
+   * next. Absent until it has judged one.
+   */
+  readonly judgment?: NarrationJudgment;
 }
 
 /** One way a build came back dirty, and every later build that came back the very same way. */
@@ -276,6 +303,8 @@ interface SnagDraft {
   readonly tileLabel?: string;
   readonly params: RefusedProposal["params"];
   repeats: number;
+  caption?: string;
+  captionBody?: string;
 }
 
 /** A run card being gathered, before it knows whether a later run stands in its place. */
@@ -283,6 +312,18 @@ interface RunDraft {
   readonly kind: typeof ConversationBlockKind.Run;
   readonly run: RunEvidence;
   superseded: boolean;
+  judgment?: NarrationJudgment;
+}
+
+/** A run of the entity's words being gathered, before what it said next has been read. */
+interface NarrationDraft {
+  readonly kind: typeof ConversationBlockKind.Narration;
+  text: string;
+  body?: string;
+  role?: NarrationRole;
+  judgment?: NarrationJudgment;
+  superseded: boolean;
+  converted?: true;
 }
 
 /** A dirty build being gathered, before it knows how many builds it stands for. */
@@ -294,7 +335,23 @@ interface BuildDraft {
 }
 
 /** One block while a turn is still being read. */
-type BlockDraft = NarrationBlock | ReceiptDraft | SnagDraft | RunDraft | BuildDraft;
+type BlockDraft = NarrationDraft | ReceiptDraft | SnagDraft | RunDraft | BuildDraft;
+
+/**
+ * Turn `diagnosis` into the note `resolution` states: the lesson becomes the
+ * headline the card shows, and the finding the diagnosis opened with joins the
+ * investigation under it as the long story.
+ */
+function convertToNote(diagnosis: NarrationDraft, resolution: NarrationDraft): void {
+  const story = [diagnosis.text, diagnosis.body, resolution.body].filter(
+    (part): part is string => part !== undefined && part.length > 0
+  );
+  diagnosis.role = RoleCode.Note;
+  diagnosis.judgment = undefined;
+  diagnosis.text = resolution.text;
+  diagnosis.body = story.length > 0 ? story.join("\n\n") : undefined;
+  diagnosis.converted = true;
+}
 
 /** How much a diagnostic is graded at when it is what stops a brain building. */
 const stoppingSeverity = "error";
@@ -332,6 +389,50 @@ export function receiptRules(
   }));
 }
 
+/** `draft` as the block the transcript renders, everything it gathered now settled. */
+function laidOutBlock(draft: BlockDraft, parentOf: ReadonlyMap<string, string>): ConversationBlock {
+  switch (draft.kind) {
+    case ConversationBlockKind.Receipt:
+      return laidOutReceipt(draft, parentOf);
+    case ConversationBlockKind.Snag:
+      return {
+        kind: ConversationBlockKind.Snag,
+        code: draft.code,
+        ...(draft.ruleId === undefined ? {} : { ruleId: draft.ruleId }),
+        ...(draft.tileId === undefined ? {} : { tileId: draft.tileId }),
+        ...(draft.tileLabel === undefined ? {} : { tileLabel: draft.tileLabel }),
+        params: draft.params,
+        repeats: draft.repeats,
+        ...(draft.caption === undefined ? {} : { caption: draft.caption }),
+        ...(draft.captionBody === undefined ? {} : { captionBody: draft.captionBody }),
+      };
+    case ConversationBlockKind.Run:
+      return {
+        kind: ConversationBlockKind.Run,
+        run: draft.run,
+        superseded: draft.superseded,
+        ...(draft.judgment === undefined ? {} : { judgment: draft.judgment }),
+      };
+    case ConversationBlockKind.Build:
+      return {
+        kind: ConversationBlockKind.Build,
+        diagnostics: draft.diagnostics,
+        errors: draft.errors,
+        repeats: draft.repeats,
+      };
+    case ConversationBlockKind.Narration:
+      return {
+        kind: ConversationBlockKind.Narration,
+        text: draft.text,
+        ...(draft.body === undefined ? {} : { body: draft.body }),
+        ...(draft.role === undefined ? {} : { role: draft.role }),
+        ...(draft.judgment === undefined ? {} : { judgment: draft.judgment }),
+        superseded: draft.superseded,
+        ...(draft.converted === undefined ? {} : { converted: draft.converted }),
+      };
+  }
+}
+
 /** `draft` as the receipt the transcript renders, with its rules laid out at the depth each stands. */
 function laidOutReceipt(draft: ReceiptDraft, parentOf: ReadonlyMap<string, string>): ReceiptBlock {
   const rules = receiptRules(draft.rules, parentOf);
@@ -357,6 +458,14 @@ function laidOutReceipt(draft: ReceiptDraft, parentOf: ReadonlyMap<string, strin
  * narration falls between them. A dirty build counts the same way, on the things
  * the build reported. Every rehearsal but the turn's last is marked superseded.
  * A clean build marks every receipt the turn has opened by then.
+ *
+ * Four kinds of narration are read against the block standing before them, so
+ * what the entity said lands on the thing it was about: every plan but the
+ * turn's last is marked superseded, a verdict gives its judgment to the
+ * rehearsal it followed, a note takes the place of the diagnosis that went
+ * looking for it, and a snag gives its words to the refusal it followed. A
+ * verdict standing before any rehearsal, and a note or snag standing before
+ * what it would join, are left as the plain runs of words they are.
  */
 export function conversationBlocks(
   steps: readonly ConversationTurnStep[],
@@ -367,8 +476,11 @@ export function conversationBlocks(
   const snags = new Map<string, SnagDraft>();
   const builds = new Map<string, BuildDraft>();
   const runs: RunDraft[] = [];
+  const plans: NarrationDraft[] = [];
   const lookups: LookupDraft[] = [];
   const lookupsById = new Map<string, LookupDraft>();
+  let openDiagnosis: NarrationDraft | undefined;
+  let lastSnag: SnagDraft | undefined;
 
   const noteLookup = (call: ConversationToolCall, activity: ToolActivity): void => {
     const identity = callIdentity(call.name, call.input);
@@ -415,6 +527,7 @@ export function conversationBlocks(
       const seen = snags.get(identity);
       if (seen) {
         seen.repeats++;
+        lastSnag = seen;
         return;
       }
       const ruleId = refused.params.ruleId;
@@ -431,6 +544,7 @@ export function conversationBlocks(
       };
       snags.set(identity, snag);
       drafts.push(snag);
+      lastSnag = snag;
       return;
     }
 
@@ -471,40 +585,43 @@ export function conversationBlocks(
   };
 
   for (const step of steps) {
-    if (step.kind === "narration") {
-      drafts.push({ kind: ConversationBlockKind.Narration, text: step.text });
+    if (step.kind !== "narration") {
+      gather(step.call);
       continue;
     }
-    gather(step.call);
+
+    const said: NarrationDraft = {
+      kind: ConversationBlockKind.Narration,
+      text: step.text,
+      ...(step.body === undefined ? {} : { body: step.body }),
+      ...(step.role === undefined ? {} : { role: step.role }),
+      ...(step.judgment === undefined ? {} : { judgment: step.judgment }),
+      superseded: false,
+    };
+
+    if (said.role === RoleCode.Snag && lastSnag) {
+      lastSnag.caption = said.text;
+      lastSnag.captionBody = said.body;
+      continue;
+    }
+    if (said.role === RoleCode.Note && openDiagnosis) {
+      convertToNote(openDiagnosis, said);
+      openDiagnosis = undefined;
+      continue;
+    }
+    if (said.role === RoleCode.Verdict && said.judgment !== undefined) {
+      const rehearsal = runs[runs.length - 1];
+      if (rehearsal) rehearsal.judgment = said.judgment;
+    }
+    if (said.role === RoleCode.Plan || said.role === RoleCode.Pivot) {
+      for (const earlier of plans) earlier.superseded = true;
+      plans.push(said);
+    }
+    if (said.role === RoleCode.Diagnosis) openDiagnosis = said;
+    drafts.push(said);
   }
 
-  const blocks: ConversationBlock[] = drafts.map((draft): ConversationBlock => {
-    switch (draft.kind) {
-      case ConversationBlockKind.Receipt:
-        return laidOutReceipt(draft, context.parentOf);
-      case ConversationBlockKind.Snag:
-        return {
-          kind: ConversationBlockKind.Snag,
-          code: draft.code,
-          ...(draft.ruleId === undefined ? {} : { ruleId: draft.ruleId }),
-          ...(draft.tileId === undefined ? {} : { tileId: draft.tileId }),
-          ...(draft.tileLabel === undefined ? {} : { tileLabel: draft.tileLabel }),
-          params: draft.params,
-          repeats: draft.repeats,
-        };
-      case ConversationBlockKind.Run:
-        return { kind: ConversationBlockKind.Run, run: draft.run, superseded: draft.superseded };
-      case ConversationBlockKind.Build:
-        return {
-          kind: ConversationBlockKind.Build,
-          diagnostics: draft.diagnostics,
-          errors: draft.errors,
-          repeats: draft.repeats,
-        };
-      default:
-        return draft;
-    }
-  });
+  const blocks: ConversationBlock[] = drafts.map((draft) => laidOutBlock(draft, context.parentOf));
   if (lookups.length > 0) blocks.push({ kind: ConversationBlockKind.Lookups, steps: lookups });
   return blocks;
 }

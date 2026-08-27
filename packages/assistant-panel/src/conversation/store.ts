@@ -1,17 +1,32 @@
 import type {
   ConversationAssistantEntry,
   ConversationEntry,
+  ConversationNarrationSegment,
   ConversationRecord,
   ConversationToolCall,
   ConversationTurnEnding,
   ConversationTurnStep,
+  NarrationJudgment,
+  NarrationRole,
 } from "@wendoo/assistant-relay";
-import { CONVERSATION_RECORD_VERSION } from "@wendoo/assistant-relay";
+import { CONVERSATION_RECORD_VERSION, NarrationPart } from "@wendoo/assistant-relay";
+
+/** One fragment of narration, as it lands in a brain's record. */
+export interface NarrationUpdate {
+  readonly kind: "narration";
+  readonly text: string;
+  /** The part of its run this fragment belongs to; absent for the headline. */
+  readonly part?: NarrationPart;
+  /** What the run this fragment belongs to is doing; read from the first fragment carrying one. */
+  readonly role?: NarrationRole;
+  /** How the rehearsal went; read from the first fragment of a `verdict` run carrying one. */
+  readonly judgment?: NarrationJudgment;
+}
 
 /** One step of a turn, as it lands in a brain's record. */
 export type ConversationUpdate =
   | { readonly kind: "user"; readonly text: string }
-  | { readonly kind: "narration"; readonly text: string }
+  | NarrationUpdate
   | { readonly kind: "toolCall"; readonly call: ConversationToolCall }
   | { readonly kind: "ending"; readonly ending: ConversationTurnEnding };
 
@@ -49,15 +64,32 @@ function openTurn(entries: readonly ConversationEntry[]): ConversationAssistantE
 }
 
 /**
- * `steps` with `text` joined onto the segment they end in, or carrying a new
- * segment when the last thing the turn did was call a tool. Empty text opens
- * no segment and leaves `steps` as they stand.
+ * `steps` with `update`'s text joined onto the segment they end in, or carrying
+ * a new segment when the last thing the turn did was call a tool. Text marked
+ * as body joins that segment's body and everything else joins its headline. The
+ * first fragment carrying a role gives the segment both its role and its
+ * judgment, whether or not it is the one that opened the segment, and a later
+ * fragment moves neither. Empty text opens no segment and leaves `steps` as
+ * they stand.
  */
-function withNarration(steps: readonly ConversationTurnStep[], text: string): readonly ConversationTurnStep[] {
-  if (text.length === 0) return steps;
+function withNarration(
+  steps: readonly ConversationTurnStep[],
+  update: NarrationUpdate
+): readonly ConversationTurnStep[] {
+  if (update.text.length === 0) return steps;
   const last = steps.length > 0 ? steps[steps.length - 1] : undefined;
-  if (last?.kind !== "narration") return [...steps, { kind: "narration", text }];
-  return [...steps.slice(0, -1), { kind: "narration", text: last.text + text }];
+  const standing: ConversationNarrationSegment = last?.kind === "narration" ? last : { kind: "narration", text: "" };
+  const marked = standing.role === undefined ? update : standing;
+  const open: ConversationNarrationSegment = {
+    ...standing,
+    ...(marked.role === undefined ? {} : { role: marked.role }),
+    ...(marked.judgment === undefined ? {} : { judgment: marked.judgment }),
+  };
+  const grown: ConversationNarrationSegment =
+    update.part === NarrationPart.Body
+      ? { ...open, body: (open.body ?? "") + update.text }
+      : { ...open, text: open.text + update.text };
+  return [...(last?.kind === "narration" ? steps.slice(0, -1) : steps), grown];
 }
 
 /**
@@ -76,7 +108,7 @@ function withUpdateApplied(record: ConversationRecord, update: ConversationUpdat
 
   switch (update.kind) {
     case "narration":
-      return { ...record, entries: [...before, { ...turn, steps: withNarration(turn.steps, update.text) }] };
+      return { ...record, entries: [...before, { ...turn, steps: withNarration(turn.steps, update) }] };
     case "toolCall":
       return {
         ...record,

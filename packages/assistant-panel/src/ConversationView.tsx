@@ -5,7 +5,12 @@ import type {
   ConversationRecord,
   ConversationTurnEnding,
 } from "@wendoo/assistant-relay";
-import { ConversationTurnFailureCode, RelayTurnEndCode } from "@wendoo/assistant-relay";
+import {
+  ConversationTurnFailureCode,
+  NarrationJudgment,
+  NarrationRole,
+  RelayTurnEndCode,
+} from "@wendoo/assistant-relay";
 import { kBrainDeskFill } from "@wendoo/ui/brain-editor/brain-desk";
 import { kSentenceTypeClasses } from "@wendoo/ui/brain-editor/sentence-type";
 import { SafeMarkdown } from "@wendoo/ui/markdown/SafeMarkdown";
@@ -14,6 +19,7 @@ import type {
   BuildBlock,
   ConversationBlock,
   LookupsBlock,
+  NarrationBlock,
   ReceiptBlock,
   ReceiptRule,
   RunBlock,
@@ -84,6 +90,32 @@ const tileChipClasses: Record<EditSide, string> = {
   do: "border-brain-accent/40 bg-brain-accent/20",
 };
 
+/** How much of itself a block a later one stands in the place of keeps on screen. */
+const supersededClasses = "opacity-60";
+
+/**
+ * The roles the transcript draws on a card of their own. The rest of what the
+ * entity says stands in its speaking bubble.
+ */
+const cardedRoles: readonly string[] = [
+  NarrationRole.Plan,
+  NarrationRole.Pivot,
+  NarrationRole.Diagnosis,
+  NarrationRole.Note,
+];
+
+/** What a verdict reads as on the rehearsal it judged. */
+const verdictWords: Record<NarrationJudgment, string> = {
+  [NarrationJudgment.Succeeded]: "it worked",
+  [NarrationJudgment.Failed]: "it did not",
+};
+
+/** The tint a verdict pill reads in. */
+const verdictClasses: Record<NarrationJudgment, string> = {
+  [NarrationJudgment.Succeeded]: "border-brain-accent/40 bg-brain-accent/20",
+  [NarrationJudgment.Failed]: "border-destructive/40 bg-destructive/20",
+};
+
 /** Pixels a rule is indented per rule it stands under. */
 const ruleIndentPx = 12;
 
@@ -148,6 +180,17 @@ function Fold({ kind, summary, children }: { kind: string; summary: string; chil
       <summary className="cursor-pointer list-none pointer-coarse:min-h-11 pointer-coarse:py-2">{summary}</summary>
       <div className="mt-1 flex flex-col gap-0.5 border-border border-l pl-2">{children}</div>
     </details>
+  );
+}
+
+/** How the entity judged a rehearsal, standing on the card of the run it judged. */
+function VerdictPill({ judgment }: { judgment: NarrationJudgment }) {
+  return (
+    <span
+      className={`shrink-0 rounded-md border px-1.5 py-0.5 text-card-foreground text-xs ${verdictClasses[judgment]}`}
+    >
+      {verdictWords[judgment]}
+    </span>
   );
 }
 
@@ -228,7 +271,11 @@ function ReceiptView({ block }: { block: ReceiptBlock }) {
   );
 }
 
-/** One way a proposal was refused, and how many proposals asked for that very thing. */
+/**
+ * One way a proposal was refused, and how many proposals asked for that very
+ * thing. The entity's own words about the refusal stand as the line the card
+ * reads as where it said any; the fixed line stands where it has not.
+ */
 function SnagView({ block }: { block: SnagBlock }) {
   return (
     <Card kind={ConversationBlockKind.Snag}>
@@ -238,14 +285,26 @@ function SnagView({ block }: { block: SnagBlock }) {
         data-assistant-snag-repeats={block.repeats}
         {...(block.ruleId ? { "data-assistant-snag-rule": block.ruleId } : {})}
         {...(block.tileId ? { "data-assistant-snag-tile": block.tileId } : {})}
+        {...(block.caption === undefined ? {} : { "data-assistant-snag-captioned": "true" })}
         className="flex flex-wrap items-center gap-1.5 text-card-foreground text-sm"
       >
-        <span>Hit a wall:</span>
-        {block.tileId && <TileChip tile={{ tileId: block.tileId, label: block.tileLabel ?? block.tileId }} side="do" />}
-        <span>does not fit there.</span>
+        {block.caption === undefined ? (
+          <>
+            <span>Hit a wall:</span>
+            {block.tileId && (
+              <TileChip tile={{ tileId: block.tileId, label: block.tileLabel ?? block.tileId }} side="do" />
+            )}
+            <span>does not fit there.</span>
+          </>
+        ) : (
+          <span className="grow">
+            <SafeMarkdown text={block.caption} />
+          </span>
+        )}
         {block.repeats > 1 && <span className="text-muted-foreground text-xs">{`(x${block.repeats})`}</span>}
       </div>
       <Fold kind="diagnostic" summary="what the editor said">
+        {block.captionBody !== undefined && <div data-assistant-snag-caption-body>{block.captionBody}</div>}
         {Object.entries(block.params).map(([key, value]) => (
           <p key={key} data-assistant-diag-param={key}>
             {`${key}: ${Array.isArray(value) ? value.join(", ") : String(value)}`}
@@ -288,14 +347,14 @@ function RunTimeline({ run, context }: { run: RunEvidence; context: TranscriptCo
             data-assistant-cell-thinks={cell.thinks}
             {...(cell.identity === undefined ? {} : { "data-assistant-cell-identity": identityStep(cell.identity) })}
             style={{ flexGrow: cell.thinks, height: activityHeight[cell.activity], background: cellFill(cell) }}
-            className="min-w-[3px] rounded-[2px]"
+            className="min-w-0.75 rounded-xs"
           />
         ))}
         {uncovered > 0 && (
           <span
             data-assistant-timeline-cut={uncovered}
             style={{ flexGrow: uncovered }}
-            className="h-full min-w-[3px] rounded-[2px] border border-border border-dashed"
+            className="h-full min-w-0.75 rounded-xs border border-border border-dashed"
           />
         )}
         {run.markers.map((marker, at) => (
@@ -326,65 +385,97 @@ function RunTimeline({ run, context }: { run: RunEvidence; context: TranscriptCo
   );
 }
 
-/** One rehearsal a turn asked for: what the run did, and the whole record of it under a fold. */
+/**
+ * One rehearsal a turn asked for: the line it reads as with the verdict the
+ * entity gave it, what the run did, and the whole record of it under a fold. A
+ * rehearsal a later one stands in the place of keeps only its line, opening to
+ * the rest of itself when the reader asks.
+ */
 function RunView({ block, context }: { block: RunBlock; context: TranscriptContext }) {
   const { run } = block;
   const ran = run.blocked === undefined;
   const pageChanges = run.markers.filter((marker) => marker.kind === RunMarkerKind.Page).length;
+  const line = (
+    <div className="flex items-baseline gap-2">
+      <p className="grow text-card-foreground text-sm">{ran ? "I watched it run." : "I could not run it."}</p>
+      {block.judgment && <VerdictPill judgment={block.judgment} />}
+      {ran && <span className="shrink-0 text-muted-foreground text-xs">{`${run.thinks} thinks`}</span>}
+    </div>
+  );
+  const evidence = (
+    <>
+      {ran && <RunTimeline run={run} context={context} />}
+      <div className="flex flex-wrap gap-x-3 text-muted-foreground text-xs">
+        {run.asked !== undefined && run.asked !== run.thinks && (
+          <span>{`stopped after ${run.thinks} of ${run.asked}`}</span>
+        )}
+        {pageChanges > 0 && <span>{`${pageChanges} page changes`}</span>}
+        {run.covered < run.thinks && <span>the record stops part way</span>}
+        {run.excludedRules.length > 0 && <span>{`${run.excludedRules.length} rules left out`}</span>}
+      </div>
+    </>
+  );
+  const record = run.cells.length > 0 && (
+    <Fold kind="run" summary="open the run">
+      {run.cells.map((cell) => (
+        <p key={`step-${cell.from}`} data-assistant-run-step={cell.activity}>
+          {`${cellThinks(cell)}: ${cell.activity}`}
+        </p>
+      ))}
+      {run.dispatchTotals.map((total) => {
+        const split = total.lastIndexOf("=");
+        const call = split === -1 ? total : total.slice(0, split);
+        return (
+          <p
+            key={`total-${total}`}
+            data-assistant-dispatch={call}
+            data-assistant-dispatch-count={total.slice(split + 1)}
+          >
+            {total}
+          </p>
+        );
+      })}
+      {run.world && (
+        <p data-assistant-run-world={run.world.brainsExecuted}>
+          {`${run.world.brainsExecuted} brains ran, ${run.world.initialPopulation} standing at the start and ${run.world.finalPopulation} at the end`}
+        </p>
+      )}
+    </Fold>
+  );
+  const glance = {
+    "data-assistant-glance": true,
+    "data-assistant-run": run.runId,
+    "data-assistant-run-state": ran ? "ran" : "blocked",
+    ...(run.blocked === undefined ? {} : { "data-assistant-run-blocked": run.blocked }),
+    ...(block.superseded ? { "data-assistant-run-superseded": "true" } : {}),
+    ...(block.judgment ? { "data-assistant-run-judgment": block.judgment } : {}),
+    "data-assistant-run-thinks": run.thinks,
+    ...(run.asked === undefined || run.asked === run.thinks ? {} : { "data-assistant-run-asked": run.asked }),
+    ...(run.covered < run.thinks ? { "data-assistant-run-truncated": "true" } : {}),
+  };
+
+  if (block.superseded) {
+    return (
+      <Card kind={ConversationBlockKind.Run}>
+        <div {...glance} className={supersededClasses}>
+          <details data-assistant-fold="earlier-run">
+            <summary className="cursor-pointer list-none pointer-coarse:min-h-11 pointer-coarse:py-2">{line}</summary>
+            <div className="mt-1.5 flex flex-col gap-1.5">
+              {evidence}
+              {record}
+            </div>
+          </details>
+        </div>
+      </Card>
+    );
+  }
   return (
     <Card kind={ConversationBlockKind.Run}>
-      <div
-        data-assistant-glance
-        data-assistant-run={run.runId}
-        data-assistant-run-state={ran ? "ran" : "blocked"}
-        {...(run.blocked === undefined ? {} : { "data-assistant-run-blocked": run.blocked })}
-        {...(block.superseded ? { "data-assistant-run-superseded": "true" } : {})}
-        data-assistant-run-thinks={run.thinks}
-        {...(run.asked === undefined || run.asked === run.thinks ? {} : { "data-assistant-run-asked": run.asked })}
-        {...(run.covered < run.thinks ? { "data-assistant-run-truncated": "true" } : {})}
-        className="flex flex-col gap-1.5"
-      >
-        <div className="flex items-baseline gap-2">
-          <p className="grow text-card-foreground text-sm">{ran ? "I watched it run." : "I could not run it."}</p>
-          {ran && <span className="shrink-0 text-muted-foreground text-xs">{`${run.thinks} thinks`}</span>}
-        </div>
-        {ran && <RunTimeline run={run} context={context} />}
-        <div className="flex flex-wrap gap-x-3 text-muted-foreground text-xs">
-          {run.asked !== undefined && run.asked !== run.thinks && (
-            <span>{`stopped after ${run.thinks} of ${run.asked}`}</span>
-          )}
-          {pageChanges > 0 && <span>{`${pageChanges} page changes`}</span>}
-          {run.covered < run.thinks && <span>the record stops part way</span>}
-          {run.excludedRules.length > 0 && <span>{`${run.excludedRules.length} rules left out`}</span>}
-        </div>
+      <div {...glance} className="flex flex-col gap-1.5">
+        {line}
+        {evidence}
       </div>
-      {run.cells.length > 0 && (
-        <Fold kind="run" summary="open the run">
-          {run.cells.map((cell) => (
-            <p key={`step-${cell.from}`} data-assistant-run-step={cell.activity}>
-              {`${cellThinks(cell)}: ${cell.activity}`}
-            </p>
-          ))}
-          {run.dispatchTotals.map((total) => {
-            const split = total.lastIndexOf("=");
-            const call = split === -1 ? total : total.slice(0, split);
-            return (
-              <p
-                key={`total-${total}`}
-                data-assistant-dispatch={call}
-                data-assistant-dispatch-count={total.slice(split + 1)}
-              >
-                {total}
-              </p>
-            );
-          })}
-          {run.world && (
-            <p data-assistant-run-world={run.world.brainsExecuted}>
-              {`${run.world.brainsExecuted} brains ran, ${run.world.initialPopulation} standing at the start and ${run.world.finalPopulation} at the end`}
-            </p>
-          )}
-        </Fold>
-      )}
+      {record}
     </Card>
   );
 }
@@ -482,21 +573,44 @@ function LookupsView({ block }: { block: LookupsBlock }) {
   );
 }
 
+/**
+ * A run of the entity's own words: the headline it opens with, and the longer
+ * form under a fold where it had one. The runs that carry the shape of the work
+ * -- the plan it means to follow, and what it learned -- stand on a card of
+ * their own; everything else stands in the entity's speaking bubble.
+ */
+function NarrationCardView({ block }: { block: NarrationBlock }) {
+  const carded = block.role !== undefined && cardedRoles.includes(block.role);
+  const surface = carded ? `${cardClasses} flex flex-col gap-1.5` : entityBubbleClasses;
+  return (
+    <div
+      data-assistant-card={ConversationBlockKind.Narration}
+      {...(carded ? {} : { "data-assistant-bubble": "entity" })}
+      {...(block.role ? { "data-assistant-narration-role": block.role } : {})}
+      {...(block.judgment ? { "data-assistant-judgment": block.judgment } : {})}
+      {...(block.superseded ? { "data-assistant-plan-superseded": "true" } : {})}
+      {...(block.converted ? { "data-assistant-note-from": NarrationRole.Diagnosis } : {})}
+      className={block.superseded ? `${surface} ${supersededClasses}` : surface}
+    >
+      <div data-assistant-narration className="text-card-foreground text-sm">
+        <SafeMarkdown text={block.text} />
+      </div>
+      {block.body !== undefined && (
+        <Fold kind="narration" summary="the long story">
+          <div data-assistant-narration-body>
+            <SafeMarkdown text={block.body} />
+          </div>
+        </Fold>
+      )}
+    </div>
+  );
+}
+
 /** One block of a turn, drawn in the idiom its kind reads in. */
 function BlockView({ block, context }: { block: ConversationBlock; context: TranscriptContext }) {
   switch (block.kind) {
     case ConversationBlockKind.Narration:
-      return (
-        <div
-          data-assistant-card={ConversationBlockKind.Narration}
-          data-assistant-bubble="entity"
-          className={entityBubbleClasses}
-        >
-          <div data-assistant-narration className="text-card-foreground text-sm">
-            <SafeMarkdown text={block.text} />
-          </div>
-        </div>
-      );
+      return <NarrationCardView block={block} />;
     case ConversationBlockKind.Receipt:
       return <ReceiptView block={block} />;
     case ConversationBlockKind.Snag:

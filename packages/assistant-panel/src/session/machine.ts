@@ -525,7 +525,13 @@ export class AssistantMachine {
       const message = await channel.next();
       switch (message.type) {
         case "turn:narration":
-          this.record(brainId, { kind: "narration", text: message.text });
+          this.record(brainId, {
+            kind: "narration",
+            text: message.text,
+            ...(message.part === undefined ? {} : { part: message.part }),
+            ...(message.role === undefined ? {} : { role: message.role }),
+            ...(message.judgment === undefined ? {} : { judgment: message.judgment }),
+          });
           break;
         case "turn:toolCalls": {
           let served: RelayToolResultBatch;

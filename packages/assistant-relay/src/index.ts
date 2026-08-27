@@ -25,7 +25,14 @@ export type {
   RelayUpstreamMessage,
   RelayUserMessage,
 } from "./messages.js";
-export { RelayTurnEndCode, relayDownstreamMessageSchema, relayUpstreamMessageSchema } from "./messages.js";
+export {
+  NarrationJudgment,
+  NarrationPart,
+  NarrationRole,
+  RelayTurnEndCode,
+  relayDownstreamMessageSchema,
+  relayUpstreamMessageSchema,
+} from "./messages.js";
 export type {
   RelayConnect,
   RelayConnectAccepted,

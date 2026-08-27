@@ -2,7 +2,14 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { CONVERSATION_RECORD_VERSION, conversationRecordSchema } from "./conversation.js";
 import type { RelayDownstreamMessage, RelayUpstreamMessage } from "./messages.js";
-import { RelayTurnEndCode, relayDownstreamMessageSchema, relayUpstreamMessageSchema } from "./messages.js";
+import {
+  NarrationJudgment,
+  NarrationPart,
+  NarrationRole,
+  RelayTurnEndCode,
+  relayDownstreamMessageSchema,
+  relayUpstreamMessageSchema,
+} from "./messages.js";
 import { ASSISTANT_RELAY_PROTOCOL_VERSION, RelayRefusalCode } from "./session.js";
 import { RelayDeclineCode, RelayTakeoverCode } from "./tool-calls.js";
 
@@ -17,6 +24,14 @@ const downstream: readonly RelayDownstreamMessage[] = [
   },
   { type: "turn:start" },
   { type: "turn:narration", text: "placing the sensor" },
+  { type: "turn:narration", text: "Two ways of being.", role: NarrationRole.Plan },
+  { type: "turn:narration", text: "the longer story", part: NarrationPart.Body, role: NarrationRole.Diagnosis },
+  {
+    type: "turn:narration",
+    text: "It hid.",
+    role: NarrationRole.Verdict,
+    judgment: NarrationJudgment.Succeeded,
+  },
   {
     type: "turn:toolCalls",
     requests: [{ requestId: "r1", name: "read_project", input: {}, timeoutMs: 15000 }],
@@ -119,6 +134,24 @@ describe("the relay wire", () => {
       Truncated: "truncated",
       Failed: "failed",
     });
+  });
+
+  test("names every role a run of narration carries, as the wire spells it", () => {
+    assert.deepEqual(NarrationRole, {
+      Plan: "plan",
+      Pivot: "pivot",
+      Diagnosis: "diagnosis",
+      Note: "note",
+      Verdict: "verdict",
+      Snag: "snag",
+    });
+  });
+
+  test("refuses a narration role the wire does not define", () => {
+    assert.equal(
+      relayDownstreamMessageSchema.safeParse({ type: "turn:narration", text: "words", role: "aside" }).success,
+      false
+    );
   });
 
   test("refuses an upstream message carrying a field the wire does not define", () => {

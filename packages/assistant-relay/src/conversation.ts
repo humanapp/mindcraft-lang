@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { RelayTurnEndCode } from "./messages.js";
+import type { NarrationJudgment, NarrationRole } from "./messages.js";
+import { NarrationJudgment as JudgmentCode, RelayTurnEndCode, NarrationRole as RoleCode } from "./messages.js";
 import type { RelayToolOutcome } from "./tool-calls.js";
 import { relayToolOutcomeSchema } from "./tool-calls.js";
 
@@ -50,7 +51,17 @@ export type ConversationTurnEnding =
  */
 export interface ConversationNarrationSegment {
   readonly kind: "narration";
+  /**
+   * The headline the run opens with, and the whole of a run the service placed
+   * no body in.
+   */
   readonly text: string;
+  /** The longer form standing under {@link text}, which a surface may fold away. */
+  readonly body?: string;
+  /** What this run is doing; absent where the service could not tell. */
+  readonly role?: NarrationRole;
+  /** How the rehearsal went; present only when {@link role} is `verdict`. */
+  readonly judgment?: NarrationJudgment;
 }
 
 /** One tool call the turn made at this point, and the answer it was given. */
@@ -109,7 +120,13 @@ const conversationTurnEndingSchema = z.discriminatedUnion("kind", [
 
 /** Schema of {@link ConversationTurnStep}. */
 const conversationTurnStepSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("narration"), text: z.string() }),
+  z.strictObject({
+    kind: z.literal("narration"),
+    text: z.string(),
+    body: z.string().optional(),
+    role: z.enum(RoleCode).optional(),
+    judgment: z.enum(JudgmentCode).optional(),
+  }),
   z.strictObject({ kind: z.literal("toolCall"), call: conversationToolCallSchema }),
 ]);
 

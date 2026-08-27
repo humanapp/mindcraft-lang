@@ -12,10 +12,64 @@ export interface RelayTurnStart {
   readonly type: "turn:start";
 }
 
-/** One fragment of the assistant's narration, in stream order. */
+/**
+ * What a run of narration is doing, where the service could tell. A run the
+ * service could not place carries none of these, and is the assistant simply
+ * talking.
+ */
+export const NarrationRole = {
+  /** How the assistant means to go about the request it was given. */
+  Plan: "plan",
+  /** A plan taking the place of one stated earlier in the same turn. */
+  Pivot: "pivot",
+  /** Working out why something the assistant built did not do what it meant. */
+  Diagnosis: "diagnosis",
+  /** What that working-out came to, stated as the thing worth keeping. */
+  Note: "note",
+  /** Whether a rehearsal did what the assistant wanted of it. */
+  Verdict: "verdict",
+  /** What happened when the editor refused one of the assistant's proposals. */
+  Snag: "snag",
+} as const;
+
+/** What a run of narration is doing, where the service could tell. */
+export type NarrationRole = (typeof NarrationRole)[keyof typeof NarrationRole];
+
+/** How a rehearsal went, in the assistant's own judgement. */
+export const NarrationJudgment = {
+  Succeeded: "succeeded",
+  Failed: "failed",
+} as const;
+
+/** How a rehearsal went, in the assistant's own judgement. */
+export type NarrationJudgment = (typeof NarrationJudgment)[keyof typeof NarrationJudgment];
+
+/**
+ * Which part of its run a narration fragment belongs to. Fragments carrying no
+ * part belong to the headline the run opens with.
+ */
+export const NarrationPart = {
+  /** The longer form standing under the headline, which a surface may fold away. */
+  Body: "body",
+} as const;
+
+/** Which part of its run a narration fragment belongs to. */
+export type NarrationPart = (typeof NarrationPart)[keyof typeof NarrationPart];
+
+/**
+ * One fragment of the assistant's narration, in stream order. Fragments of one
+ * run join in arrival order into that run's headline and body; a tool-call
+ * batch ends the run, and the next fragment opens a new one.
+ */
 export interface RelayNarrationDelta {
   readonly type: "turn:narration";
   readonly text: string;
+  /** The part of its run this fragment belongs to; absent for the headline. */
+  readonly part?: NarrationPart;
+  /** What the run this fragment belongs to is doing; absent where the service could not tell. */
+  readonly role?: NarrationRole;
+  /** How the rehearsal went; present only on a run whose role is `verdict`. */
+  readonly judgment?: NarrationJudgment;
 }
 
 /** The tool calls the turn's current model step asked for, to be served as one batch. */
@@ -96,7 +150,13 @@ export const relayDownstreamMessageSchema = z.discriminatedUnion("type", [
     message: z.string().optional(),
   }),
   z.strictObject({ type: z.literal("turn:start") }),
-  z.strictObject({ type: z.literal("turn:narration"), text: z.string() }),
+  z.strictObject({
+    type: z.literal("turn:narration"),
+    text: z.string(),
+    part: z.enum(NarrationPart).optional(),
+    role: z.enum(NarrationRole).optional(),
+    judgment: z.enum(NarrationJudgment).optional(),
+  }),
   z.strictObject({ type: z.literal("turn:toolCalls"), requests: z.array(relayToolCallRequestSchema) }),
   z.strictObject({
     type: z.literal("turn:end"),
