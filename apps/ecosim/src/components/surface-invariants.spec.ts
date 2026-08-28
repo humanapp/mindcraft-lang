@@ -58,3 +58,15 @@ describe("only the person's own open of the assistant region takes the keyboard"
     assert.match(componentSource("AssistantSidePanel.tsx"), /opensByPerson=\{opensByPerson\}/);
   });
 });
+
+describe("the brain the assistant panel draws and navigates against", () => {
+  const panelSource = componentSource("AssistantSidePanel.tsx");
+
+  test("AssistantSidePanel.tsx builds the places from the brain the editor stands", () => {
+    assert.match(panelSource, /brainPlacesOf\(edited, workspaces\)/);
+  });
+
+  test("AssistantSidePanel.tsx hands those places to the conversation surface", () => {
+    assert.match(panelSource, /brainPlaces=\{brainPlaces\}/);
+  });
+});

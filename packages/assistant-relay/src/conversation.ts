@@ -46,8 +46,8 @@ export type ConversationTurnEnding =
   | { readonly kind: "failure"; readonly code: ConversationTurnFailureCode };
 
 /**
- * One run of narration: the deltas that arrived with no tool call between them,
- * joined in stream order.
+ * One run of narration: the deltas that arrived with no tool call and no change
+ * of role between them, joined in stream order.
  */
 export interface ConversationNarrationSegment {
   readonly kind: "narration";
@@ -79,7 +79,7 @@ export interface ConversationAssistantEntry {
   /**
    * What the turn narrated and what it called, in the order it arrived. A run
    * of narration is one segment; the next segment starts after the tool calls
-   * that interrupted it.
+   * that interrupted it, or where a delta's role parts from the run's.
    */
   readonly steps: readonly ConversationTurnStep[];
   /** How the turn finished; absent while it is still running. */

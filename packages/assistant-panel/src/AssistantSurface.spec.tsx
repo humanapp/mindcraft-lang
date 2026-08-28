@@ -24,7 +24,7 @@ const manifest: RelayToolManifest = {
   catalogDigest: "0f3a19c2",
 };
 
-/** The entity the host says the open mind belongs to. */
+/** The entity the host says the open brain belongs to. */
 const entityName = "Herbivore Brain";
 
 /** A workspace accessor no test reaches. */

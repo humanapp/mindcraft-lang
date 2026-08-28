@@ -116,7 +116,38 @@ describe("the conversation store", () => {
     });
   });
 
-  test("leaves the role a segment already carries where a later fragment disagrees", () => {
+  test("opens a segment of its own for a fragment whose role parts from the standing one", () => {
+    let store = withUpdate(emptyConversationStore(), "brain-a", {
+      kind: "narration",
+      text: "both rules fire now",
+      role: NarrationRole.Verdict,
+      judgment: NarrationJudgment.Succeeded,
+    });
+    store = withUpdate(store, "brain-a", {
+      kind: "narration",
+      text: "which page next?",
+      role: NarrationRole.Ask,
+    });
+    store = withUpdate(store, "brain-a", {
+      kind: "narration",
+      text: "the hunt page",
+      part: "body",
+      role: NarrationRole.Ask,
+    });
+
+    const [entry] = recordFor(store, "brain-a").entries;
+    assert.deepEqual(entry?.kind === "assistant" ? entry.steps : undefined, [
+      {
+        kind: "narration",
+        text: "both rules fire now",
+        role: NarrationRole.Verdict,
+        judgment: NarrationJudgment.Succeeded,
+      },
+      { kind: "narration", text: "which page next?", body: "the hunt page", role: NarrationRole.Ask },
+    ]);
+  });
+
+  test("keeps a segment whole across the fragments carrying the role it already stands for", () => {
     let store = withUpdate(emptyConversationStore(), "brain-a", {
       kind: "narration",
       text: "two pages",
@@ -124,19 +155,15 @@ describe("the conversation store", () => {
     });
     store = withUpdate(store, "brain-a", {
       kind: "narration",
-      text: "it switched",
+      text: "one each",
       part: "body",
-      role: NarrationRole.Verdict,
-      judgment: NarrationJudgment.Succeeded,
+      role: NarrationRole.Plan,
     });
 
     const [entry] = recordFor(store, "brain-a").entries;
-    assert.deepEqual(entry?.kind === "assistant" ? entry.steps[0] : undefined, {
-      kind: "narration",
-      text: "two pages",
-      body: "it switched",
-      role: NarrationRole.Plan,
-    });
+    assert.deepEqual(entry?.kind === "assistant" ? entry.steps : undefined, [
+      { kind: "narration", text: "two pages", body: "one each", role: NarrationRole.Plan },
+    ]);
   });
 
   test("gives a segment opened after a tool call the role of the fragment that opened it", () => {

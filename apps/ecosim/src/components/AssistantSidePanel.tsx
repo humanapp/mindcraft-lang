@@ -1,5 +1,5 @@
 import type { EditedBrainWorkspaces } from "@wendoo/assistant-panel";
-import { AssistantSurface, brainSurfaceOf, useAssistant } from "@wendoo/assistant-panel";
+import { AssistantSurface, brainPlacesOf, brainSurfaceOf, useAssistant } from "@wendoo/assistant-panel";
 import { useEditedBrain, useOptionalBrainEditorConfig } from "@wendoo/ui";
 import { useEffect, useMemo } from "react";
 
@@ -31,6 +31,7 @@ export function AssistantSidePanel({ isOpen, fallbackName, workspaces, opensByPe
   const { setActiveBrain, openSession } = useAssistant();
   const brainId = edited?.brainDef.id();
   const brainSurface = useMemo(() => brainSurfaceOf(editorConfig, edited?.brainDef.catalog()), [editorConfig, edited]);
+  const brainPlaces = useMemo(() => brainPlacesOf(edited, workspaces), [edited, workspaces]);
 
   useEffect(() => {
     workspaces.setEditedBrain(edited);
@@ -51,6 +52,7 @@ export function AssistantSidePanel({ isOpen, fallbackName, workspaces, opensByPe
       onLeaveIntent={edited?.takeKeyboard}
       opensByPerson={opensByPerson}
       brainSurface={brainSurface}
+      brainPlaces={brainPlaces}
     />
   );
 }

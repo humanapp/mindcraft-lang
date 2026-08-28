@@ -63,14 +63,19 @@ function openTurn(entries: readonly ConversationEntry[]): ConversationAssistantE
   return last?.kind === "assistant" && last.ending === undefined ? last : undefined;
 }
 
+/** Whether `update` opens a segment of its own, the role it carries parting from the one `standing` carries. */
+function partsFrom(standing: ConversationNarrationSegment, update: NarrationUpdate): boolean {
+  return standing.role !== undefined && update.role !== undefined && update.role !== standing.role;
+}
+
 /**
  * `steps` with `update`'s text joined onto the segment they end in, or carrying
- * a new segment when the last thing the turn did was call a tool. Text marked
- * as body joins that segment's body and everything else joins its headline. The
- * first fragment carrying a role gives the segment both its role and its
- * judgment, whether or not it is the one that opened the segment, and a later
- * fragment moves neither. Empty text opens no segment and leaves `steps` as
- * they stand.
+ * a new segment when the last thing the turn did was call a tool or when
+ * `update` carries a role parting from that segment's. Text marked as body joins
+ * that segment's body and everything else joins its headline. The first fragment
+ * carrying a role gives the segment both its role and its judgment, whether or
+ * not it is the one that opened the segment. Empty text opens no segment and
+ * leaves `steps` as they stand.
  */
 function withNarration(
   steps: readonly ConversationTurnStep[],
@@ -78,7 +83,8 @@ function withNarration(
 ): readonly ConversationTurnStep[] {
   if (update.text.length === 0) return steps;
   const last = steps.length > 0 ? steps[steps.length - 1] : undefined;
-  const standing: ConversationNarrationSegment = last?.kind === "narration" ? last : { kind: "narration", text: "" };
+  const joined = last?.kind === "narration" && !partsFrom(last, update) ? last : undefined;
+  const standing: ConversationNarrationSegment = joined ?? { kind: "narration", text: "" };
   const marked = standing.role === undefined ? update : standing;
   const open: ConversationNarrationSegment = {
     ...standing,
@@ -89,7 +95,7 @@ function withNarration(
     update.part === NarrationPart.Body
       ? { ...open, body: (open.body ?? "") + update.text }
       : { ...open, text: open.text + update.text };
-  return [...(last?.kind === "narration" ? steps.slice(0, -1) : steps), grown];
+  return [...(joined ? steps.slice(0, -1) : steps), grown];
 }
 
 /**

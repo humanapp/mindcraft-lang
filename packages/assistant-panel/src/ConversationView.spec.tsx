@@ -39,6 +39,7 @@ import type { IBrainTileDef, ITileCatalog } from "@wendoo/core/brain";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ConversationViewProps } from "./ConversationView";
 import { ConversationView, intentKeyAction, landKeyboardInIntent } from "./ConversationView";
+import type { BrainPlaces } from "./conversation/brain-places";
 import type { BrainSurface } from "./conversation/tile-visuals";
 import { AssistantStatus } from "./session/machine";
 
@@ -274,6 +275,31 @@ describe("a conversation with nothing in it", () => {
   test("stands a send control that takes nothing while the box is empty", () => {
     assert.match(sendControl(render()), /\sdisabled=""/);
     assert.doesNotMatch(sendControl(render({ intent: "make me hide" })), /\sdisabled=""/);
+  });
+});
+
+describe("the control that copies the conversation", () => {
+  /** The export control's own tag, which carries whether it takes a click. */
+  function exportControl(markup: string): string {
+    const tag = /<button[^>]*data-assistant-export[^>]*>/.exec(markup)?.[0];
+    assert.ok(tag, "the view stands an export control");
+    return tag;
+  }
+
+  test("stands in the surface header, beside the entity's name", () => {
+    const header = /<header[^>]*>[\s\S]*?<\/header>/.exec(render())?.[0] ?? "";
+
+    assert.match(header, /data-assistant-entity/);
+    assert.match(header, /data-assistant-export/);
+  });
+
+  test("takes nothing while the host has named no brain, and stands ready once one is named", () => {
+    assert.match(exportControl(render()), /\sdisabled=""/);
+    assert.doesNotMatch(exportControl(render({ record: record([]) })), /\sdisabled=""/);
+  });
+
+  test("rests unmarked until the conversation has been taken", () => {
+    assert.deepEqual(valuesOf(render({ record: record([]) }), "data-assistant-export"), ["ready"]);
   });
 });
 
@@ -1568,6 +1594,137 @@ describe("where a conversation got to when a turn left no answer", () => {
   });
 });
 
+describe("a question the entity puts to the person", () => {
+  /** A record whose turn ends on a question asking `text` and offering `body` under it. */
+  function questioned(body?: string, text = "Want it to call out when it flees?"): ConversationRecord {
+    return record([
+      {
+        kind: "assistant",
+        steps: [
+          { kind: "narration", text: "It hid.", role: NarrationRole.Verdict, judgment: NarrationJudgment.Succeeded },
+          {
+            kind: "narration",
+            text,
+            ...(body === undefined ? {} : { body }),
+            role: NarrationRole.Ask,
+          },
+        ],
+      },
+    ]);
+  }
+
+  /** The tag of every answer the transcript offered, which carries whether it takes a click. */
+  function answerControls(markup: string): string[] {
+    return [...markup.matchAll(/<button[^>]*data-assistant-answer[^>]*>/g)].map((match) => match[0]);
+  }
+
+  /** The tag of every chip leaving a question where it stands, which carries whether it takes a click. */
+  function leaveControls(markup: string): string[] {
+    return [...markup.matchAll(/<button[^>]*data-assistant-leave[^>]*>/g)].map((match) => match[0]);
+  }
+
+  /** Matches the attribute standing a chip down, never the classes naming how it then reads. */
+  const standsDown = /\sdisabled=""/;
+
+  test("stands the question on a card of its own, after the verdict it follows", () => {
+    const markup = render({ record: questioned("Yes please\nNo thanks"), onAnswer: () => {} });
+
+    assert.deepEqual(valuesOf(markup, "data-assistant-narration-role"), ["verdict", "ask"]);
+    assert.deepEqual(cardKinds(markup), ["narration", "narration"]);
+    assert.equal(bubbleAround(markup, "data-assistant-answers"), undefined, "the question never stands in a bubble");
+  });
+
+  test("offers each line standing under the question as an answer, and folds none of it away", () => {
+    const markup = render({ record: questioned("Yes please\n\nNo thanks"), onAnswer: () => {} });
+
+    assert.deepEqual(valuesOf(markup, "data-assistant-answers"), ["2"]);
+    assert.equal(answerControls(markup).length, 2);
+    assert.doesNotMatch(markup, /data-assistant-fold="narration"/);
+  });
+
+  test("offers the answers that followed the question with no blank line between", () => {
+    const markup = render({
+      record: questioned(undefined, "Want it to call out when it flees?\nYes please\nNo thanks"),
+      onAnswer: () => {},
+    });
+
+    assert.deepEqual(valuesOf(markup, "data-assistant-answers"), ["2"]);
+    assert.match(
+      markup,
+      /data-assistant-narration="true"[^>]*><p[^>]*>Want it to call out when it flees\?<\/p><\/div>/
+    );
+    assert.match(markup, /data-assistant-answer[^>]*>Yes please</);
+    assert.match(markup, /data-assistant-answer[^>]*>No thanks</);
+  });
+
+  test("reads an answer without the list marker its line opened with", () => {
+    const markup = render({ record: questioned("- Yes please\n2. No thanks"), onAnswer: () => {} });
+
+    assert.match(markup, /data-assistant-answer[^>]*>Yes please</);
+    assert.match(markup, /data-assistant-answer[^>]*>No thanks</);
+  });
+
+  test("stands a question that offered nothing beside the chip that leaves it", () => {
+    const markup = render({ record: questioned(), onAnswer: () => {} });
+
+    assert.deepEqual(valuesOf(markup, "data-assistant-answers"), ["0"]);
+    assert.equal(answerControls(markup).length, 0);
+    assert.equal(leaveControls(markup).length, 1);
+  });
+
+  test("stands the chip that leaves the question beside every question, however many answers it offered", () => {
+    const markup = render({ record: questioned("Yes please\nNo thanks"), onAnswer: () => {} });
+
+    assert.equal(leaveControls(markup).length, 1);
+  });
+
+  test("stands no chip that leaves anything beside a run that asked nothing", () => {
+    const markup = render({
+      record: record([{ kind: "assistant", steps: [{ kind: "narration", text: "Done.", role: NarrationRole.Note }] }]),
+      onAnswer: () => {},
+    });
+
+    assert.deepEqual(leaveControls(markup), []);
+  });
+
+  test("leaves every chip under the question untakeable while a turn is running", () => {
+    const markup = render({
+      record: questioned("Yes please\nNo thanks"),
+      onAnswer: () => {},
+      status: AssistantStatus.TurnActive,
+    });
+
+    for (const control of [...answerControls(markup), ...leaveControls(markup)]) assert.match(control, standsDown);
+  });
+
+  test("leaves every chip under the question untakeable where the host takes no answer", () => {
+    const markup = render({ record: questioned("Yes please\nNo thanks") });
+
+    for (const control of [...answerControls(markup), ...leaveControls(markup)]) assert.match(control, standsDown);
+  });
+
+  test("takes an answer while the turn is done and the host takes one", () => {
+    const markup = render({ record: questioned("Yes please\nNo thanks"), onAnswer: () => {} });
+
+    const controls = [...answerControls(markup), ...leaveControls(markup)];
+    assert.equal(controls.length, 3);
+    for (const control of controls) assert.doesNotMatch(control, standsDown);
+  });
+
+  test("folds a question of an older turn away with the turn it belongs to", () => {
+    const markup = render({
+      record: record([
+        ...questioned("Yes please").entries,
+        { kind: "user", text: "yes please" },
+        { kind: "assistant", steps: [{ kind: "narration", text: "Done." }] },
+      ]),
+      onAnswer: () => {},
+    });
+
+    assert.deepEqual(valuesOf(markup, "data-assistant-turn"), ["folded", "latest"]);
+  });
+});
+
 describe("the things the entity names", () => {
   /** A catalog answering `get` from `defs`. */
   function catalogOf(defs: readonly IBrainTileDef[]): ITileCatalog {
@@ -1698,5 +1855,57 @@ describe("the things the entity names", () => {
 
     assert.deepEqual(valuesOf(markup, "data-assistant-reference"), []);
     assert.match(markup, /<code[^>]*text-warning[^>]*>rule-gone<\/code>/);
+  });
+
+  /** A record naming a rule and a page the conversation has read the page of. */
+  const namedBoth = record([
+    {
+      kind: "assistant",
+      steps: [
+        { kind: "toolCall", call: readProject(wandering, ["rule-0", "rule-1"]) },
+        said("`rule:rule-1` fired, and I went to `page:page-wandering`"),
+      ],
+    },
+  ]);
+
+  /** Places standing `rule-1` at `line` on `wandering`, and nothing else anywhere. */
+  function placing(line: number): BrainPlaces {
+    return {
+      locateRule: (ruleId: string) => (ruleId === "rule-1" ? { pageId: wandering.pageId, line } : undefined),
+      reveal: () => {},
+    };
+  }
+
+  /** The tag of every reference the transcript drew, which carries whether it takes a click. */
+  function referenceControls(markup: string): string[] {
+    return [...markup.matchAll(/<(?:button|span)[^>]*data-assistant-reference="[^>]*>/g)].map((match) => match[0]);
+  }
+
+  test("makes a rule and a page the host can show into things the person can tap", () => {
+    const markup = render({ record: namedBoth, brainPlaces: placing(2) });
+
+    for (const control of referenceControls(markup)) assert.match(control, /^<button/);
+  });
+
+  test("leaves every reference untappable while the host stands no editor", () => {
+    const markup = render({ record: namedBoth });
+
+    for (const control of referenceControls(markup)) assert.match(control, /^<span/);
+  });
+
+  test("numbers a rule from the document the host stands, over what the conversation read", () => {
+    const markup = render({ record: namedBoth, brainPlaces: placing(7) });
+
+    assert.match(markup, /data-assistant-reference-word[^>]*>rule 7</);
+  });
+
+  test("keeps the number the conversation read for a rule the standing document places nowhere", () => {
+    const markup = render({
+      record: namedBoth,
+      brainPlaces: { locateRule: () => undefined, reveal: () => {} },
+    });
+
+    assert.match(markup, /data-assistant-reference-word[^>]*>rule 2</);
+    assert.match(/<(?:button|span)[^>]*data-assistant-reference="rule"[^>]*>/.exec(markup)?.[0] ?? "", /^<span/);
   });
 });

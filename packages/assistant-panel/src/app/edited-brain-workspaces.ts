@@ -73,6 +73,12 @@ export interface EditedBrainWorkspaces {
    * is watched on and whose document changes are recorded.
    */
   readonly setEditedBrain: (edited: EditedBrain | undefined) => void;
+  /**
+   * Record the person acting on `brainId`'s rules from somewhere the rules
+   * region does not watch, which leaves the view alone for as long as their own
+   * acting on it does. Changes no document, so a turn keeps running.
+   */
+  readonly notePersonInteraction: (brainId: string) => void;
 }
 
 /**
@@ -146,6 +152,9 @@ export function createEditedBrainWorkspaces(options: EditedBrainWorkspacesOption
     setEditedBrain: (next: EditedBrain | undefined): void => {
       edited = next;
       watch(next);
+    },
+    notePersonInteraction: (brainId: string): void => {
+      activity?.noteInteraction(brainId);
     },
   };
 }

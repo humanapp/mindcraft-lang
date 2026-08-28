@@ -15,7 +15,7 @@ import { kBrainDeskFill } from "@wendoo/ui/brain-editor/brain-desk";
 import type { RenderMarkdownReference } from "@wendoo/ui/markdown/SafeMarkdown";
 import { SafeMarkdown } from "@wendoo/ui/markdown/SafeMarkdown";
 import { MarkdownReferenceForm } from "@wendoo/ui/markdown/safe-markdown-tokens";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef } from "react";
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type {
   BuildBlock,
   ConversationBlock,
@@ -28,7 +28,10 @@ import type {
   TranscriptContext,
 } from "./conversation/blocks";
 import { ConversationBlockKind, conversationBlocks, transcriptContext } from "./conversation/blocks";
+import type { BrainPlaces } from "./conversation/brain-places";
+import { BrainPlacesProvider, useBrainPlaces } from "./conversation/brain-places";
 import type { EditSide } from "./conversation/edit-story";
+import { exportTranscript } from "./conversation/export";
 import type { RunActivity, RunCell, RunEvidence, RunMarker } from "./conversation/run";
 import { RunMarkerKind } from "./conversation/run";
 import type { StandingState } from "./conversation/standing";
@@ -40,7 +43,7 @@ import { AssistantStatus } from "./session/machine";
 
 /** What the conversation surface shows, and the controls it hands back. */
 export interface ConversationViewProps {
-  /** The name of the entity whose mind is open, as the host reads it from the document. */
+  /** The name of the entity whose brain is open, as the host reads it from the document. */
   name: string;
   status: AssistantStatus;
   /** The conversation shown, absent before the host has named a brain. */
@@ -74,10 +77,24 @@ export interface ConversationViewProps {
    * carried, with no icon and no hue of its own.
    */
   brainSurface?: BrainSurface | undefined;
+  /**
+   * Where the rules and pages the entity names stand, and how to show one.
+   * Absent while the host stands no editor, which numbers rules from what the
+   * conversation itself has seen and leaves every reference untappable.
+   */
+  brainPlaces?: BrainPlaces | undefined;
+  /**
+   * Send `text` as the person's own next ask, called when they tap one of the
+   * answers a question offers. Absent leaves those answers untappable.
+   */
+  onAnswer?: ((text: string) => void) | undefined;
 }
 
 /** Pixels of slack at the foot of the transcript that still count as being at the bottom. */
 const bottomSlackPx = 24;
+
+/** Milliseconds the mark that the conversation went to the clipboard stands for. */
+const copiedMarkMs = 1200;
 
 /** Animation offsets of the presence mark's dots, in the order they are drawn. */
 const presenceDotDelays = ["0ms", "160ms", "320ms"] as const;
@@ -106,6 +123,7 @@ const cardedRoles: readonly string[] = [
   NarrationRole.Pivot,
   NarrationRole.Diagnosis,
   NarrationRole.Note,
+  NarrationRole.Ask,
 ];
 
 /** What a verdict reads as on the rehearsal it judged. */
@@ -288,11 +306,14 @@ function RuleSentence({ rule, context }: { rule: ReceiptRule; context: Transcrip
 /**
  * Draws each thing the entity names in its own words as the chip its surface
  * stands for it: a tile as its own chip, a rule as its number, a page as its
- * name. A reference to something the conversation has never seen is left to the
- * unresolved form the renderer falls back to.
+ * name. A rule is numbered from the document the host stands where there is one,
+ * and from what the conversation itself has seen where there is not; a chip the
+ * host can show is one the person can tap. A reference to something neither has
+ * ever seen is left to the unresolved form the renderer falls back to.
  */
 function useReferenceRenderer(context: TranscriptContext): RenderMarkdownReference {
   const look = useTileLooks();
+  const places = useBrainPlaces();
   return useCallback(
     (span) => {
       if (span.form === MarkdownReferenceForm.Tile) {
@@ -302,12 +323,20 @@ function useReferenceRenderer(context: TranscriptContext): RenderMarkdownReferen
       }
       if (span.form === MarkdownReferenceForm.Page) {
         const page = context.pages.get(span.id);
-        return page === undefined ? undefined : <ReferenceChip form={span.form} id={span.id} label={page.name} />;
+        if (page === undefined) return undefined;
+        const show = places === undefined ? undefined : () => places.reveal({ pageId: span.id });
+        return <ReferenceChip form={span.form} id={span.id} label={page.name} onActivate={show} />;
       }
-      const line = context.ruleLines.get(span.id);
-      return line === undefined ? undefined : <ReferenceChip form={span.form} id={span.id} label={`rule ${line}`} />;
+      const placed = places?.locateRule(span.id);
+      const line = placed?.line ?? context.ruleLines.get(span.id);
+      if (line === undefined) return undefined;
+      const show =
+        placed === undefined || places === undefined
+          ? undefined
+          : () => places.reveal({ pageId: placed.pageId, ruleId: span.id });
+      return <ReferenceChip form={span.form} id={span.id} label={`rule ${line}`} onActivate={show} />;
     },
-    [look, context]
+    [look, places, context]
   );
 }
 
@@ -655,11 +684,74 @@ function LookupsView({ block }: { block: LookupsBlock }) {
   );
 }
 
+/** What tapping one of a question's answers does, and whether it can be tapped now. */
+interface Answering {
+  /** Send `text` as the person's own next ask. */
+  readonly send: (text: string) => void;
+  /** `true` while a turn is running, when nothing can be sent. */
+  readonly busy: boolean;
+}
+
+const AnsweringContext = createContext<Answering | undefined>(undefined);
+
+/** How one chip standing under a question is drawn, whatever taking it does. */
+const questionChipClasses =
+  "shrink-0 rounded-md border border-border px-2 py-1 text-xs disabled:cursor-not-allowed " +
+  "disabled:opacity-50 pointer-coarse:min-h-11 pointer-coarse:min-w-11";
+
+/** How one answer a question offers is drawn. */
+const answerChipClasses = `${questionChipClasses} text-card-foreground`;
+
+/** How the chip that leaves a question where it stands is drawn. */
+const leaveChipClasses = `${questionChipClasses} text-muted-foreground`;
+
+/**
+ * What a question puts under itself: the answers it offers, each a shortcut to
+ * giving it, and after them the panel's own chip for leaving the question where
+ * it stands. Taking that chip clears the row and sends nothing, leaving the
+ * question itself standing in the transcript. Every chip in the row stands
+ * unavailable while a turn is running, and wherever the host takes no answers at
+ * all.
+ */
+function AnswerChips({ answers }: { answers: readonly string[] }) {
+  const answering = useContext(AnsweringContext);
+  const busy = answering === undefined || answering.busy;
+  const [left, setLeft] = useState(false);
+  if (left) return null;
+  return (
+    <div data-assistant-answers={answers.length} className="flex flex-wrap gap-1.5">
+      {answers.map((answer, at) => (
+        <button
+          // biome-ignore lint/suspicious/noArrayIndexKey: the answers are read from one run of words and never reorder
+          key={`answer-${at}`}
+          type="button"
+          data-assistant-answer
+          disabled={busy}
+          onClick={answering === undefined ? undefined : () => answering.send(answer)}
+          className={answerChipClasses}
+        >
+          {answer}
+        </button>
+      ))}
+      <button
+        type="button"
+        data-assistant-leave
+        disabled={busy}
+        onClick={() => setLeft(true)}
+        className={leaveChipClasses}
+      >
+        leave it as is
+      </button>
+    </div>
+  );
+}
+
 /**
  * A run of the entity's own words: the headline it opens with, and the longer
  * form under a fold where it had one. The runs that carry the shape of the work
- * -- the plan it means to follow, and what it learned -- stand on a card of
- * their own; everything else stands in the entity's speaking bubble.
+ * -- the plan it means to follow, what it learned, and a question it puts to the
+ * person -- stand on a card of their own; everything else stands in the entity's
+ * speaking bubble. A question shows its chips in place of a fold.
  */
 function NarrationCardView({ block, context }: { block: NarrationBlock; context: TranscriptContext }) {
   const renderReference = useReferenceRenderer(context);
@@ -678,6 +770,7 @@ function NarrationCardView({ block, context }: { block: NarrationBlock; context:
       <div data-assistant-narration className="text-card-foreground text-sm">
         <SafeMarkdown text={block.text} renderReference={renderReference} />
       </div>
+      {block.role === NarrationRole.Ask && <AnswerChips answers={block.answers ?? []} />}
       {block.body !== undefined && (
         <Fold kind="narration" summary="the long story">
           <div data-assistant-narration-body>
@@ -946,8 +1039,74 @@ function EntryView({
   return <TurnView entry={entry} context={context} standing={standing} folded={folded} onAskAgain={onAskAgain} />;
 }
 
+/** The mark the export control carries: two leaves standing one behind the other, and a tick once taken. */
+function ExportGlyph({ copied }: { copied: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="h-4 w-4"
+    >
+      {copied ? (
+        <path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
+      ) : (
+        <>
+          <rect x="6" y="6" width="7.5" height="8.5" rx="1.5" />
+          <path d="M10.5 3.5v-1a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h1" />
+        </>
+      )}
+    </svg>
+  );
+}
+
 /**
- * The Assistant's conversation surface: the entity whose mind is open, the
+ * The control that puts the whole conversation on the clipboard as the
+ * diagnostic document {@link exportTranscript} writes, marking itself taken for
+ * a moment once it lands. It stands unavailable while the host has named no
+ * brain, and copies nothing where the surface it is drawn in reaches no
+ * clipboard.
+ */
+function ExportControl({ record, name }: { record: ConversationRecord | undefined; name: string }) {
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+    const mark = setTimeout(() => setCopied(false), copiedMarkMs);
+    return () => clearTimeout(mark);
+  }, [copied]);
+
+  const copy = (): void => {
+    if (record === undefined) return;
+    const clipboard = typeof navigator === "undefined" ? undefined : navigator.clipboard;
+    if (clipboard === undefined) return;
+    void clipboard
+      .writeText(exportTranscript(record, name))
+      .then(() => setCopied(true))
+      .catch(() => setCopied(false));
+  };
+
+  return (
+    <button
+      type="button"
+      data-assistant-export={copied ? "copied" : "ready"}
+      disabled={record === undefined}
+      onClick={copy}
+      aria-label="Copy this conversation"
+      title="Copy this conversation"
+      className="flex shrink-0 items-center justify-center rounded-md border border-border p-1.5 text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+    >
+      <ExportGlyph copied={copied} />
+    </button>
+  );
+}
+
+/**
+ * The Assistant's conversation surface: the entity whose brain is open, the
  * conversation it has had with the person, and the box the next thing to do is
  * typed into. It holds no state and starts nothing; the host drives it.
  *
@@ -968,12 +1127,18 @@ export function ConversationView(props: ConversationViewProps) {
     onLeaveIntent,
     opensByPerson,
     brainSurface,
+    brainPlaces,
+    onAnswer,
   } = props;
   const entries = record?.entries ?? [];
   const context = useMemo(() => transcriptContext(record), [record]);
   const standing = useMemo(() => standingState(record, context), [record, context]);
   const newestTurn = entries.reduce((at, entry, index) => (entry.kind === "assistant" ? index : at), -1);
   const running = status === AssistantStatus.TurnActive;
+  const answering = useMemo(
+    () => (onAnswer === undefined ? undefined : { send: onAnswer, busy: running }),
+    [onAnswer, running]
+  );
   const connection = connectionNote(status);
   const transcript = useRef<HTMLDivElement>(null);
   const followingBottom = useRef(true);
@@ -1023,92 +1188,97 @@ export function ConversationView(props: ConversationViewProps) {
 
   return (
     <BrainSurfaceProvider value={brainSurface}>
-      <div
-        ref={surface}
-        tabIndex={-1}
-        className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border outline-none"
-        style={{ background: kBrainDeskFill }}
-      >
-        <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
-          <span className="h-8 w-8 shrink-0 rounded-full border border-border bg-muted" aria-hidden="true" />
-          <span data-assistant-entity className="truncate text-sm font-semibold text-card-foreground">
-            {name}
-          </span>
-        </header>
-        <div
-          ref={transcript}
-          onScroll={noteScroll}
-          className="flex min-h-0 grow flex-col gap-3 overflow-y-auto px-3 py-4"
-        >
-          {entries.length === 0 ? (
-            <p data-assistant-resting className="text-sm text-muted-foreground">
-              Hi! What should we build?
-            </p>
-          ) : (
-            entries.map((entry, at) => (
-              <EntryView
-                // biome-ignore lint/suspicious/noArrayIndexKey: a record only ever appends, so an entry keeps its position
-                key={`entry-${at}`}
-                entry={entry}
-                context={context}
-                standing={standing}
-                folded={at !== newestTurn}
-                onAskAgain={onAskAgain}
-              />
-            ))
-          )}
-          {running && <PresenceMark />}
-        </div>
-        {connection && (
-          <div className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-1.5">
-            <p data-assistant-connection={status} className="grow text-xs text-muted-foreground">
-              {connection}
-            </p>
-            {onRetry && (
-              <button
-                type="button"
-                data-assistant-retry
-                onClick={onRetry}
-                className="shrink-0 rounded-md border border-border px-2 py-1 text-xs text-card-foreground pointer-coarse:min-h-11 pointer-coarse:min-w-11"
-              >
-                Try again
-              </button>
+      <BrainPlacesProvider value={brainPlaces}>
+        <AnsweringContext.Provider value={answering}>
+          <div
+            ref={surface}
+            tabIndex={-1}
+            className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border outline-none"
+            style={{ background: kBrainDeskFill }}
+          >
+            <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
+              <span className="h-8 w-8 shrink-0 rounded-full border border-border bg-muted" aria-hidden="true" />
+              <span data-assistant-entity className="grow truncate text-sm font-semibold text-card-foreground">
+                {name}
+              </span>
+              <ExportControl record={record} name={name} />
+            </header>
+            <div
+              ref={transcript}
+              onScroll={noteScroll}
+              className="flex min-h-0 grow flex-col gap-3 overflow-y-auto px-3 py-4"
+            >
+              {entries.length === 0 ? (
+                <p data-assistant-resting className="text-sm text-muted-foreground">
+                  Hi! What should we build?
+                </p>
+              ) : (
+                entries.map((entry, at) => (
+                  <EntryView
+                    // biome-ignore lint/suspicious/noArrayIndexKey: a record only ever appends, so an entry keeps its position
+                    key={`entry-${at}`}
+                    entry={entry}
+                    context={context}
+                    standing={standing}
+                    folded={at !== newestTurn}
+                    onAskAgain={onAskAgain}
+                  />
+                ))
+              )}
+              {running && <PresenceMark />}
+            </div>
+            {connection && (
+              <div className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-1.5">
+                <p data-assistant-connection={status} className="grow text-xs text-muted-foreground">
+                  {connection}
+                </p>
+                {onRetry && (
+                  <button
+                    type="button"
+                    data-assistant-retry
+                    onClick={onRetry}
+                    className="shrink-0 rounded-md border border-border px-2 py-1 text-xs text-card-foreground pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+                  >
+                    Try again
+                  </button>
+                )}
+              </div>
             )}
+            <div className="flex shrink-0 items-end gap-2 border-t border-border p-2">
+              <textarea
+                ref={intentBox}
+                data-assistant-intent
+                className="min-h-16 grow resize-none rounded-md border border-input bg-background px-2 py-1.5 text-sm text-foreground placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 pointer-coarse:text-base"
+                rows={2}
+                value={intent}
+                onChange={(event) => onIntentChange(event.target.value)}
+                aria-label="What we should build"
+                placeholder="Tell me your idea..."
+              />
+              {running ? (
+                <button
+                  type="button"
+                  data-assistant-stop
+                  onClick={onStop}
+                  className="shrink-0 rounded-md border border-border px-3 py-1.5 text-sm font-medium text-card-foreground pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+                >
+                  Stop
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  data-assistant-send
+                  onClick={onSend}
+                  disabled={intent.trim().length === 0}
+                  className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50 pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+                >
+                  Send
+                </button>
+              )}
+            </div>
           </div>
-        )}
-        <div className="flex shrink-0 items-end gap-2 border-t border-border p-2">
-          <textarea
-            ref={intentBox}
-            data-assistant-intent
-            className="min-h-16 grow resize-none rounded-md border border-input bg-background px-2 py-1.5 text-sm text-foreground placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 pointer-coarse:text-base"
-            rows={2}
-            value={intent}
-            onChange={(event) => onIntentChange(event.target.value)}
-            aria-label="What we should build"
-            placeholder="Tell me your idea..."
-          />
-          {running ? (
-            <button
-              type="button"
-              data-assistant-stop
-              onClick={onStop}
-              className="shrink-0 rounded-md border border-border px-3 py-1.5 text-sm font-medium text-card-foreground pointer-coarse:min-h-11 pointer-coarse:min-w-11"
-            >
-              Stop
-            </button>
-          ) : (
-            <button
-              type="button"
-              data-assistant-send
-              onClick={onSend}
-              disabled={intent.trim().length === 0}
-              className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50 pointer-coarse:min-h-11 pointer-coarse:min-w-11"
-            >
-              Send
-            </button>
-          )}
-        </div>
-      </div>
+        </AnsweringContext.Provider>
+      </BrainPlacesProvider>
     </BrainSurfaceProvider>
   );
 }

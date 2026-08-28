@@ -35,20 +35,43 @@ export function TileChip({ tileId, look }: { tileId: string; look: TileLook }) {
   );
 }
 
+/** How a chip the person can tap reads under the pointer. */
+const tappableChipClasses = "cursor-pointer transition-[filter] hover:brightness-125";
+
 /**
  * A rule or a page of the document named in the entity's own words, drawn as a
- * chip carrying no icon, in {@link kDefaultTileHue}.
+ * chip carrying no icon, in {@link kDefaultTileHue}. Given `onActivate` it is
+ * something the person can tap to be shown the thing it names; given none it is
+ * the name alone.
  */
-export function ReferenceChip({ form, id, label }: { form: MarkdownReferenceForm; id: string; label: string }) {
+export function ReferenceChip({
+  form,
+  id,
+  label,
+  onActivate,
+}: {
+  form: MarkdownReferenceForm;
+  id: string;
+  label: string;
+  onActivate?: (() => void) | undefined;
+}) {
+  const word = <span data-assistant-reference-word>{label}</span>;
+  const marks = {
+    "data-assistant-reference": form,
+    "data-assistant-reference-id": id,
+    style: chipStyle(kDefaultTileHue),
+    title: label,
+  };
+  if (onActivate === undefined) {
+    return (
+      <span {...marks} className={chipClasses}>
+        {word}
+      </span>
+    );
+  }
   return (
-    <span
-      data-assistant-reference={form}
-      data-assistant-reference-id={id}
-      className={chipClasses}
-      style={chipStyle(kDefaultTileHue)}
-      title={label}
-    >
-      <span data-assistant-reference-word>{label}</span>
-    </span>
+    <button {...marks} type="button" onClick={onActivate} className={`${chipClasses} ${tappableChipClasses}`}>
+      {word}
+    </button>
   );
 }

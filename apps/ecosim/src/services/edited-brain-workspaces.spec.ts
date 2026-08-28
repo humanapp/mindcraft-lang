@@ -12,6 +12,7 @@ import { serveToolCalls } from "@wendoo/assistant-bridge/relay";
 import { ruleIdAt } from "@wendoo/assistant-bridge/testing";
 import type { EditedBrainWorkspaces, PersonActivity } from "@wendoo/assistant-panel";
 import {
+  brainPlacesOf,
   createEditedBrainWorkspaces,
   createPersonActivity,
   NoEditedBrain,
@@ -339,5 +340,62 @@ describe("bringing a landed edit into view while the person is working", () => {
     const source = projectBrain(stand, "herbivore");
 
     assert.equal((await revealedBy(stand, source)).length, authoringCalls.length);
+  });
+});
+
+describe("the places the panel shows the person", () => {
+  /** The first page of the brain `edited` stands. */
+  function firstPage(edited: EditedBrain): BrainPageDef {
+    return edited.brainDef.pages().get(0) as BrainPageDef;
+  }
+
+  test("numbers a rule of the standing document and names the page it stands on", () => {
+    const stand = appStand();
+    const source = projectBrain(stand, "herbivore");
+    const edited = editorOpenedOn(stand, source);
+    stand.workspaces.setEditedBrain(edited);
+    edited.history.executeCommand(new AddRuleCommand(firstPage(edited)));
+
+    const places = brainPlacesOf(edited, stand.workspaces);
+
+    assert.deepEqual(places?.locateRule(ruleIdAt(edited.brainDef, "0/1")), {
+      pageId: firstPage(edited).pageId(),
+      line: 2,
+    });
+  });
+
+  test("places no rule the standing document does not hold", () => {
+    const stand = appStand();
+    const source = projectBrain(stand, "herbivore");
+    const edited = editorOpenedOn(stand, source);
+    stand.workspaces.setEditedBrain(edited);
+
+    assert.equal(brainPlacesOf(edited, stand.workspaces)?.locateRule("no rule of this document"), undefined);
+  });
+
+  test("shows a place without changing the document, so it never reads as the person editing", () => {
+    const stand = appStand();
+    const source = projectBrain(stand, "herbivore");
+    const edited = editorOpenedOn(stand, source);
+    stand.workspaces.setEditedBrain(edited);
+
+    brainPlacesOf(edited, stand.workspaces)?.reveal({ pageId: firstPage(edited).pageId() });
+
+    assert.equal(stand.activity.mutations(source.id()), 0);
+  });
+
+  test("counts showing a place as the person working, so the edits landing after it stay where they are", async () => {
+    const stand = appStand();
+    const source = projectBrain(stand, "herbivore");
+    const revealed: EditedBrainPlace[] = [];
+    const edited = editorOpenedOn(stand, source, (place) => revealed.push(place));
+    stand.workspaces.setEditedBrain(edited);
+
+    brainPlacesOf(edited, stand.workspaces)?.reveal({ pageId: firstPage(edited).pageId() });
+    const shownByTap = revealed.length;
+    await serveAuthoring(stand.workspaces.workspaceFor(source.id()));
+
+    assert.equal(shownByTap, 1, "the tap itself showed the place");
+    assert.equal(revealed.length, shownByTap, "and nothing the turn landed after it moved the view again");
   });
 });

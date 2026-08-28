@@ -30,6 +30,8 @@ export const NarrationRole = {
   Verdict: "verdict",
   /** What happened when the editor refused one of the assistant's proposals. */
   Snag: "snag",
+  /** A question the assistant is putting to the person, waiting on their answer. */
+  Ask: "ask",
 } as const;
 
 /** What a run of narration is doing, where the service could tell. */
@@ -59,7 +61,8 @@ export type NarrationPart = (typeof NarrationPart)[keyof typeof NarrationPart];
 /**
  * One fragment of the assistant's narration, in stream order. Fragments of one
  * run join in arrival order into that run's headline and body; a tool-call
- * batch ends the run, and the next fragment opens a new one.
+ * batch ends the run, as does a fragment carrying a role parting from the one
+ * the run carries, and the next fragment opens a new one.
  */
 export interface RelayNarrationDelta {
   readonly type: "turn:narration";

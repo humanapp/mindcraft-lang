@@ -19,7 +19,7 @@ owns where the conversation is shown.
 - **Per-brain conversations** -- one `ConversationRecord` per brain, the record
   format `@wendoo/assistant-relay` defines; a turn keeps filling the
   brain it was sent for whatever the host makes active afterwards
-- **Conversation surface** (`AssistantSurface`) -- the entity whose mind is
+- **Conversation surface** (`AssistantSurface`) -- the entity whose brain is
   open, the conversation it has had with the person, and the box the next thing
   to do is typed into; the app names the entity and mounts the surface wherever
   it shows the conversation
@@ -72,7 +72,7 @@ import { AssistantProvider, AssistantSurface, createWebSocketConnect } from "@we
 </AssistantProvider>;
 ```
 
-Mount the surface anywhere under the provider, naming the entity whose mind is
+Mount the surface anywhere under the provider, naming the entity whose brain is
 open:
 
 ```tsx
@@ -92,12 +92,27 @@ src/
   AssistantProvider.tsx             AssistantProvider
   AssistantSurface.tsx              AssistantSurface: the surface bound to the standing session
   ConversationView.tsx              What the surface draws, from the state it is handed
+  app/
+    edited-brain-workspaces.ts      The workspaces a host serves a turn's tool calls through
+    person-activity.ts              What the person has been doing to a brain's rules
+    service-url.ts                  The session address a host's setting resolves to
+    tool-manifest.ts                The tools the handshake declares, and the tiles installed
   conversation/
     activity.ts                     What one recorded tool call reads as beneath the narration
+    blocks.ts                       One turn laid out as the blocks the transcript draws
+    brain-places.tsx                Where the rules and pages the entity names stand
+    call-identity.ts                The identity two calls share when they ask the same thing
+    edit-story.ts                   One row per editor command, in the order they ran
+    run.ts                          One rehearsal as the evidence its card is drawn from
+    standing.ts                     What a conversation has left standing, record-wide
     store.ts                        Per-brain records, active brain, and the update reducers
+    TileChip.tsx                    A tile, rule or page drawn as the chip that names it
+    tile-visuals.tsx                How the document's tiles look, against the brain a host stands
+    tool-payloads.ts                What a recorded tool call carries, narrowed
   session/
     channel.ts                      AssistantChannel, AssistantConnect
     machine.ts                      AssistantMachine
+    presence.ts                     Whether the page is in view, for a quiet reopen
     sessions.ts                     AssistantStatus and each brain's session status
     websocket-channel.ts            createWebSocketConnect
   testing/

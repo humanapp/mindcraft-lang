@@ -2,12 +2,13 @@ import type { ConversationRecord } from "@wendoo/assistant-relay";
 import { useState } from "react";
 import { useAssistant } from "./assistant-context";
 import { ConversationView } from "./ConversationView";
+import type { BrainPlaces } from "./conversation/brain-places";
 import type { BrainSurface } from "./conversation/tile-visuals";
 import { AssistantStatus } from "./session/machine";
 
 /** What the host tells the surface about the entity it presents. */
 export interface AssistantSurfaceProps {
-  /** The name of the entity whose mind is open, as the host reads it from the document. */
+  /** The name of the entity whose brain is open, as the host reads it from the document. */
   name: string;
   /**
    * Hand the keyboard to whatever the host stands the surface in, called as the
@@ -28,6 +29,12 @@ export interface AssistantSurfaceProps {
    * stands none, which reads every tile by the word the conversation carried.
    */
   brainSurface?: BrainSurface | undefined;
+  /**
+   * Where the rules and pages the entity names stand, built from the brain the
+   * host's editor stands. Absent while the host stands none, which numbers rules
+   * from what the conversation itself has seen and leaves references untappable.
+   */
+  brainPlaces?: BrainPlaces | undefined;
 }
 
 /** The last thing the person asked for, or `undefined` when they have asked for nothing yet. */
@@ -45,7 +52,13 @@ function lastAsked(record: ConversationRecord | undefined): string | undefined {
  * brain's conversation, sends what is typed, and stops a running turn. Mounting
  * it starts no session, and it never takes the keyboard on its own.
  */
-export function AssistantSurface({ name, onLeaveIntent, opensByPerson, brainSurface }: AssistantSurfaceProps) {
+export function AssistantSurface({
+  name,
+  onLeaveIntent,
+  opensByPerson,
+  brainSurface,
+  brainPlaces,
+}: AssistantSurfaceProps) {
   const { status, record, send, stop, openSession } = useAssistant();
   const [intent, setIntent] = useState("");
 
@@ -75,6 +88,8 @@ export function AssistantSurface({ name, onLeaveIntent, opensByPerson, brainSurf
       onLeaveIntent={onLeaveIntent}
       opensByPerson={opensByPerson}
       brainSurface={brainSurface}
+      brainPlaces={brainPlaces}
+      onAnswer={send}
     />
   );
 }

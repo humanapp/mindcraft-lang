@@ -60,6 +60,12 @@ export interface NarrationBlock {
   readonly superseded: boolean;
   /** `true` when this note took the place of the diagnosis that went looking for it. */
   readonly converted?: true;
+  /**
+   * The answers a question to the person offers, one per line that stood under
+   * it. Present only on a run whose role is `ask`, and absent where the question
+   * offered none.
+   */
+  readonly answers?: readonly string[];
 }
 
 /** Every edit of a turn that landed on one page, with the rules they left standing. */
@@ -362,6 +368,7 @@ interface NarrationDraft {
   judgment?: NarrationJudgment;
   superseded: boolean;
   converted?: true;
+  answers?: readonly string[];
 }
 
 /** A dirty build being gathered, before it knows how many builds it stands for. */
@@ -389,6 +396,51 @@ function convertToNote(diagnosis: NarrationDraft, resolution: NarrationDraft): v
   diagnosis.text = resolution.text;
   diagnosis.body = story.length > 0 ? story.join("\n\n") : undefined;
   diagnosis.converted = true;
+}
+
+/** Matches the list marker a line may open with, which is no part of the answer it carries. */
+const listMarker = /^\s*(?:[-*]|\d{1,9}\.)\s+/;
+
+/** Every line of `text` that carries anything, each trimmed of the space around it. */
+function spokenLines(text: string): string[] {
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+/** A question to the person as it is put to them: what is asked, and the answers offered under it. */
+export interface AskOffer {
+  /** The question itself, which is the first line the run carries. */
+  readonly asked: string;
+  /** The answers offered under it, each read without the list marker it may open with. */
+  readonly answers: readonly string[];
+}
+
+/**
+ * The question a run of words carrying `text` and `body` puts to the person: its
+ * first line is asked, and every line under it is one of the answers it offers.
+ * The lines are read from the whole of the run, headline and body alike; a blank
+ * line between the question and its answers means nothing here. A run carrying
+ * no line with anything on it asks nothing, and comes back `undefined`.
+ */
+export function askOffer(text: string, body: string | undefined): AskOffer | undefined {
+  const [asked, ...offered] = spokenLines(body === undefined ? text : `${text}\n${body}`);
+  if (asked === undefined) return undefined;
+  return { asked, answers: offered.map((line) => line.replace(listMarker, "").trim()) };
+}
+
+/**
+ * Turn `question` into the card that puts it to the person: it stands as the
+ * question {@link askOffer} reads out of it, with the answers it offers, and it
+ * keeps no folded body of its own.
+ */
+function offerAnswers(question: NarrationDraft): void {
+  const offer = askOffer(question.text, question.body);
+  question.body = undefined;
+  if (offer === undefined) return;
+  question.text = offer.asked;
+  if (offer.answers.length > 0) question.answers = offer.answers;
 }
 
 /** How much a diagnostic is graded at when it is what stops a brain building. */
@@ -467,6 +519,7 @@ function laidOutBlock(draft: BlockDraft, parentOf: ReadonlyMap<string, string>):
         ...(draft.judgment === undefined ? {} : { judgment: draft.judgment }),
         superseded: draft.superseded,
         ...(draft.converted === undefined ? {} : { converted: draft.converted }),
+        ...(draft.answers === undefined ? {} : { answers: draft.answers }),
       };
   }
 }
@@ -504,6 +557,10 @@ function laidOutReceipt(draft: ReceiptDraft, parentOf: ReadonlyMap<string, strin
  * looking for it, and a snag gives its words to the refusal it followed. A
  * verdict standing before any rehearsal, and a note or snag standing before
  * what it would join, are left as the plain runs of words they are.
+ *
+ * A question to the person keeps no long form: its first line is the question,
+ * and every line standing under it, wherever in the run they landed, becomes one
+ * of the answers it offers.
  */
 export function conversationBlocks(
   steps: readonly ConversationTurnStep[],
@@ -637,6 +694,7 @@ export function conversationBlocks(
       superseded: false,
     };
 
+    if (said.role === RoleCode.Ask) offerAnswers(said);
     if (said.role === RoleCode.Snag && lastSnag) {
       lastSnag.caption = said.text;
       lastSnag.captionBody = said.body;

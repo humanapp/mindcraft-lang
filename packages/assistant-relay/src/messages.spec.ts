@@ -144,6 +144,7 @@ describe("the relay wire", () => {
       Note: "note",
       Verdict: "verdict",
       Snag: "snag",
+      Ask: "ask",
     });
   });
 
