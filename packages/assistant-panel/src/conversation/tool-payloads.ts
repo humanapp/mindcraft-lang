@@ -192,6 +192,11 @@ export interface RehearsalAccount {
   readonly spans: readonly RehearsalSpan[];
   /** `true` when {@link spans} was cut at its budget and does not cover the whole run. */
   readonly spansTruncated: boolean;
+  /**
+   * Subject state changes over the run, as `think channel=value` entries in
+   * think order, empty for a run whose target declares no channel.
+   */
+  readonly state: readonly string[];
   /** The state the run stood in, as `think hash` entries in think order. */
   readonly identity: readonly string[];
   /** `true` when {@link identity} was cut at its budget and does not cover the whole run. */
@@ -261,6 +266,7 @@ function asRehearsalAccount(value: unknown): RehearsalAccount | undefined {
     thinks: summary.thinks,
     spans,
     spansTruncated: summary.spansTruncated === true,
+    state: asStrings(summary.state),
     identity: asStrings(summary.identity),
     identityTruncated: summary.identityTruncated === true,
     dispatchTotals: asStrings(summary.dispatchTotals),

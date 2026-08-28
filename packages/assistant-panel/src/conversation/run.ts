@@ -17,6 +17,20 @@ export const RunActivity = {
 /** What the brain under study was doing over one stretch of a rehearsal. */
 export type RunActivity = (typeof RunActivity)[keyof typeof RunActivity];
 
+/** One host call a stretch of a run made, counted over the whole stretch. */
+export interface RunCellCall {
+  /** Stable action key the run named the call by, for example `actuator.move`. */
+  readonly action: string;
+  /**
+   * The arguments the call filled that the run spelled in plain words, in the
+   * order it filled them. An argument carrying a value of its own -- a literal,
+   * a tile id, a number -- is absent.
+   */
+  readonly args: readonly string[];
+  /** Times the call was made over the cell's stretch. */
+  readonly count: number;
+}
+
 /** One cell of a run's timeline: a stretch of thinks doing one thing in one state. */
 export interface RunCell {
   /** Index of the cell's first think. */
@@ -26,6 +40,20 @@ export interface RunCell {
   readonly activity: RunActivity;
   /** The state the run stood in over the cell; absent when the account logged none. */
   readonly identity?: string;
+  /** Durable ids of the rules whose gate passed on each think of the stretch. */
+  readonly fired: readonly string[];
+  /** Durable ids of the rules that reached their gate on each think of the stretch and did not pass. */
+  readonly held: readonly string[];
+  /** Durable ids of the rules parked on an asynchronous call over the stretch. */
+  readonly waiting: readonly string[];
+  /** The host calls the stretch made, merged by call, in the order the account reported them. */
+  readonly calls: readonly RunCellCall[];
+  /**
+   * The channels that reported a change on the think the cell opens at, named
+   * and never valued. Absent for a cell the run did not change state at, and
+   * empty for one it changed state at with no channel of its own to name.
+   */
+  readonly changed?: readonly string[];
 }
 
 /** What a marker on a run's timeline stands for. */
@@ -108,6 +136,99 @@ export function spanActivity(span: RehearsalSpan): RunActivity {
   return RunActivity.Quiet;
 }
 
+/** The rules `span` reached the gate of and did not pass, in the order it reported them. */
+function heldRules(span: RehearsalSpan): string[] {
+  const fired = new Set(span.fired);
+  const held: string[] = [];
+  for (const entry of span.when) {
+    const ruleId = gatedRule(entry);
+    if (!fired.has(ruleId) && !held.includes(ruleId)) held.push(ruleId);
+  }
+  return held;
+}
+
+/** An argument the run spelled in plain words, which is one naming no value of its own. */
+const wordedArgument = /^[A-Za-z][A-Za-z0-9 -]*$/;
+
+/** The words `args` reads by, keeping only the arguments spelled as words. */
+function argumentWords(args: string): string[] {
+  const words: string[] = [];
+  for (const entry of args.split(",")) {
+    const valued = entry.indexOf("=");
+    const word = (valued === -1 ? entry : entry.slice(0, valued)).trim();
+    if (wordedArgument.test(word)) words.push(word);
+  }
+  return words;
+}
+
+/**
+ * One `action(args)[notes]=count@ruleId` dispatch entry of a span read apart,
+ * with the count it carries, which a span reports per think. `undefined` for an
+ * entry that is not one.
+ */
+function dispatchedCall(entry: string): { action: string; args: readonly string[]; perThink: number } | undefined {
+  const attributed = entry.lastIndexOf("@");
+  const made = attributed === -1 ? entry : entry.slice(0, attributed);
+  const counted = made.lastIndexOf("=");
+  if (counted === -1) return undefined;
+  const perThink = Number(made.slice(counted + 1));
+  if (!Number.isInteger(perThink)) return undefined;
+  const call = made.slice(0, counted);
+  const opened = call.indexOf("(");
+  const closed = call.lastIndexOf(")");
+  const named = call.search(/[([]/);
+  return {
+    action: (named === -1 ? call : call.slice(0, named)).trim(),
+    args: opened === -1 || closed < opened ? [] : argumentWords(call.slice(opened + 1, closed)),
+    perThink,
+  };
+}
+
+/**
+ * What `dispatched` comes to over a stretch of `thinks` alike thinks: each call
+ * the stretch made, counted over the whole stretch, calls that read the same way
+ * merged into one entry.
+ */
+function cellCalls(dispatched: readonly string[], thinks: number): RunCellCall[] {
+  const calls = new Map<string, RunCellCall>();
+  for (const entry of dispatched) {
+    const made = dispatchedCall(entry);
+    if (made === undefined) continue;
+    const key = `${made.action}(${made.args.join(",")})`;
+    const standing = calls.get(key);
+    const count = made.perThink * thinks;
+    calls.set(
+      key,
+      standing === undefined
+        ? { action: made.action, args: made.args, count }
+        : { ...standing, count: standing.count + count }
+    );
+  }
+  return [...calls.values()];
+}
+
+/**
+ * The names of the channels each think of a state log reported a change on,
+ * keyed by think, holding no part of what any of them reported.
+ */
+function stateChanges(state: readonly string[]): ReadonlyMap<number, readonly string[]> {
+  const changes = new Map<number, string[]>();
+  for (const entry of state) {
+    const split = entry.indexOf(" ");
+    if (split === -1) continue;
+    const at = Number(entry.slice(0, split));
+    if (!Number.isInteger(at)) continue;
+    const reported = entry.slice(split + 1);
+    const valued = reported.indexOf("=");
+    if (valued === -1) continue;
+    const channel = reported.slice(0, valued);
+    const standing = changes.get(at) ?? [];
+    if (!standing.includes(channel)) standing.push(channel);
+    changes.set(at, standing);
+  }
+  return changes;
+}
+
 /** One `think hash` entry of a state log, read apart. */
 interface StateEntry {
   readonly at: number;
@@ -129,22 +250,37 @@ function stateEntries(identity: readonly string[]): StateEntry[] {
 
 /**
  * Cut `span` where the run changed state inside it, so every cell stands in one
- * state throughout. Each piece carries the state standing at its first think.
+ * state throughout. Each piece carries the state standing at its first think,
+ * what the span reported about its rules and calls, and the channels behind the
+ * state change it opens at, for a piece that opens at one.
  */
-function cellsOf(span: RehearsalSpan, states: readonly StateEntry[]): RunCell[] {
+function cellsOf(
+  span: RehearsalSpan,
+  states: readonly StateEntry[],
+  changes: ReadonlyMap<number, readonly string[]>
+): RunCell[] {
   const activity = spanActivity(span);
+  const held = heldRules(span);
   const end = span.from + span.thinks;
   const cuts = states.filter((state) => state.at > span.from && state.at < end).map((state) => state.at);
   const bounds = [span.from, ...cuts, end];
   const cells: RunCell[] = [];
   for (let at = 0; at < bounds.length - 1; at++) {
     const from = bounds[at]!;
+    const thinks = bounds[at + 1]! - from;
     const standing = [...states].reverse().find((state) => state.at <= from);
+    const changedAt = states.findIndex((state) => state.at === from);
     cells.push({
       from,
-      thinks: bounds[at + 1]! - from,
+      thinks,
       activity,
       ...(standing ? { identity: standing.hash } : {}),
+      fired: span.fired,
+      held,
+      waiting: span.waiting,
+      calls: cellCalls(span.dispatched, thinks),
+      // The log's first entry is the state the run opened in, which nothing changed to.
+      ...(changedAt > 0 ? { changed: changes.get(from) ?? [] } : {}),
     });
   }
   return cells;
@@ -196,7 +332,8 @@ function askedThinks(input: unknown): number | undefined {
 /** `account` laid out as the timeline and markers the transcript draws. */
 function evidenceOf(account: RehearsalAccount, input: unknown): RunEvidence {
   const states = stateEntries(account.identity);
-  const cells = account.spans.flatMap((span) => cellsOf(span, states));
+  const changes = stateChanges(account.state);
+  const cells = account.spans.flatMap((span) => cellsOf(span, states, changes));
   const last = account.spans[account.spans.length - 1];
   const covered = last ? last.from + last.thinks : 0;
   const asked = askedThinks(input);

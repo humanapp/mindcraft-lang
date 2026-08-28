@@ -5,12 +5,7 @@ import type {
   ConversationRecord,
   ConversationTurnEnding,
 } from "@wendoo/assistant-relay";
-import {
-  ConversationTurnFailureCode,
-  NarrationJudgment,
-  NarrationRole,
-  RelayTurnEndCode,
-} from "@wendoo/assistant-relay";
+import { ConversationTurnFailureCode, NarrationRole, RelayTurnEndCode } from "@wendoo/assistant-relay";
 import { kBrainDeskFill } from "@wendoo/ui/brain-editor/brain-desk";
 import type { RenderMarkdownReference } from "@wendoo/ui/markdown/SafeMarkdown";
 import { SafeMarkdown } from "@wendoo/ui/markdown/SafeMarkdown";
@@ -19,7 +14,6 @@ import { createContext, type ReactNode, useCallback, useContext, useEffect, useM
 import type {
   BuildBlock,
   ConversationBlock,
-  LookupsBlock,
   NarrationBlock,
   ReceiptBlock,
   ReceiptRule,
@@ -32,13 +26,13 @@ import type { BrainPlaces } from "./conversation/brain-places";
 import { BrainPlacesProvider, useBrainPlaces } from "./conversation/brain-places";
 import type { EditSide } from "./conversation/edit-story";
 import { exportTranscript } from "./conversation/export";
-import type { RunActivity, RunCell, RunEvidence, RunMarker } from "./conversation/run";
-import { RunMarkerKind } from "./conversation/run";
+import type { RunCell, RunCellCall, RunEvidence, RunMarker } from "./conversation/run";
+import { RunActivity, RunMarkerKind } from "./conversation/run";
 import type { StandingState } from "./conversation/standing";
 import { answerless, standingHolds, standingState } from "./conversation/standing";
 import { ReferenceChip, TileChip } from "./conversation/TileChip";
 import type { BrainSurface, TileLook } from "./conversation/tile-visuals";
-import { BrainSurfaceProvider, unresolvedTileLook, useTileLooks } from "./conversation/tile-visuals";
+import { BrainSurfaceProvider, unresolvedTileLook, useCallLooks, useTileLooks } from "./conversation/tile-visuals";
 import { AssistantStatus } from "./session/machine";
 
 /** What the conversation surface shows, and the controls it hands back. */
@@ -126,18 +120,6 @@ const cardedRoles: readonly string[] = [
   NarrationRole.Ask,
 ];
 
-/** What a verdict reads as on the rehearsal it judged. */
-const verdictWords: Record<NarrationJudgment, string> = {
-  [NarrationJudgment.Succeeded]: "it worked",
-  [NarrationJudgment.Failed]: "it did not",
-};
-
-/** The tint a verdict pill reads in. */
-const verdictClasses: Record<NarrationJudgment, string> = {
-  [NarrationJudgment.Succeeded]: "border-brain-accent/40 bg-brain-accent/20",
-  [NarrationJudgment.Failed]: "border-destructive/40 bg-destructive/20",
-};
-
 /** Pixels a rule is indented per rule it stands under. */
 const ruleIndentPx = 16;
 
@@ -196,26 +178,42 @@ function Card({ kind, children }: { kind: string; children: ReactNode }) {
 }
 
 /**
+ * The chevron a fold's expander ends with: pointing right while the fold is
+ * closed, down while it stands open. Rotation keys on the summary's own open
+ * details, so nested folds each turn their own chevron.
+ */
+function FoldChevron() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 16 16"
+      className="size-3 shrink-0 transition-transform [details[open]>summary_&]:rotate-90"
+    >
+      <path
+        d="M6 4l4 4-4 4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/**
  * A disclosure the reader opens to read the long form of the block it sits in.
  * Whether it stands open is held by the element itself.
  */
 function Fold({ kind, summary, children }: { kind: string; summary: string; children: ReactNode }) {
   return (
     <details data-assistant-fold={kind} className="text-xs text-muted-foreground">
-      <summary className="cursor-pointer list-none pointer-coarse:min-h-11 pointer-coarse:py-2">{summary}</summary>
+      <summary className="flex cursor-pointer list-none items-center gap-1 pointer-coarse:min-h-11 pointer-coarse:py-2">
+        {summary}
+        <FoldChevron />
+      </summary>
       <div className="mt-1 flex flex-col gap-0.5 border-border border-l pl-2">{children}</div>
     </details>
-  );
-}
-
-/** How the entity judged a rehearsal, standing on the card of the run it judged. */
-function VerdictPill({ judgment }: { judgment: NarrationJudgment }) {
-  return (
-    <span
-      className={`shrink-0 rounded-md border px-1.5 py-0.5 text-card-foreground text-xs ${verdictClasses[judgment]}`}
-    >
-      {verdictWords[judgment]}
-    </span>
   );
 }
 
@@ -348,22 +346,16 @@ function ReceiptView({ block, context }: { block: ReceiptBlock; context: Transcr
         data-assistant-glance
         {...(block.page ? { "data-assistant-receipt-page": block.page.pageId } : {})}
         data-assistant-receipt-edits={block.story.length}
+        {...(block.compiles ? { "data-assistant-compiles": "ok" } : {})}
         className="flex flex-col gap-1.5"
       >
-        <div className="flex items-baseline gap-2">
-          <p className="grow text-card-foreground text-sm">{block.page ? block.page.name : "In your rules"}</p>
-          {block.compiles && (
-            <span data-assistant-compiles="ok" className="shrink-0 text-muted-foreground text-xs">
-              builds [ok]
-            </span>
-          )}
-        </div>
+        <p className="text-card-foreground text-sm">{block.page ? block.page.name : "In your rules"}</p>
         {block.rules.map((rule) => (
           <RuleSentence key={rule.ruleId} rule={rule} context={context} />
         ))}
       </div>
       {block.story.length > 0 && (
-        <Fold kind="edits" summary={`${block.story.length} edits -- show how`}>
+        <Fold kind="edits" summary={`${block.story.length} edits`}>
           {block.story.map((row, at) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: a story only ever appends, so a row keeps its position
             <p key={`edit-${at}`} data-assistant-step={row.op}>
@@ -431,6 +423,11 @@ function pageWord(at: number, context: TranscriptContext): string {
   return context.pageNames.get(at) ?? `page ${at}`;
 }
 
+/** The hairline a marker draws on the timeline, echoed beside its words. */
+function MarkerTick() {
+  return <span aria-hidden="true" className="mr-1.5 inline-block h-3 w-0.5 translate-y-0.5 bg-brain-ink/70" />;
+}
+
 /** What one marker on a run's timeline stands for, for the reader. */
 function markerText(marker: RunMarker, context: TranscriptContext): string {
   if (marker.kind === RunMarkerKind.Page) {
@@ -445,55 +442,166 @@ function cellThinks(cell: RunCell): string {
   return cell.thinks === 1 ? `think ${cell.from}` : `thinks ${cell.from}-${cell.from + cell.thinks - 1}`;
 }
 
-/** The timeline of a run: one cell per stretch of thinks doing one thing in one state. */
+/** The words a run's timeline reads the things one of its stretches names by. */
+interface CellWords {
+  /** The word a rule reads by. */
+  readonly rule: (ruleId: string) => string;
+  /** The words one host call reads by. */
+  readonly call: (made: RunCellCall) => string;
+  /** Whether a call did something to the world, which a call the host says only reads did not. */
+  readonly acted: (made: RunCellCall) => boolean;
+}
+
+/**
+ * How the things a stretch of a run names read: a rule as the number it stands
+ * at, a call as the word of the tile it is made by followed by the words it was
+ * called with. A rule neither the host nor the conversation places reads as a
+ * rule with no number of its own, and a call the host stands no tile for reads
+ * by the key the run named it by and counts as having done something.
+ */
+function useCellWords(context: TranscriptContext): CellWords {
+  const look = useCallLooks();
+  const places = useBrainPlaces();
+  return useMemo<CellWords>(
+    () => ({
+      rule: (ruleId) => {
+        const line = places?.locateRule(ruleId)?.line ?? context.ruleLines.get(ruleId);
+        return line === undefined ? "a rule" : `rule ${line}`;
+      },
+      call: (made) => [look(made.action)?.label ?? made.action, ...made.args].join(" "),
+      acted: (made) => look(made.action)?.acts !== false,
+    }),
+    [look, places, context]
+  );
+}
+
+/** What one stretch of a run did, as the words of the rules and calls behind it. */
+function cellDoing(cell: RunCell, words: CellWords): string[] {
+  const named = (ruleIds: readonly string[]): string => ruleIds.map((ruleId) => words.rule(ruleId)).join(", ");
+  if (cell.activity === RunActivity.Quiet) return ["nothing to do"];
+  const doing: string[] = [cell.activity];
+  if (cell.activity === RunActivity.Watching && cell.held.length > 0) {
+    doing.push(`${named(cell.held)} stayed false`);
+  }
+  if (cell.activity === RunActivity.Waiting && cell.waiting.length > 0) {
+    doing.push(`${named(cell.waiting)} waiting to hear back`);
+  }
+  if (cell.activity === RunActivity.Acting) {
+    const acted = cell.calls.filter((made) => words.acted(made));
+    if (cell.fired.length > 0) {
+      doing.push(cell.fired.map((ruleId) => `${words.rule(ruleId)} x${cell.thinks}`).join(", "));
+    }
+    if (acted.length > 0) doing.push(acted.map((made) => `${words.call(made)} x${made.count}`).join(", "));
+  }
+  return doing;
+}
+
+/**
+ * What one stretch of a run says about itself to a reader who cannot see the
+ * timeline: the thinks it covers, what the brain was doing over them, and the
+ * rules and calls that made it that. A stretch the run changed state at closes
+ * with the channels that changed, named and never valued.
+ */
+function cellReading(cell: RunCell, words: CellWords): string {
+  const covered = cell.thinks === 1 ? cellThinks(cell) : `${cellThinks(cell)} (${cell.thinks})`;
+  const changed =
+    cell.changed === undefined
+      ? []
+      : [cell.changed.length === 0 ? "something about it changed" : `${cell.changed.join(", ")} changed`];
+  return [covered, ...cellDoing(cell, words), ...changed].join(" - ");
+}
+
+/**
+ * The edge a cell's note is hung from, as the Tailwind utility standing for it:
+ * the note reaches inward from the timeline's near edge, so a stretch in the
+ * first half of a run carries its words to the right and one in the second half
+ * carries them to the left.
+ */
+function cellNoteSide(cell: RunCell, run: RunEvidence): string {
+  return cell.from * 2 < run.thinks ? "left-0" : "right-0";
+}
+
+/**
+ * The timeline of a run: one cell per stretch of thinks doing one thing in one
+ * state, and one tick per marker, reading out what landed there on hover. A
+ * cell shows the thinks it covers on rest and reads out by the fuller words of
+ * what it did, so what it says on hover and what it says to a screen reader
+ * deliberately differ.
+ */
 function RunTimeline({ run, context }: { run: RunEvidence; context: TranscriptContext }) {
   const uncovered = Math.max(run.thinks - run.covered, 0);
+  const words = useCellWords(context);
   return (
-    <div className="flex flex-col gap-1">
-      <div data-assistant-timeline={run.thinks} className="relative flex h-4 w-full items-end gap-px">
-        {run.cells.map((cell) => (
+    <div data-assistant-timeline={run.thinks} className="relative flex h-4 w-full items-end gap-px">
+      {run.cells.map((cell) => {
+        const reading = cellReading(cell, words);
+        return (
           <span
             key={`cell-${cell.from}`}
             data-assistant-cell-activity={cell.activity}
             data-assistant-cell-thinks={cell.thinks}
             {...(cell.identity === undefined ? {} : { "data-assistant-cell-identity": identityStep(cell.identity) })}
+            role="img"
+            aria-label={reading}
             style={{ flexGrow: cell.thinks, height: activityHeight[cell.activity], background: cellFill(cell) }}
-            className="min-w-0.75 rounded-xs"
-          />
-        ))}
-        {uncovered > 0 && (
-          <span
-            data-assistant-timeline-cut={uncovered}
-            style={{ flexGrow: uncovered }}
-            className="h-full min-w-0.75 rounded-xs border border-border border-dashed"
-          />
-        )}
-        {run.markers.map((marker, at) => (
+            className="group/cell relative min-w-0.75 rounded-xs"
+          >
+            <span
+              data-assistant-cell-note
+              className={`absolute bottom-full ${cellNoteSide(cell, run)} mb-1 hidden group-hover/cell:block whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-white text-xs shadow-lg pointer-events-none`}
+            >
+              {cellThinks(cell)}
+            </span>
+          </span>
+        );
+      })}
+      {uncovered > 0 && (
+        <span
+          data-assistant-timeline-cut={uncovered}
+          style={{ flexGrow: uncovered }}
+          className="h-full min-w-0.75 rounded-xs border border-border border-dashed"
+        />
+      )}
+      {run.markers.map((marker, at) => {
+        const reading = `think ${marker.at}: ${markerText(marker, context)}`;
+        return (
           <span
             key={`tick-${marker.kind}-${marker.at}-${at}`}
-            aria-hidden="true"
+            data-assistant-marker={marker.kind}
+            data-assistant-marker-at={marker.at}
+            {...(marker.inputKind ? { "data-assistant-marker-kind": marker.inputKind } : {})}
+            {...(marker.toPage === undefined ? {} : { "data-assistant-marker-page": marker.toPage })}
+            role="img"
+            aria-label={reading}
             style={{ left: `${(marker.at / Math.max(run.thinks, 1)) * 100}%` }}
-            className="pointer-events-none absolute top-0 bottom-0 w-px bg-brain-ink/70"
-          />
-        ))}
-      </div>
-      {run.markers.length > 0 && (
-        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-muted-foreground text-xs">
-          {run.markers.map((marker, at) => (
+            className="group/tick absolute top-0 bottom-0 -ml-1 flex w-2 justify-center"
+          >
+            <span aria-hidden="true" className="h-full w-0.5 bg-brain-ink/70" />
             <span
-              key={`marker-${marker.kind}-${marker.at}-${at}`}
-              data-assistant-marker={marker.kind}
-              data-assistant-marker-at={marker.at}
-              {...(marker.inputKind ? { "data-assistant-marker-kind": marker.inputKind } : {})}
-              {...(marker.toPage === undefined ? {} : { "data-assistant-marker-page": marker.toPage })}
+              data-assistant-marker-note
+              className={`absolute bottom-full ${marker.at * 2 < run.thinks ? "left-0" : "right-0"} mb-1 hidden group-hover/tick:block whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-white text-xs shadow-lg pointer-events-none`}
             >
-              {`${marker.at}: ${markerText(marker, context)}`}
+              {reading}
             </span>
-          ))}
-        </div>
-      )}
+          </span>
+        );
+      })}
     </div>
   );
+}
+
+/**
+ * The lines a run's record reads out, in think order: one per stretch of the
+ * run and one per timeline marker, a marker standing before the stretch it
+ * lands at the start of.
+ */
+function recordRows(run: RunEvidence): ({ kind: "cell"; cell: RunCell } | { kind: "marker"; marker: RunMarker })[] {
+  const ordered = [
+    ...run.markers.map((marker) => ({ at: marker.at, tie: 0, row: { kind: "marker", marker } as const })),
+    ...run.cells.map((cell) => ({ at: cell.from, tie: 1, row: { kind: "cell", cell } as const })),
+  ];
+  ordered.sort((a, b) => a.at - b.at || a.tie - b.tie);
+  return ordered.map((entry) => entry.row);
 }
 
 /**
@@ -508,8 +616,7 @@ function RunView({ block, context }: { block: RunBlock; context: TranscriptConte
   const pageChanges = run.markers.filter((marker) => marker.kind === RunMarkerKind.Page).length;
   const line = (
     <div className="flex items-baseline gap-2">
-      <p className="grow text-card-foreground text-sm">{ran ? "I watched it run." : "I could not run it."}</p>
-      {block.judgment && <VerdictPill judgment={block.judgment} />}
+      <p className="grow text-card-foreground text-sm">{ran ? "Rehearsal" : "Rehearsal (did not run)"}</p>
       {ran && <span className="shrink-0 text-muted-foreground text-xs">{`${run.thinks} thinks`}</span>}
     </div>
   );
@@ -527,12 +634,19 @@ function RunView({ block, context }: { block: RunBlock; context: TranscriptConte
     </>
   );
   const record = run.cells.length > 0 && (
-    <Fold kind="run" summary="open the run">
-      {run.cells.map((cell) => (
-        <p key={`step-${cell.from}`} data-assistant-run-step={cell.activity}>
-          {`${cellThinks(cell)}: ${cell.activity}`}
-        </p>
-      ))}
+    <Fold kind="run" summary="run details">
+      {recordRows(run).map((row, at) =>
+        row.kind === "cell" ? (
+          <p key={`step-${row.cell.from}`} data-assistant-run-step={row.cell.activity}>
+            {`${cellThinks(row.cell)}: ${row.cell.activity}`}
+          </p>
+        ) : (
+          <p key={`mark-${row.marker.kind}-${row.marker.at}-${at}`} data-assistant-record-marker={row.marker.kind}>
+            <MarkerTick />
+            {`think ${row.marker.at}: ${markerText(row.marker, context)}`}
+          </p>
+        )
+      )}
       {run.dispatchTotals.map((total) => {
         const split = total.lastIndexOf("=");
         const call = split === -1 ? total : total.slice(0, split);
@@ -570,7 +684,10 @@ function RunView({ block, context }: { block: RunBlock; context: TranscriptConte
       <Card kind={ConversationBlockKind.Run}>
         <div {...glance} className={supersededClasses}>
           <details data-assistant-fold="earlier-run">
-            <summary className="cursor-pointer list-none pointer-coarse:min-h-11 pointer-coarse:py-2">{line}</summary>
+            <summary className="flex cursor-pointer list-none items-center gap-1 pointer-coarse:min-h-11 pointer-coarse:py-2">
+              <div className="min-w-0 grow">{line}</div>
+              <FoldChevron />
+            </summary>
             <div className="mt-1.5 flex flex-col gap-1.5">
               {evidence}
               {record}
@@ -663,24 +780,6 @@ function GotToView({ state, context }: { state: StandingState; context: Transcri
         </div>
       </div>
     </Card>
-  );
-}
-
-/** Everything a turn looked at without changing, gathered under one fold. */
-function LookupsView({ block }: { block: LookupsBlock }) {
-  const total = block.steps.reduce((count, step) => count + step.repeats, 0);
-  return (
-    <div data-assistant-card={ConversationBlockKind.Lookups} data-assistant-lookups={total} className="w-full">
-      <Fold kind="lookups" summary={`${total} look-ups`}>
-        {block.steps.map((step, at) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: a fold only ever appends, so a row keeps its position
-          <p key={`lookup-${at}`} data-assistant-step={step.name}>
-            {step.text}
-            {step.repeats > 1 && ` (x${step.repeats})`}
-          </p>
-        ))}
-      </Fold>
-    </div>
   );
 }
 
@@ -796,7 +895,8 @@ function BlockView({ block, context }: { block: ConversationBlock; context: Tran
     case ConversationBlockKind.Build:
       return <BuildView block={block} />;
     case ConversationBlockKind.Lookups:
-      return <LookupsView block={block} />;
+      // Look-ups are gathered but draw nothing.
+      return null;
   }
 }
 
@@ -1003,8 +1103,9 @@ function TurnView({
       data-assistant-fold="turn"
       className="w-full"
     >
-      <summary className="cursor-pointer list-none text-muted-foreground text-xs pointer-coarse:min-h-11 pointer-coarse:py-2">
+      <summary className="flex cursor-pointer list-none items-center gap-1 text-muted-foreground text-xs pointer-coarse:min-h-11 pointer-coarse:py-2">
         {turnHeader(blocks)}
+        <FoldChevron />
       </summary>
       <div className="mt-2 flex w-full flex-col items-start gap-2">{body}</div>
     </details>

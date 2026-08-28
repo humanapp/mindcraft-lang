@@ -1,4 +1,5 @@
 import type { IBrainTileDef, ITileCatalog } from "@wendoo/core/brain";
+import { isActionTileDef } from "@wendoo/core/brain";
 import type { BrainEditorConfig } from "@wendoo/ui/brain-editor/BrainEditorContext";
 import { kDefaultTileHue, resolveTileVisualFrom } from "@wendoo/ui/brain-editor/tile-visual-utils";
 import type { TileVisual } from "@wendoo/ui/brain-editor/types";
@@ -54,6 +55,20 @@ export function unresolvedTileLook(label: string): TileLook {
   return { label, hue: kDefaultTileHue };
 }
 
+/** How `tileDef` reads on `side` of a rule, and in prose when given no side, against `surface`. */
+function lookOf(surface: BrainSurface | undefined, tileDef: IBrainTileDef, side: EditSide | undefined): TileLook {
+  const visual = resolveTileVisualFrom(surface?.resolveTileVisual, tileDef);
+  const colorDef = visual.colorDef;
+  // A tile on a side reads in that side's hue alone; one standing in prose
+  // reads in the WHEN hue, falling to the DO hue where it names only that.
+  const sided = side === undefined ? colorDef?.when || colorDef?.do : side === "when" ? colorDef?.when : colorDef?.do;
+  return {
+    label: visual.label || tileDef.tileId,
+    ...(visual.iconUrl === undefined ? {} : { iconUrl: visual.iconUrl }),
+    hue: sided || kDefaultTileHue,
+  };
+}
+
 const BrainSurfaceContext = createContext<BrainSurface | undefined>(undefined);
 
 /** Stands `value` as the brain the transcript draws tiles against over the tree it wraps. */
@@ -73,17 +88,41 @@ export function useTileLooks(): ReadTileLook {
       for (const catalog of surface?.tileCatalogs ?? []) {
         const tileDef = catalog.get(tileId);
         if (tileDef === undefined) continue;
-        const visual = resolveTileVisualFrom(surface?.resolveTileVisual, tileDef);
-        const colorDef = visual.colorDef;
-        // A tile on a side reads in that side's hue alone; one standing in prose
-        // reads in the WHEN hue, falling to the DO hue where it names only that.
-        const sided =
-          side === undefined ? colorDef?.when || colorDef?.do : side === "when" ? colorDef?.when : colorDef?.do;
-        return {
-          label: visual.label || tileId,
-          ...(visual.iconUrl === undefined ? {} : { iconUrl: visual.iconUrl }),
-          hue: sided || kDefaultTileHue,
-        };
+        return lookOf(surface, tileDef, side);
+      }
+      return undefined;
+    },
+    [surface]
+  );
+}
+
+/** How one host call reads on screen, and what the call does. */
+export interface CallLook extends TileLook {
+  /** `true` where the call reaches out to the world, `false` where it only reads it. */
+  readonly acts: boolean;
+}
+
+/**
+ * How the tile a host call is made by reads, looked up by the stable action key
+ * the call reports. Answers `undefined` where no tile of the brain declares that
+ * action, which {@link unresolvedTileLook} gives the caller's own word for.
+ */
+export type ReadCallLook = (action: string) => CallLook | undefined;
+
+/**
+ * Reads how the tile behind a host call looks, against the brain the host
+ * stands. Where the host stands none, every call answers `undefined`.
+ */
+export function useCallLooks(): ReadCallLook {
+  const surface = useContext(BrainSurfaceContext);
+
+  return useCallback<ReadCallLook>(
+    (action) => {
+      for (const catalog of surface?.tileCatalogs ?? []) {
+        const tileDef = catalog.find((held) => isActionTileDef(held) && held.action.key === action);
+        if (tileDef === undefined) continue;
+        const kind = isActionTileDef(tileDef) ? tileDef.action.kind : undefined;
+        return { ...lookOf(surface, tileDef, undefined), acts: kind === "actuator" };
       }
       return undefined;
     },

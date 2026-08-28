@@ -235,6 +235,19 @@ function valuesOf(markup: string, attribute: string): string[] {
   return [...markup.matchAll(new RegExp(`${attribute}="([^"]*)"`, "g"))].map((match) => match[1] ?? "");
 }
 
+/** Every cell of a run's timeline, as the span standing for it was rendered. */
+function cellSpans(markup: string): string[] {
+  return [...markup.matchAll(/<span[^>]*data-assistant-cell-activity[^>]*>/g)].map((match) => match[0]);
+}
+
+/** The words hung beside every cell of a run's timeline, in the order the cells stand. */
+function cellNoteWords(markup: string): string[] {
+  const notes = markup.matchAll(
+    /<span[^>]*data-assistant-cell-activity[^>]*><span[^>]*data-assistant-cell-note[^>]*>([^<]*)<\/span><\/span>/g
+  );
+  return [...notes].map((match) => match[1] ?? "");
+}
+
 /** `value` as it stands in the markup, where a tile id's own characters are escaped. */
 function escaped(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -637,10 +650,10 @@ describe("what a turn only looked at", () => {
     });
 
     assert.doesNotMatch(markup, /data-assistant-activity/);
-    assert.deepEqual(cardKinds(markup), ["snag", "receipt", "lookups"]);
+    assert.deepEqual(cardKinds(markup), ["snag", "receipt"]);
   });
 
-  test("keeps the evidence of a turn that changed nothing at all", () => {
+  test("draws nothing for a turn that only looked", () => {
     const markup = render({
       record: record([
         {
@@ -653,27 +666,9 @@ describe("what a turn only looked at", () => {
       ]),
     });
 
-    assert.deepEqual(cardKinds(markup), ["lookups"]);
-    assert.match(markup, /data-assistant-lookups="2"/);
-    assert.deepEqual(valuesOf(markup, "data-assistant-step"), ["read_catalog", "read_catalog"]);
-  });
-
-  test("counts calls asking the very same thing as one row", () => {
-    const markup = render({
-      record: record([
-        {
-          kind: "assistant",
-          steps: [
-            { kind: "toolCall", call: catalogRead },
-            { kind: "toolCall", call: catalogRead },
-            { kind: "toolCall", call: catalogRead },
-          ],
-        },
-      ]),
-    });
-
-    assert.match(markup, /data-assistant-lookups="3"/);
-    assert.deepEqual(valuesOf(markup, "data-assistant-step"), ["read_catalog"]);
+    assert.deepEqual(cardKinds(markup), []);
+    assert.doesNotMatch(markup, /data-assistant-lookups/);
+    assert.doesNotMatch(markup, /data-assistant-step=/);
   });
 });
 
@@ -693,7 +688,7 @@ describe("the folds a card opens", () => {
     });
 
     const folds = countOf(markup, /data-assistant-fold=/);
-    assert.equal(folds, 3);
+    assert.equal(folds, 2);
     assert.equal(countOf(markup, /<details[^>]*data-assistant-fold=/), folds);
     assert.equal(countOf(markup, /<summary/), folds);
   });
@@ -1028,6 +1023,84 @@ describe("the rehearsals a turn ran", () => {
     assert.equal(steps[0], steps[2], "the state it came back to reads as the state it started in");
     assert.notEqual(steps[0], steps[1]);
     assert.deepEqual(valuesOf(markup, "data-assistant-cell-thinks"), ["1", "1", "1"]);
+  });
+
+  test("hangs the thinks every cell covers beside it, and reads out by more than it shows", () => {
+    const markup = render({
+      record: record([
+        {
+          kind: "assistant",
+          steps: [
+            {
+              kind: "toolCall",
+              call: rehearsed({
+                thinks: 24,
+                spans: [
+                  span(0, 4, {}),
+                  span(4, 6, { when: ["rule-1=false"] }),
+                  span(10, 8, {
+                    fired: ["rule-1"],
+                    when: ["rule-1=true"],
+                    dispatched: ["actuator.move(away from=1,it)=1@rule-1"],
+                  }),
+                  span(18, 6, { waiting: ["rule-1"] }),
+                ],
+                identity: ["0 00000001", "10 00000002"],
+                state: ["0 energy=8", "10 energy=3"],
+              }),
+            },
+          ],
+        },
+      ]),
+    });
+
+    const cells = cellSpans(markup);
+    const notes = cellNoteWords(markup);
+    assert.equal(cells.length, 4, "one cell per stretch, each of a different activity");
+    assert.equal(notes.length, cells.length, "every cell carries the note standing beside it");
+    let from = 0;
+    cells.forEach((cell, at) => {
+      const thinks = Number(/data-assistant-cell-thinks="(\d+)"/.exec(cell)?.[1]);
+      const note = notes[at] ?? "";
+      assert.deepEqual(
+        [...note.matchAll(/\d+/g)].map((match) => Number(match[0])),
+        thinks === 1 ? [from] : [from, from + thinks - 1],
+        "the note names the thinks the cell covers, and nothing besides"
+      );
+      const reading = /aria-label="([^"]+)"/.exec(cell)?.[1];
+      assert.ok(reading, `every cell tells the reader what it stands for: ${cell}`);
+      assert.ok(reading.startsWith(note), "what it reads out by opens with the thinks it shows");
+      assert.ok(reading.length > note.length, "a reader who cannot see the cell hears more than it shows");
+      assert.doesNotMatch(cell, /title=/, "the words stand in the panel's own note, not the browser's tooltip");
+      from += thinks;
+    });
+  });
+
+  test("keeps what a state channel reported out of what the timeline says, naming only the channel", () => {
+    const markup = render({
+      record: record([
+        {
+          kind: "assistant",
+          steps: [
+            {
+              kind: "toolCall",
+              call: rehearsed({
+                thinks: 12,
+                spans: [span(0, 12, { fired: ["rule-1"], when: ["rule-1=true"] })],
+                identity: ["0 00000001", "6 00000002"],
+                state: ["0 display=0000000000", "6 display=0900009000"],
+              }),
+            },
+          ],
+        },
+      ]),
+    });
+
+    assert.ok(
+      cellSpans(markup).some((cell) => /aria-label="[^"]*display[^"]*"/.test(cell)),
+      "the cell the channel changed at names the channel"
+    );
+    assert.doesNotMatch(markup, /0900009000/);
   });
 
   test("leaves the cells of a run that logged no state carrying none", () => {
