@@ -13,7 +13,15 @@ import { proposeEdit } from "./propose-edit.js";
 import { readProject } from "./read-project.js";
 import { rulesToExclude, simulate } from "./simulate.js";
 import type { AuthoringWorkspace } from "./workspace.js";
-import { allTiles, createAuthoringWorkspace, findPage, findRule, findTile, locateRules } from "./workspace.js";
+import {
+  allTiles,
+  createAuthoringWorkspace,
+  findPage,
+  findRule,
+  findTile,
+  locateRules,
+  tileCatalogsOf,
+} from "./workspace.js";
 
 /** Tiles the fake target's brains are authored from. */
 const tiles = {
@@ -39,7 +47,9 @@ function wipRules(workspace: AuthoringWorkspace): Record<keyof typeof wipRulePat
 /** Put `tileId` on `side` of `ruleId` through a core command, around `propose_edit`. */
 function place(workspace: AuthoringWorkspace, ruleId: string, side: RuleSide, tileId: string): void {
   const rule = findRule(workspace.brainDef, ruleId)!.rule;
-  workspace.history.executeCommand(new AddTileCommand(rule, side, findTile(workspace.catalogs, tileId)!));
+  workspace.history.executeCommand(
+    new AddTileCommand(rule, side, findTile(tileCatalogsOf(workspace.catalogs), tileId)!)
+  );
 }
 
 /**
@@ -88,7 +98,7 @@ function documentErrors(workspace: AuthoringWorkspace): CompileDiagnostic[] {
 
 /** Tile ids the document's own catalog holds right now, sorted. */
 function documentTileIds(workspace: AuthoringWorkspace): string[] {
-  return allTiles(workspace.catalogs).map((tile) => tile.tileId);
+  return allTiles(tileCatalogsOf(workspace.catalogs)).map((tile) => tile.tileId);
 }
 
 describe("a session opened on a work-in-progress document", () => {

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { catalogDigest } from "../catalog/digest.js";
+import { CatalogScope } from "../catalog/scope.js";
 import {
   createTargetAdapter,
   FAKE_EMIT_GRAMMAR_NOTE,
@@ -10,7 +11,7 @@ import {
 } from "../testing/index.js";
 import { executeToolCall } from "./dispatch.js";
 import { proposeEdit } from "./propose-edit.js";
-import { readCatalog } from "./read-catalog.js";
+import { catalogTiles, readCatalog } from "./read-catalog.js";
 import { readProject } from "./read-project.js";
 import { suggestTiles } from "./suggest-tiles.js";
 import { toolDefinitions } from "./tool-schemas.js";
@@ -211,18 +212,24 @@ describe("the bridge tools over a real target", () => {
     });
 
     const view = readCatalog(ws, { filter: "hunger" });
-    const digest = catalogDigest(view.tiles);
+    const listed = catalogTiles(view);
+    const digest = catalogDigest(listed);
 
-    assert.equal(view.tiles.length, 1);
-    assert.equal(view.tiles[0]?.label, "hunger");
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0]?.label, "hunger");
+    assert.deepEqual(
+      view.groups.map((group) => group.scope),
+      [CatalogScope.Document],
+      "a minted variable is the document's own tile"
+    );
     assert.ok(digest.text.includes(" | hunger | "), digest.text);
   });
 
   test("carries a registered grammar note to the tile's catalog entry and digest line", () => {
-    const view = readCatalog(workspace(), {});
-    const emit = view.tiles.find((tile) => tile.tileId === tiles.actuator);
-    const sensor = view.tiles.find((tile) => tile.tileId === tiles.sensor);
-    const line = catalogDigest(view.tiles)
+    const listed = catalogTiles(readCatalog(workspace(), {}));
+    const emit = listed.find((tile) => tile.tileId === tiles.actuator);
+    const sensor = listed.find((tile) => tile.tileId === tiles.sensor);
+    const line = catalogDigest(listed)
       .text.split("\n")
       .find((entry) => entry.startsWith(`${tiles.actuator} |`));
 
@@ -232,15 +239,14 @@ describe("the bridge tools over a real target", () => {
   });
 
   test("reads an anonymous argument out as the value type it takes, never as a tile to place", () => {
-    const view = readCatalog(workspace(), {});
-    const chime = view.tiles.find((tile) => tile.tileId === tiles.asyncActuator);
+    const chime = catalogTiles(readCatalog(workspace(), {})).find((tile) => tile.tileId === tiles.asyncActuator);
 
     assert.ok(chime, tiles.asyncActuator);
     assert.equal(chime.args, "any-order(optional(value:number:<number>))");
   });
 
   test("lists an argument tile only where some action names it as a tile to place", () => {
-    const listed = readCatalog(workspace(), {}).tiles.map((tile) => tile.tileId);
+    const listed = catalogTiles(readCatalog(workspace(), {})).map((tile) => tile.tileId);
 
     assert.ok(listed.includes(tiles.modifier), "the modifier the emit grammar names is placeable");
     assert.ok(listed.includes(tiles.parameter), "the named parameter the emit grammar names is placeable");

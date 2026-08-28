@@ -5,6 +5,7 @@ import type { IBrainTileDef, ITileCatalog } from "@wendoo/core/brain";
 import { childRulePath, RuleSide, rootRulePath } from "@wendoo/core/brain";
 import type { BrainCommand, BrainEditOrigin, BrainJson, BrainPageDef, BrainRuleDef } from "@wendoo/core/brain/model";
 import { BrainCommandHistory, BrainDef } from "@wendoo/core/brain/model";
+import { CatalogScope } from "../catalog/scope.js";
 import type { TargetAdapter } from "../target/adapter.js";
 import { sessionTileDescriptions } from "./tile-descriptions.js";
 import type { RuleSideName } from "./tool-schemas.js";
@@ -54,6 +55,12 @@ export interface LandedEdit {
   readonly ruleId?: string;
 }
 
+/** One catalog of an authoring workspace, under the scope it holds tiles for. */
+export interface ScopedTileCatalog {
+  readonly scope: CatalogScope;
+  readonly catalog: ITileCatalog;
+}
+
 /**
  * The live objects one authoring session edits: a real environment, the brain
  * document under authoring, the command history every edit runs through, the
@@ -64,7 +71,8 @@ export interface AuthoringWorkspace {
   readonly environment: WendooEnvironment;
   readonly brainDef: BrainDef;
   readonly history: BrainEditHistory;
-  readonly catalogs: ReadonlyList<ITileCatalog>;
+  /** Catalogs a tile resolves against, in resolution order, each under its scope. */
+  readonly catalogs: ReadonlyList<ScopedTileCatalog>;
   /** Author description text keyed by tile id; a tile with no documented description is absent. */
   readonly descriptions: ReadonlyMap<string, string>;
   readonly adapter: TargetAdapter;
@@ -83,6 +91,19 @@ export interface AuthoringWorkspaceOptions {
    * session edits this project.
    */
   readonly brainJson?: BrainJson;
+}
+
+/**
+ * The catalogs an authoring workspace over `brainDef` resolves tiles against,
+ * in resolution order: `environment`'s own catalogs under
+ * {@link CatalogScope.Environment}, then the document's under
+ * {@link CatalogScope.Document}.
+ */
+export function scopedCatalogs(environment: WendooEnvironment, brainDef: BrainDef): ReadonlyList<ScopedTileCatalog> {
+  return List.from<ScopedTileCatalog>([
+    ...environment.tileCatalogs().map((catalog) => ({ scope: CatalogScope.Environment, catalog })),
+    { scope: CatalogScope.Document, catalog: brainDef.catalog() },
+  ]);
 }
 
 /**
@@ -108,7 +129,7 @@ export function createAuthoringWorkspace(
     environment,
     brainDef,
     history: new BrainCommandHistory(),
-    catalogs: List.from<ITileCatalog>([...environment.tileCatalogs(), brainDef.catalog()]),
+    catalogs: scopedCatalogs(environment, brainDef),
     descriptions: sessionTileDescriptions(adapter.tileDocs()),
     adapter,
   };
@@ -218,6 +239,11 @@ export function rulesNamingTile(brainDef: BrainDef, tileId: string): string[] {
   return naming;
 }
 
+/** The catalogs of `catalogs`, in the same order, without their scopes. */
+export function tileCatalogsOf(catalogs: ReadonlyList<ScopedTileCatalog>): ReadonlyList<ITileCatalog> {
+  return List.from<ITileCatalog>(catalogs.toArray().map((scoped) => scoped.catalog));
+}
+
 /** The tile `tileId` names in any of `catalogs`, or `undefined` when none holds it. */
 export function findTile(catalogs: ReadonlyList<ITileCatalog>, tileId: string): IBrainTileDef | undefined {
   for (let i = 0; i < catalogs.size(); i++) {
@@ -239,4 +265,40 @@ export function allTiles(catalogs: ReadonlyList<ITileCatalog>): IBrainTileDef[] 
       });
   }
   return [...byId.values()].sort((a, b) => (a.tileId < b.tileId ? -1 : a.tileId > b.tileId ? 1 : 0));
+}
+
+/** One scope's tiles, as {@link tilesByScope} groups them. */
+export interface ScopedTiles {
+  readonly scope: CatalogScope;
+  /** The scope's tiles, sorted by tile id. */
+  readonly tiles: readonly IBrainTileDef[];
+}
+
+/**
+ * Every tile in `catalogs`, grouped by the scope of the catalog it came from.
+ * A tile id more than one catalog holds is reported once, under the scope of
+ * the first catalog holding it. Groups run in the order their scope first
+ * appears in `catalogs`, and a scope holding no tile is left out.
+ */
+export function tilesByScope(catalogs: ReadonlyList<ScopedTileCatalog>): ScopedTiles[] {
+  const seen = new Set<string>();
+  const byScope = new Map<CatalogScope, IBrainTileDef[]>();
+  for (const { scope, catalog } of catalogs.toArray()) {
+    let tiles = byScope.get(scope);
+    if (!tiles) {
+      tiles = [];
+      byScope.set(scope, tiles);
+    }
+    catalog.getAll().forEach((tile) => {
+      if (seen.has(tile.tileId)) return;
+      seen.add(tile.tileId);
+      tiles.push(tile);
+    });
+  }
+  const grouped: ScopedTiles[] = [];
+  for (const [scope, tiles] of byScope) {
+    if (tiles.length === 0) continue;
+    grouped.push({ scope, tiles: tiles.sort((a, b) => (a.tileId < b.tileId ? -1 : a.tileId > b.tileId ? 1 : 0)) });
+  }
+  return grouped;
 }

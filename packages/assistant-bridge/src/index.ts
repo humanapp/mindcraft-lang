@@ -1,5 +1,6 @@
 export type { CatalogDigest } from "./catalog/digest.js";
 export { catalogDigest, languageGrammarLegend } from "./catalog/digest.js";
+export { CatalogScope } from "./catalog/scope.js";
 export type {
   ExcludedRule,
   RuleTotals,
@@ -57,8 +58,8 @@ export type {
   ProposalUnresolved,
 } from "./tools/propose-edit.js";
 export { batchReplayStepMs, proposeEdit, proposeEditBatch, resolveRunEntry } from "./tools/propose-edit.js";
-export type { CatalogTile, CatalogView } from "./tools/read-catalog.js";
-export { readCatalog } from "./tools/read-catalog.js";
+export type { CatalogGroup, CatalogTile, CatalogView } from "./tools/read-catalog.js";
+export { catalogTiles, catalogTilesInScope, readCatalog } from "./tools/read-catalog.js";
 export type { ProjectPage, ProjectPageRef, ProjectRule, ProjectTile, ProjectView } from "./tools/read-project.js";
 export { readProject, readRule } from "./tools/read-project.js";
 export type { PolicyDecision, ProposalPolicyEntry, ProposalVerdict } from "./tools/rejection-policy.js";
@@ -96,6 +97,8 @@ export type {
   BrainEditHistory,
   LandedEdit,
   LocatedRule,
+  ScopedTileCatalog,
+  ScopedTiles,
 } from "./tools/workspace.js";
 export {
   allTiles,
@@ -106,5 +109,8 @@ export {
   isNestedRulePath,
   locateRules,
   ruleIdsByPath,
+  scopedCatalogs,
+  tileCatalogsOf,
+  tilesByScope,
   toRuleSide,
 } from "./tools/workspace.js";

@@ -24,7 +24,16 @@ import { decideProposal, rejectionParams } from "./rejection-policy.js";
 import type { ProposeEditBatchInput, ProposeEditInput, TileRunEntry } from "./tool-schemas.js";
 import { batchPageTileIndex, batchRuleIndex } from "./tool-schemas.js";
 import type { AuthoringWorkspace, LandedEdit } from "./workspace.js";
-import { findPage, findPageById, findRule, findTile, ruleIdsByPath, rulesNamingTile, toRuleSide } from "./workspace.js";
+import {
+  findPage,
+  findPageById,
+  findRule,
+  findTile,
+  ruleIdsByPath,
+  rulesNamingTile,
+  tileCatalogsOf,
+  toRuleSide,
+} from "./workspace.js";
 
 /**
  * What one command of a proposal left in, or took out of, the document.
@@ -523,11 +532,11 @@ export function resolveRunEntry(
   if (madeIndex !== undefined) {
     const pageId = madePages?.get(madeIndex);
     if (pageId === undefined) return { ok: false, error: "unknown_batch_reference", named: mint.tileId };
-    const pageTile = findTile(workspace.catalogs, mkPageTileId(pageId));
+    const pageTile = findTile(tileCatalogsOf(workspace.catalogs), mkPageTileId(pageId));
     if (!pageTile) return { ok: false, error: "unknown_tile", named: mkPageTileId(pageId) };
     return pageTile;
   }
-  const tile = findTile(workspace.catalogs, mint.tileId);
+  const tile = findTile(tileCatalogsOf(workspace.catalogs), mint.tileId);
   if (!tile) return { ok: false, error: "unknown_tile", named: mint.tileId };
   if (tile.kind !== "factory") return tile;
 

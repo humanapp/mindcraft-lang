@@ -6,10 +6,16 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { catalogDigest, createAuthoringWorkspace, readCatalog, toolDefinitions } from "@wendoo/assistant-bridge";
+import {
+  CatalogScope,
+  catalogDigest,
+  catalogTiles,
+  catalogTilesInScope,
+  createAuthoringWorkspace,
+  readCatalog,
+  toolDefinitions,
+} from "@wendoo/assistant-bridge";
 import { assistantToolManifest } from "@wendoo/assistant-panel";
-import { List } from "@wendoo/core/app";
-import type { ITileCatalog } from "@wendoo/core/brain";
 import { createTargetAdapter } from "@/rehearsal/adapter";
 import { sourceRehearsalContent } from "@/rehearsal/source-content";
 
@@ -36,19 +42,15 @@ describe("the manifest this app opens a session with", () => {
 
   test("fingerprints the tiles its adapter installs, and nothing a document minted", () => {
     const adapter = createTargetAdapter(CONTENT);
-    const workspace = createAuthoringWorkspace(adapter, "catalog");
-    const installed = readCatalog(
-      { ...workspace, catalogs: List.from<ITileCatalog>([...workspace.environment.tileCatalogs()]) },
-      {}
-    ).tiles;
-    const withDocument = readCatalog(workspace, {}).tiles;
+    const view = readCatalog(createAuthoringWorkspace(adapter, "catalog"), {});
+    const environment = catalogTilesInScope(view, CatalogScope.Environment);
 
     const declared = assistantToolManifest(adapter).catalogDigest;
 
-    assert.ok(installed.length > 0, "the adapter installs tiles to fingerprint");
-    assert.equal(declared, catalogDigest(installed).hash);
+    assert.ok(environment.length > 0, "the adapter installs tiles to fingerprint");
+    assert.equal(declared, catalogDigest(environment).hash);
     assert.notEqual(
-      catalogDigest(withDocument).hash,
+      catalogDigest(catalogTiles(view)).hash,
       declared,
       "a document's own tiles would have moved the fingerprint"
     );

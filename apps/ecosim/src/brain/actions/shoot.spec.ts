@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { AuthoringWorkspace, CatalogTile, SimulationRun } from "@wendoo/assistant-bridge";
-import { catalogDigest, createAuthoringWorkspace, findTile, readCatalog } from "@wendoo/assistant-bridge";
+import {
+  catalogDigest,
+  catalogTiles,
+  createAuthoringWorkspace,
+  findTile,
+  readCatalog,
+  tileCatalogsOf,
+} from "@wendoo/assistant-bridge";
 import { mkModifierTileId } from "@wendoo/core/brain";
 import type { BrainRuleDef } from "@wendoo/core/brain/model";
 import { TileIds } from "@/brain/tileids";
@@ -25,7 +32,7 @@ function ecosimWorkspace(): AuthoringWorkspace {
 
 /** Every tile of a fresh ecosim session, as the catalog reports them to a model. */
 function ecosimCatalog(): readonly CatalogTile[] {
-  return readCatalog(ecosimWorkspace(), {}).tiles;
+  return catalogTiles(readCatalog(ecosimWorkspace(), {}));
 }
 
 /** The catalog entry for `tileId`, which must be present. */
@@ -98,11 +105,13 @@ describe("what shoot reports about the shot it just took", () => {
     // A rule that shoots every think, with a rule below it that acts only on
     // the thinks a blip really went out.
     const rule = workspace.brainDef.pages().get(0).children().get(0) as BrainRuleDef;
-    rule.do().appendTile(findTile(workspace.catalogs, SHOOT_TILE_ID)!);
+    rule.do().appendTile(findTile(tileCatalogsOf(workspace.catalogs), SHOOT_TILE_ID)!);
     const counter = rule.appendNewRule();
-    counter.when().appendTile(findTile(workspace.catalogs, SHOT_FIRED_TILE_ID)!);
-    counter.do().appendTile(findTile(workspace.catalogs, TURN_TILE_ID)!);
-    counter.do().appendTile(findTile(workspace.catalogs, mkModifierTileId(TileIds.Modifier.TurnAround))!);
+    counter.when().appendTile(findTile(tileCatalogsOf(workspace.catalogs), SHOT_FIRED_TILE_ID)!);
+    counter.do().appendTile(findTile(tileCatalogsOf(workspace.catalogs), TURN_TILE_ID)!);
+    counter
+      .do()
+      .appendTile(findTile(tileCatalogsOf(workspace.catalogs), mkModifierTileId(TileIds.Modifier.TurnAround))!);
 
     const run = await workspace.adapter.run({
       brainDef: workspace.brainDef,

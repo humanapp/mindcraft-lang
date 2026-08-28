@@ -12,7 +12,7 @@ import {
 import type { BrainRuleDef } from "@wendoo/core/brain/model";
 import type { Localizer } from "@wendoo/core/localization";
 import type { ToolInput } from "./tool-schemas.js";
-import { type AuthoringWorkspace, findRule, toRuleSide } from "./workspace.js";
+import { type AuthoringWorkspace, findRule, tileCatalogsOf, toRuleSide } from "./workspace.js";
 
 /** One tile the legality oracle offers at a position. */
 export interface SuggestedTile {
@@ -106,7 +106,7 @@ export function suggestTiles(
 
   const result = coreSuggestTiles(
     insertionContext(located.rule, side, input.mode, position),
-    workspace.catalogs,
+    tileCatalogsOf(workspace.catalogs),
     workspace.environment.brainServices
   );
   const localizer = workspace.environment.appServices.localizer;

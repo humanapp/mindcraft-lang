@@ -12,10 +12,10 @@ import { ParseDiagCode } from "@wendoo/core/brain/compiler";
 import { FakeActionKeys, FakeTileIds } from "../testing/fake-module.js";
 import { createTargetAdapter, ruleIdAt } from "../testing/index.js";
 import { proposeEdit } from "./propose-edit.js";
-import { readCatalog } from "./read-catalog.js";
+import { catalogTiles, readCatalog } from "./read-catalog.js";
 import type { RuleSideName } from "./tool-schemas.js";
 import type { AuthoringWorkspace } from "./workspace.js";
-import { createAuthoringWorkspace, findTile } from "./workspace.js";
+import { createAuthoringWorkspace, findTile, tileCatalogsOf } from "./workspace.js";
 
 /** Where the rule a fresh brain document already holds stands. */
 const kFirstRulePath = "0/0";
@@ -61,7 +61,7 @@ function refusedForPlacement(session: AuthoringWorkspace, ruleId: string, side: 
  * exactly the sides the editor does not refuse it on.
  */
 function assertCatalogAgrees(session: AuthoringWorkspace, freshRule: () => string): void {
-  const tiles = readCatalog(session, {}).tiles;
+  const tiles = catalogTiles(readCatalog(session, {}));
   assert.ok(tiles.length > 0, "the world offers tiles");
   for (const entry of tiles) {
     for (const side of kSides) {
@@ -84,7 +84,7 @@ describe("what read_catalog says about placement", () => {
   test("names nothing beyond the placements the editor enforces", () => {
     const session = workspace();
 
-    const named = new Set(readCatalog(session, {}).tiles.flatMap((entry) => entry.placement));
+    const named = new Set(catalogTiles(readCatalog(session, {})).flatMap((entry) => entry.placement));
 
     assert.deepEqual([...named].sort(), ["do", "inline", "when"]);
   });
@@ -92,13 +92,13 @@ describe("what read_catalog says about placement", () => {
   test("leaves a tile's unenforced placement bits unnamed", () => {
     const session = workspace();
     const tileId = `tile.modifier->${FakeTileIds.Loudly}`;
-    const tile = findTile(session.catalogs, tileId);
+    const tile = findTile(tileCatalogsOf(session.catalogs), tileId);
     assert.ok(tile, "the fake target offers a modifier");
-    const before = readCatalog(session, { filter: tileId }).tiles[0]?.placement;
+    const before = catalogTiles(readCatalog(session, { filter: tileId }))[0]?.placement;
 
     tile.placement = (tile.placement ?? 0) | TilePlacement.ChildRule | TilePlacement.InsideLoop;
 
-    assert.deepEqual(readCatalog(session, { filter: tileId }).tiles[0]?.placement, before);
+    assert.deepEqual(catalogTiles(readCatalog(session, { filter: tileId }))[0]?.placement, before);
   });
 });
 

@@ -5,8 +5,9 @@ import { tileSentenceWord } from "@wendoo/core/brain/language-service";
 import type { BrainTileParameterDef } from "@wendoo/core/brain/tiles";
 import type { Localizer } from "@wendoo/core/localization";
 import type { BrainActionCallArgSpec, BrainActionCallSpec } from "@wendoo/core/runtime";
+import type { CatalogScope } from "../catalog/scope.js";
 import type { ToolInput } from "./tool-schemas.js";
-import { type AuthoringWorkspace, allTiles } from "./workspace.js";
+import { type AuthoringWorkspace, tilesByScope } from "./workspace.js";
 
 /** One tile as `read_catalog` describes it. */
 export interface CatalogTile {
@@ -46,12 +47,30 @@ export interface CatalogTile {
   readonly deprecated?: boolean;
 }
 
+/** One scope's tiles, as `read_catalog` groups them. */
+export interface CatalogGroup {
+  /** Which of the workspace's catalogs these tiles came from. */
+  readonly scope: CatalogScope;
+  /** The scope's tiles matching the request, sorted by tile id. */
+  readonly tiles: readonly CatalogTile[];
+}
+
 /** The catalog as `read_catalog` returns it. */
 export interface CatalogView {
-  /** Tiles matching the request, sorted by tile id. */
-  readonly tiles: readonly CatalogTile[];
-  /** Tiles in the environment before filtering. */
+  /** Tiles matching the request, grouped by scope; a scope matching none is left out. */
+  readonly groups: readonly CatalogGroup[];
+  /** Tiles the workspace lists across every scope, before `filter` narrowed them. */
   readonly total: number;
+}
+
+/** Every tile of `view`, group by group, each group's tiles sorted by tile id. */
+export function catalogTiles(view: CatalogView): readonly CatalogTile[] {
+  return view.groups.flatMap((group) => group.tiles);
+}
+
+/** The tiles `view` lists under `scope`; empty when it lists none. */
+export function catalogTilesInScope(view: CatalogView, scope: CatalogScope): readonly CatalogTile[] {
+  return view.groups.find((group) => group.scope === scope)?.tiles ?? [];
 }
 
 /** Capability bit indices set in `bits`, rendered as `cap:<index>`. */
@@ -202,25 +221,36 @@ function matches(tile: CatalogTile, needle: string): boolean {
 }
 
 /**
- * List every tile a document may hold, each with the author's description and
- * the metadata the model plans from. Argument tiles no action names as a tile
- * to place are left out: an anonymous slot's parameter tile carries only that
- * slot's value type, which the argument grammar reads out as `value:<typeId>`.
+ * List every tile a document may hold, grouped by the scope of the catalog it
+ * came from, each with the author's description and the metadata the model
+ * plans from. Argument tiles no action names as a tile to place are left out:
+ * an anonymous slot's parameter tile carries only that slot's value type, which
+ * the argument grammar reads out as `value:<typeId>`. `input.filter` narrows
+ * the tiles within every group and leaves `total` counting all of them.
  */
 export function readCatalog(workspace: AuthoringWorkspace, input: ToolInput<"read_catalog">): CatalogView {
   const localizer = workspace.environment.appServices.localizer;
-  const environmentTiles = allTiles(workspace.catalogs);
-  const byId = new Map(environmentTiles.map((tile) => [tile.tileId, tile]));
-  const namedAsTile = placeableArgTileIds(environmentTiles);
+  const scoped = tilesByScope(workspace.catalogs);
+  const catalogTiles = scoped.flatMap((group) => group.tiles);
+  const byId = new Map(catalogTiles.map((tile) => [tile.tileId, tile]));
+  const namedAsTile = placeableArgTileIds(catalogTiles);
   const slotType = (tileId: string) => {
     const tile = byId.get(tileId);
     return tile && tile.kind === "parameter" ? (tile as BrainTileParameterDef).dataType : undefined;
   };
-  const placeable = environmentTiles.filter(
-    (tile) => (tile.kind !== "parameter" && tile.kind !== "modifier") || namedAsTile.has(tile.tileId)
-  );
-  const described = placeable.map((tile) => describeTile(tile, workspace.descriptions, localizer, slotType));
+  const listed = (tile: IBrainTileDef) =>
+    (tile.kind !== "parameter" && tile.kind !== "modifier") || namedAsTile.has(tile.tileId);
   const needle = input.filter?.trim().toLowerCase();
-  const tiles = needle ? described.filter((tile) => matches(tile, needle)) : described;
-  return { tiles, total: described.length };
+
+  const groups: CatalogGroup[] = [];
+  let total = 0;
+  for (const group of scoped) {
+    const described = group.tiles
+      .filter(listed)
+      .map((tile) => describeTile(tile, workspace.descriptions, localizer, slotType));
+    total += described.length;
+    const tiles = needle ? described.filter((tile) => matches(tile, needle)) : described;
+    if (tiles.length > 0) groups.push({ scope: group.scope, tiles });
+  }
+  return { groups, total };
 }

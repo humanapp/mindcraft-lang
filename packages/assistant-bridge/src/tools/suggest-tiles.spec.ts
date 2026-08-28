@@ -13,7 +13,7 @@ import type { SuggestionView } from "./suggest-tiles.js";
 import { suggestTiles } from "./suggest-tiles.js";
 import type { RuleSideName } from "./tool-schemas.js";
 import type { AuthoringWorkspace } from "./workspace.js";
-import { createAuthoringWorkspace, findRule, toRuleSide } from "./workspace.js";
+import { createAuthoringWorkspace, findRule, tileCatalogsOf, toRuleSide } from "./workspace.js";
 
 /** Tiles the fake target's brains are authored from. */
 const tiles = {
@@ -74,7 +74,7 @@ function editorReplacementOffering(ws: AuthoringWorkspace, side: RuleSideName, t
       ruleDef: rule,
       existingTiles: tileSet.tiles(),
     }),
-    ws.catalogs,
+    tileCatalogsOf(ws.catalogs),
     ws.environment.brainServices
   );
   const ids = (suggestions: typeof result.exact): string[] => {
