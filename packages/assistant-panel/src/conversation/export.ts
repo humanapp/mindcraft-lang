@@ -84,7 +84,7 @@ function callLines(at: number, call: ConversationToolCall): string[] {
 }
 
 /**
- * One run of the entity's own words: what it was doing, its headline and body
+ * One run of the assistant's own words: what it was doing, its headline and body
  * held verbatim under their line counts, and, for a question, the answers the
  * panel offers under it.
  */

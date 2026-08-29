@@ -26,7 +26,7 @@ function servedCall(call: ConversationToolCall): ToolActivity {
     case "read_catalog":
       return { kind: ToolActivityKind.Read, text: "checking what tiles I can use" };
     case "read_project":
-      return { kind: ToolActivityKind.Read, text: "reading my own rules" };
+      return { kind: ToolActivityKind.Read, text: "reading brain" };
     case "suggest_tiles":
       return { kind: ToolActivityKind.Read, text: "looking for a tile that fits" };
     case "compile":
@@ -41,8 +41,8 @@ function servedCall(call: ConversationToolCall): ToolActivity {
 }
 
 /**
- * The row one recorded tool call reads as, stated as activity of the entity
- * itself.
+ * The row one recorded tool call reads as, stated as the assistant's own
+ * activity.
  */
 export function toolActivity(call: ConversationToolCall): ToolActivity {
   const { outcome } = call;

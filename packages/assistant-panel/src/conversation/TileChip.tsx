@@ -39,7 +39,7 @@ export function TileChip({ tileId, look }: { tileId: string; look: TileLook }) {
 const tappableChipClasses = "cursor-pointer transition-[filter] hover:brightness-125";
 
 /**
- * A rule or a page of the document named in the entity's own words, drawn as a
+ * A rule or a page of the document named in the assistant's own words, drawn as a
  * chip carrying no icon, in {@link kDefaultTileHue}. Given `onActivate` it is
  * something the person can tap to be shown the thing it names; given none it is
  * the name alone.

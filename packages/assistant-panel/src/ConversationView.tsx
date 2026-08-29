@@ -66,13 +66,13 @@ export interface ConversationViewProps {
    */
   opensByPerson?: number | undefined;
   /**
-   * The brain the tiles the entity names are drawn against. Absent while the
+   * The brain the tiles the assistant names are drawn against. Absent while the
    * host stands none, which reads every tile by the word the conversation
    * carried, with no icon and no hue of its own.
    */
   brainSurface?: BrainSurface | undefined;
   /**
-   * Where the rules and pages the entity names stand, and how to show one.
+   * Where the rules and pages the assistant names stand, and how to show one.
    * Absent while the host stands no editor, which numbers rules from what the
    * conversation itself has seen and leaves every reference untappable.
    */
@@ -94,15 +94,15 @@ const copiedMarkMs = 1200;
 const presenceDotDelays = ["0ms", "160ms", "320ms"] as const;
 
 /**
- * The bubble every line of the entity's own voice is drawn in: its narration,
+ * The bubble every line of the assistant's own voice is drawn in: its narration,
  * its note about how a turn ended, and its presence mark.
  */
-const entityBubbleClasses = "max-w-[85%] self-start rounded-[14px] rounded-bl-[4px] bg-brain-ink/8 px-3 py-2";
+const assistantBubbleClasses = "max-w-[85%] self-start rounded-[14px] rounded-bl-[4px] bg-brain-ink/8 px-3 py-2";
 
 /** The bubble what the person asked is drawn in, standing at the side of the transcript they speak from. */
 const askBubbleClasses = "max-w-[85%] self-end rounded-[14px] rounded-br-[4px] bg-primary/20 px-3 py-2";
 
-/** The surface every block that is not the entity's own voice is drawn on. */
+/** The surface every block that is not the assistant's own voice is drawn on. */
 const cardClasses = "w-full self-start rounded-[14px] border border-border bg-brain-ink/5 px-3 py-2";
 
 /** How much of itself a block a later one stands in the place of keeps on screen. */
@@ -110,7 +110,7 @@ const supersededClasses = "opacity-60";
 
 /**
  * The roles the transcript draws on a card of their own. The rest of what the
- * entity says stands in its speaking bubble.
+ * assistant says stands in its speaking bubble.
  */
 const cardedRoles: readonly string[] = [
   NarrationRole.Plan,
@@ -302,7 +302,7 @@ function RuleSentence({ rule, context }: { rule: ReceiptRule; context: Transcrip
 }
 
 /**
- * Draws each thing the entity names in its own words as the chip its surface
+ * Draws each thing the assistant names in its own words as the chip its surface
  * stands for it: a tile as its own chip, a rule as its number, a page as its
  * name. A rule is numbered from the document the host stands where there is one,
  * and from what the conversation itself has seen where there is not; a chip the
@@ -371,7 +371,7 @@ function ReceiptView({ block, context }: { block: ReceiptBlock; context: Transcr
 
 /**
  * One way a proposal was refused, and how many proposals asked for that very
- * thing. The entity's own words about the refusal stand as the line the card
+ * thing. The assistant's own words about the refusal stand as the line the card
  * reads as where it said any; the fixed line stands where it has not.
  */
 function SnagView({ block, context }: { block: SnagBlock; context: TranscriptContext }) {
@@ -606,9 +606,9 @@ function recordRows(run: RunEvidence): ({ kind: "cell"; cell: RunCell } | { kind
 
 /**
  * One rehearsal a turn asked for: the line it reads as with the verdict the
- * entity gave it, what the run did, and the whole record of it under a fold. A
- * rehearsal a later one stands in the place of keeps only its line, opening to
- * the rest of itself when the reader asks.
+ * assistant gave it, what the run did, and the whole record of it under a
+ * fold. A rehearsal a later one stands in the place of keeps only its line,
+ * opening to the rest of itself when the reader asks.
  */
 function RunView({ block, context }: { block: RunBlock; context: TranscriptContext }) {
   const { run } = block;
@@ -846,16 +846,17 @@ function AnswerChips({ answers }: { answers: readonly string[] }) {
 }
 
 /**
- * A run of the entity's own words: the headline it opens with, and the longer
- * form under a fold where it had one. The runs that carry the shape of the work
- * -- the plan it means to follow, what it learned, and a question it puts to the
- * person -- stand on a card of their own; everything else stands in the entity's
- * speaking bubble. A question shows its chips in place of a fold.
+ * A run of the assistant's own words: the headline it opens with, and the
+ * longer form under a fold where it had one. The runs that carry the shape of
+ * the work -- the plan it means to follow, what it learned, and a question it
+ * puts to the person -- stand on a card of their own; everything else stands in
+ * the assistant's speaking bubble. A question shows its chips in place of a
+ * fold.
  */
 function NarrationCardView({ block, context }: { block: NarrationBlock; context: TranscriptContext }) {
   const renderReference = useReferenceRenderer(context);
   const carded = block.role !== undefined && cardedRoles.includes(block.role);
-  const surface = carded ? `${cardClasses} flex flex-col gap-1.5` : entityBubbleClasses;
+  const surface = carded ? `${cardClasses} flex flex-col gap-1.5` : assistantBubbleClasses;
   return (
     <div
       data-assistant-card={ConversationBlockKind.Narration}
@@ -968,7 +969,7 @@ function endingNote(ending: ConversationTurnEnding): string | undefined {
   }
 }
 
-/** Whether `ending` is the entity breaking off mid-answer, which offers to be asked again. */
+/** Whether `ending` is the assistant breaking off mid-answer, which offers to be asked again. */
 function brokeOff(ending: ConversationTurnEnding): boolean {
   if (ending.kind === "failure") return ending.code === ConversationTurnFailureCode.ToolServingFailed;
   return ending.code === RelayTurnEndCode.Truncated;
@@ -982,15 +983,16 @@ function connectionNote(status: AssistantStatus): string | undefined {
 }
 
 /**
- * The entity's wordless presence, standing at the live edge of a turn that is
- * still running: the bubble its next narration will arrive in, still forming.
+ * The assistant's wordless presence, standing at the live edge of a turn that
+ * is still running: the bubble its next narration will arrive in, still
+ * forming.
  */
 function PresenceMark() {
   return (
     <div
       data-assistant-bubble="entity"
       data-assistant-presence
-      className={`${entityBubbleClasses} flex items-center gap-1`}
+      className={`${assistantBubbleClasses} flex items-center gap-1`}
       aria-hidden="true"
     >
       {presenceDotDelays.map((delay) => (
@@ -1033,7 +1035,7 @@ function EndingView({
 }) {
   return (
     <div className="flex w-full items-center gap-2">
-      <div data-assistant-bubble="entity" className={entityBubbleClasses}>
+      <div data-assistant-bubble="entity" className={assistantBubbleClasses}>
         <p data-assistant-ending={ending.code} className="text-sm text-muted-foreground italic">
           {note}
         </p>
@@ -1053,8 +1055,8 @@ function EndingView({
 }
 
 /**
- * One of the entity's turns: every block it laid out, where it got to when it
- * left no answer, and how it ended. A turn a later one stands after is folded to
+ * One of the assistant's turns: every block it laid out, where it got to when
+ * it left no answer, and how it ended. A turn a later one stands after is folded to
  * its header until the reader opens it; the newest turn always stands open.
  */
 function TurnView({
@@ -1112,7 +1114,7 @@ function TurnView({
   );
 }
 
-/** One entry of the conversation: what the person said, or one of the entity's turns. */
+/** One entry of the conversation: what the person said, or one of the assistant's turns. */
 function EntryView({
   entry,
   context,

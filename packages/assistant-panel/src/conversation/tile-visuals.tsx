@@ -8,7 +8,7 @@ import type { EditSide } from "./edit-story";
 
 /**
  * What the host tells the panel about the brain on screen, so the panel can draw
- * the tiles the entity names as the things they are. Build one with
+ * the tiles the assistant names as the things they are. Build one with
  * {@link brainSurfaceOf}.
  */
 export interface BrainSurface {

@@ -5,12 +5,12 @@
  * one snag, what a rehearsal's timeline is cut into and what marks it, how a
  * dirty build reads, where a turn's look-ups go, which turns stand folded to
  * their header, where the account of what a conversation kept stands, what
- * marks a turn that did not simply finish, when the entity's presence stands at
+ * marks a turn that did not simply finish, when the assistant's presence stands at
  * the live edge, which control the intent box stands beside, what a lost
  * session offers, which lines read markup in what they carry, and which opens
  * of the panel land the keyboard in the intent box.
  *
- * It pins too how what the entity said reads against the work it stands beside:
+ * It pins too how what the assistant said reads against the work it stands beside:
  * which of its runs stand on cards of their own and which in its bubble, which
  * plan dims once another takes its place, which rehearsal a verdict marks, how a
  * diagnosis becomes the note that answered it, and how a snag takes the words
@@ -206,7 +206,7 @@ function render(overrides: Partial<ConversationViewProps> = {}): string {
   return renderToStaticMarkup(<ConversationView {...props} />);
 }
 
-/** A record where the person asked for something and the entity's turn ended on `ending`. */
+/** A record where the person asked for something and the assistant's turn ended on `ending`. */
 function asked(ending: ConversationTurnEnding): ConversationRecord {
   return record([
     { kind: "user", text: "make me hide" },
@@ -317,7 +317,7 @@ describe("the control that copies the conversation", () => {
 });
 
 describe("a conversation with turns in it", () => {
-  test("renders what the person said and what the entity narrated", () => {
+  test("renders what the person said and what the assistant narrated", () => {
     const markup = render({
       record: record([
         { kind: "user", text: "I want you to run away" },
@@ -331,7 +331,7 @@ describe("a conversation with turns in it", () => {
     assert.doesNotMatch(markup, /data-assistant-resting/);
   });
 
-  test("stands what the person asked in its own kind of container, apart from what the entity said", () => {
+  test("stands what the person asked in its own kind of container, apart from what the assistant said", () => {
     const markup = render({
       record: record([
         { kind: "user", text: "I want you to run away" },
@@ -695,7 +695,7 @@ describe("the folds a card opens", () => {
 });
 
 describe("markup in what is said", () => {
-  test("reads the entity's narration as the markdown subset, under the mark the line carries", () => {
+  test("reads the assistant's narration as the markdown subset, under the mark the line carries", () => {
     const markup = render({
       record: record([
         {
@@ -766,7 +766,7 @@ describe("how a turn ended", () => {
     assert.equal(new Set(notes).size, codes.length, "no two failures read alike");
   });
 
-  test("says how a turn ended in the same kind of container the entity speaks in", () => {
+  test("says how a turn ended in the same kind of container the assistant speaks in", () => {
     const markup = render({
       record: record([
         {
@@ -781,7 +781,7 @@ describe("how a turn ended", () => {
     assert.equal(bubbleAround(markup, "data-assistant-ending"), bubbleAround(markup, "data-assistant-narration"));
   });
 
-  test("offers to be asked again where the entity broke off mid-answer, and nowhere else", () => {
+  test("offers to be asked again where the assistant broke off mid-answer, and nowhere else", () => {
     const truncated: ConversationTurnEnding = { kind: "end", code: RelayTurnEndCode.Truncated };
     const invites: readonly ConversationTurnEnding[] = [
       truncated,
@@ -807,13 +807,13 @@ describe("how a turn ended", () => {
   });
 });
 
-describe("the entity's presence while a turn runs", () => {
+describe("the assistant's presence while a turn runs", () => {
   const running = record([
     { kind: "user", text: "make me hide" },
     { kind: "assistant", steps: [{ kind: "narration", text: "Looking." }] },
   ]);
 
-  test("stands at the end of the transcript while the turn is open, in a container of the entity's own", () => {
+  test("stands at the end of the transcript while the turn is open, in a container of the assistant's own", () => {
     const markup = render({ status: AssistantStatus.TurnActive, record: running });
     const lines = laidOutLines(markup);
 
@@ -1228,7 +1228,7 @@ describe("the rehearsals a turn ran", () => {
   });
 });
 
-describe("what the entity said, read against the work it stands beside", () => {
+describe("what the assistant said, read against the work it stands beside", () => {
   test("draws the runs that carry the shape of the work on cards, and the rest in its bubble", () => {
     const markup = render({
       record: record([
@@ -1388,7 +1388,7 @@ describe("what the entity said, read against the work it stands beside", () => {
     assert.deepEqual(valuesOf(markup, "data-assistant-note-from"), []);
   });
 
-  test("gives a snag the words the entity said about it, in place of the line it reads as", () => {
+  test("gives a snag the words the assistant said about it, in place of the line it reads as", () => {
     const markup = render({
       record: record([
         {
@@ -1667,7 +1667,7 @@ describe("where a conversation got to when a turn left no answer", () => {
   });
 });
 
-describe("a question the entity puts to the person", () => {
+describe("a question the assistant puts to the person", () => {
   /** A record whose turn ends on a question asking `text` and offering `body` under it. */
   function questioned(body?: string, text = "Want it to call out when it flees?"): ConversationRecord {
     return record([
@@ -1798,7 +1798,7 @@ describe("a question the entity puts to the person", () => {
   });
 });
 
-describe("the things the entity names", () => {
+describe("the things the assistant names", () => {
   /** A catalog answering `get` from `defs`. */
   function catalogOf(defs: readonly IBrainTileDef[]): ITileCatalog {
     const held = new Map(defs.map((def) => [def.tileId, def]));
@@ -1836,7 +1836,7 @@ describe("the things the entity names", () => {
     };
   }
 
-  /** A run of the entity's own words, as the record holds one. */
+  /** A run of the assistant's own words, as the record holds one. */
   function said(text: string): ConversationTurnStep {
     return { kind: "narration", text };
   }
@@ -1901,7 +1901,7 @@ describe("the things the entity names", () => {
     assert.doesNotMatch(unread, /bg-brain-pill/);
   });
 
-  test("draws a tile, a rule and a page the entity named in its words as the chips standing for them", () => {
+  test("draws a tile, a rule and a page the assistant named in its words as the chips standing for them", () => {
     const markup = render({
       brainSurface: surface,
       record: record([

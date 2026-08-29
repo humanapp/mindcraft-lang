@@ -24,13 +24,13 @@ export interface AssistantSurfaceProps {
    */
   opensByPerson?: number | undefined;
   /**
-   * The brain the tiles the entity names are drawn against, built from the
+   * The brain the tiles the assistant names are drawn against, built from the
    * host's editor config and the brain its editor stands. Absent while the host
    * stands none, which reads every tile by the word the conversation carried.
    */
   brainSurface?: BrainSurface | undefined;
   /**
-   * Where the rules and pages the entity names stand, built from the brain the
+   * Where the rules and pages the assistant names stand, built from the brain the
    * host's editor stands. Absent while the host stands none, which numbers rules
    * from what the conversation itself has seen and leaves references untappable.
    */

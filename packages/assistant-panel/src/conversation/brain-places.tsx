@@ -13,7 +13,7 @@ export interface RulePlace {
 }
 
 /**
- * What the host tells the panel about where the things the entity names stand,
+ * What the host tells the panel about where the things the assistant names stand,
  * so the panel can read a rule by its number and show one the person taps. Build
  * one with {@link brainPlacesOf}.
  */

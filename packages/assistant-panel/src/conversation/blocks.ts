@@ -19,7 +19,7 @@ import { asProjectRule, compiledClean, dirtyBuild, landedCommands, refusedPropos
 
 /** What one block of a turn stands for. */
 export const ConversationBlockKind = {
-  /** A run of the entity's own words. */
+  /** A run of the assistant's own words. */
   Narration: "narration",
   /** The edits that landed on one page, and the story of how they got there. */
   Receipt: "receipt",
@@ -45,7 +45,7 @@ export interface ReceiptRule {
   readonly do: readonly ProjectTile[];
 }
 
-/** A run of the entity's own words, exactly as it narrated them. */
+/** A run of the assistant's own words, exactly as it narrated them. */
 export interface NarrationBlock {
   readonly kind: typeof ConversationBlockKind.Narration;
   /** The headline the run opens with, which the transcript always shows. */
@@ -96,7 +96,7 @@ export interface SnagBlock {
   readonly params: RefusedProposal["params"];
   /** Proposals asking for the very same thing that were refused this same way. */
   readonly repeats: number;
-  /** What the entity said the refusal was; absent while it has said nothing about it. */
+  /** What the assistant said the refusal was; absent while it has said nothing about it. */
   readonly caption?: string;
   /** The longer form standing under {@link SnagBlock.caption}; absent when it had none. */
   readonly captionBody?: string;
@@ -132,7 +132,7 @@ export interface RunBlock {
   /** `true` when a later rehearsal in the same turn stands in this one's place. */
   readonly superseded: boolean;
   /**
-   * How the entity judged this rehearsal, taken from the verdict it narrated
+   * How the assistant judged this rehearsal, taken from the verdict it narrated
    * next. Absent until it has judged one.
    */
   readonly judgment?: NarrationJudgment;
@@ -359,7 +359,7 @@ interface RunDraft {
   judgment?: NarrationJudgment;
 }
 
-/** A run of the entity's words being gathered, before what it said next has been read. */
+/** A run of the assistant's words being gathered, before what it said next has been read. */
 interface NarrationDraft {
   readonly kind: typeof ConversationBlockKind.Narration;
   text: string;
@@ -551,7 +551,7 @@ function laidOutReceipt(draft: ReceiptDraft, parentOf: ReadonlyMap<string, strin
  * A clean build marks every receipt the turn has opened by then.
  *
  * Four kinds of narration are read against the block standing before them, so
- * what the entity said lands on the thing it was about: every plan but the
+ * what the assistant said lands on the thing it was about: every plan but the
  * turn's last is marked superseded, a verdict gives its judgment to the
  * rehearsal it followed, a note takes the place of the diagnosis that went
  * looking for it, and a snag gives its words to the refusal it followed. A

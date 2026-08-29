@@ -1,6 +1,6 @@
 /**
  * Pins the diagnostic document the conversation exports as: what its header
- * states, how an ask and each run of the entity's words are held verbatim under
+ * states, how an ask and each run of the assistant's words are held verbatim under
  * their line counts, what a tool call reports of itself and which durable ids it
  * is read to have named, how a turn's ending reads, that a question states the
  * very answers the transcript offers under it, and that the same record always
@@ -122,7 +122,7 @@ describe("what the exported document states about the record", () => {
   });
 });
 
-describe("what the entity said", () => {
+describe("what the assistant said", () => {
   test("keeps a run's headline and body verbatim, each under the lines it stands as", () => {
     const lines = exported(
       record([
