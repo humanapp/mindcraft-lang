@@ -32,6 +32,8 @@ const downstream: readonly RelayDownstreamMessage[] = [
     role: NarrationRole.Verdict,
     judgment: NarrationJudgment.Succeeded,
   },
+  { type: "turn:writing", tool: "propose_edit", chars: 0 },
+  { type: "turn:writing", tool: "propose_edit", chars: 4312 },
   {
     type: "turn:toolCalls",
     requests: [{ requestId: "r1", name: "read_project", input: {}, timeoutMs: 15000 }],
@@ -124,7 +126,19 @@ describe("the relay wire", () => {
       "turn:stop",
       "turn:toolCalls",
       "turn:toolResults",
+      "turn:writing",
     ]);
+  });
+
+  test("refuses a writing pulse whose count is not a whole number of characters", () => {
+    assert.equal(
+      relayDownstreamMessageSchema.safeParse({ type: "turn:writing", tool: "propose_edit", chars: -1 }).success,
+      false
+    );
+    assert.equal(
+      relayDownstreamMessageSchema.safeParse({ type: "turn:writing", tool: "propose_edit", chars: 1.5 }).success,
+      false
+    );
   });
 
   test("names every code a turn ends with, as the wire spells it", () => {

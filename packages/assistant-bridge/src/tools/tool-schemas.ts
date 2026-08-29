@@ -21,6 +21,19 @@ const pageIdSchema = z
   .string()
   .describe("Page id, exactly as read_project reports it. It stays the page's id as other pages come and go.");
 
+/**
+ * Commands one `propose_edit` batch may carry, which is one stage of a build.
+ * A batch over this is refused by the tool's own schema, before any command
+ * runs.
+ */
+export const maxBatchCommands = 24;
+
+/**
+ * Tiles one `placeTiles` run may carry. A run over this is refused by the
+ * tool's own schema, before any tile is placed.
+ */
+export const maxPlacedTiles = 12;
+
 /** The form a batch command names a rule an earlier command in the same batch created. */
 const batchRulePattern = /^#(\d+)$/;
 
@@ -132,8 +145,9 @@ const editCommandBranches = [
     tileIds: z
       .array(tileRunEntrySchema)
       .min(1)
+      .max(maxPlacedTiles)
       .describe(
-        "Tiles to place in order, starting at the insertion index; validated as one end state. A factory tile is given as an object carrying its mint input."
+        `Tiles to place in order, starting at the insertion index; validated as one end state. A factory tile is given as an object carrying its mint input. A run carries at most ${maxPlacedTiles} tiles.`
       ),
     position: z
       .number()
@@ -190,8 +204,9 @@ const proposeEditInputSchema = z.discriminatedUnion("op", [
     commands: z
       .array(editCommandSchema)
       .min(2)
+      .max(maxBatchCommands)
       .describe(
-        'Commands to apply in order, judged as one end state; every one lands or none does. A command may name a rule an earlier command created, as "#N" for that command\'s index.'
+        `Commands to apply in order, judged as one end state; every one lands or none does. A command may name a rule an earlier command created, as "#N" for that command's index. A batch carries at most ${maxBatchCommands} commands, which is one stage of a build; a build larger than that is made a stage at a time.`
       ),
   }),
 ]);
@@ -258,8 +273,7 @@ export type ProposeEditBatchInput = Extract<z.infer<typeof proposeEditInputSchem
 const toolDescriptions: Record<ToolName, string> = {
   compile:
     "Build the whole brain and return its diagnostics. Call after a group of edits that should hold together, before claiming the brain is ready.",
-  propose_edit:
-    'Apply one editor command to the document. The editor validates it: an accepted edit is in the document and undoable, and a rejected edit leaves the document untouched and returns the diagnostic code that rejected it. Read the code, adjust, and propose again. This is the only way to change the brain. Any tile that leaves an expression unfinished -- an operator, an opening paren, a NOT, a parameter awaiting its value -- is rejected on its own, because the editor validates the state the edit leaves behind. Place it with the tiles that finish it in one placeTiles call: the whole run lands together or not at all. A factory tile carries no value of its own and cannot be placed by id alone: name it as an object giving its tileId plus what to mint -- a value, optionally with a displayFormat, for a literal factory, or a name for a variable factory. Every place a tile is named takes that object, so a minted value can be placed by placeTile, swapped in by replaceTile, or carried in a placeTiles run. The minted tile joins the document\'s catalog, and a rejected edit takes the minting back with the placement. Pages are how a brain holds more than one mode: addPage appends a page, gives it the name you pass, and reports the pageId it minted; the page arrives holding one empty rule you can fill straight away. Inside a batch that rule is what "#N" names for the addPage command at index N, and "#N.page" names the new page\'s own tile -- the tile you place after switch-page to send yourself there, since its id does not exist until the page does. Name every page you make something the person would recognise. A page appended this way sits one past the last page read_project reported, which is the pageIndex addRule takes for it. deleteRule removes a rule and everything nested under it; deletePage removes a page and every rule on it. Both are refused when something would be left dangling: a page another rule still switches to comes back as page_still_referenced naming those rules, so retarget or remove them first -- a batch may do both at once, since only the end state is judged -- and the only page left in the brain comes back as last_page, because a brain always has somewhere to be; empty its rules instead. Removing a page shifts every page after it down one, so put deletes last in a batch that also names pages by pageIndex. Author one command per call, narrating each as it lands; that is the default. Reach for the batch op only when a plan must land or fail as one thing, such as a refactor or a structure of several rules whose half-applied form would be worse than none: the commands apply in order, only the state they leave is judged, and one undo takes the whole plan back. States in the middle of a batch may be broken. A command that cannot apply at all stops the batch and reports its index.',
+  propose_edit: `Apply one editor command to the document. The editor validates it: an accepted edit is in the document and undoable, and a rejected edit leaves the document untouched and returns the diagnostic code that rejected it. Read the code, adjust, and propose again. This is the only way to change the brain. Any tile that leaves an expression unfinished -- an operator, an opening paren, a NOT, a parameter awaiting its value -- is rejected on its own, because the editor validates the state the edit leaves behind. Place it with the tiles that finish it in one placeTiles call: the whole run lands together or not at all. A factory tile carries no value of its own and cannot be placed by id alone: name it as an object giving its tileId plus what to mint -- a value, optionally with a displayFormat, for a literal factory, or a name for a variable factory. Every place a tile is named takes that object, so a minted value can be placed by placeTile, swapped in by replaceTile, or carried in a placeTiles run. The minted tile joins the document's catalog, and a rejected edit takes the minting back with the placement. Pages are how a brain holds more than one mode: addPage appends a page, gives it the name you pass, and reports the pageId it minted; the page arrives holding one empty rule you can fill straight away. Inside a batch that rule is what "#N" names for the addPage command at index N, and "#N.page" names the new page's own tile -- the tile you place after switch-page to send yourself there, since its id does not exist until the page does. Name every page you make something the person would recognise. A page appended this way sits one past the last page read_project reported, which is the pageIndex addRule takes for it. deleteRule removes a rule and everything nested under it; deletePage removes a page and every rule on it. Both are refused when something would be left dangling: a page another rule still switches to comes back as page_still_referenced naming those rules, so retarget or remove them first -- a batch may do both at once, since only the end state is judged -- and the only page left in the brain comes back as last_page, because a brain always has somewhere to be; empty its rules instead. Removing a page shifts every page after it down one, so put deletes last in a batch that also names pages by pageIndex. Author one command per call, narrating each as it lands; that is the default. Reach for the batch op when one stage of the work must land or fail as one thing, such as a refactor or a structure of several rules whose half-applied form would be worse than none: the commands apply in order, only the state they leave is judged, and one undo takes the whole plan back. A batch carries at most ${maxBatchCommands} commands, which is the size of one stage; a build larger than that is made a stage at a time, each stage its own batch, rehearsed before the next. States in the middle of a batch may be broken. A command that cannot apply at all stops the batch and reports its index.`,
   read_catalog:
     'List the tiles available in this world with their descriptions, argument grammar, and where they may be placed. Call before planning which tiles a goal needs. Tiles come back in groups: the "environment" group is the vocabulary this world installs, and the "document" group is what this brain minted for itself -- its page tiles, its variables, and the literals it minted. Either group is left out when it holds nothing matching.',
   read_project:

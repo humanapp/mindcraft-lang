@@ -86,6 +86,7 @@ export type {
 } from "./tools/tool-schemas.js";
 export {
   batchRuleIndex,
+  maxBatchCommands,
   scenarioInputSchema,
   tileRunEntrySchema,
   toolDefinitions,

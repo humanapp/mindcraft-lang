@@ -12,6 +12,7 @@ import {
   ConversationTurnFailureCode,
   RelayTakeoverCode,
 } from "@wendoo/assistant-relay";
+import { assertUnreachable } from "@wendoo/core";
 import type { PersonActivity } from "../app/person-activity";
 import type { ConversationStore, ConversationUpdate } from "../conversation/store";
 import { emptyConversationStore, recordFor, withActiveBrain, withUpdate } from "../conversation/store";
@@ -45,12 +46,40 @@ export const sessionReopenJitterMs = 3000;
 /** What a bounded wait answers with once it has run out. */
 const runOut = Symbol("session open timeout");
 
+/** What a brain's running turn is at right now. */
+export type TurnDoing =
+  /** Having the tools of a batch served, by the bridge name each was called by. */
+  | { readonly kind: "serving"; readonly tools: readonly string[] }
+  /** Writing one tool call, with the characters of its JSON written so far. */
+  | { readonly kind: "writing"; readonly tool: string; readonly chars: number }
+  /** Working out what to do next, between anything nameable: the turn has begun, or a batch's results have gone back. */
+  | { readonly kind: "planning" };
+
+/**
+ * What each brain's running turn is at right now, keyed by brain id. A brain
+ * whose turn is at nothing nameable is absent, and nothing here is ever
+ * recorded.
+ */
+export type TurnActivities = ReadonlyMap<string, TurnDoing>;
+
+/** What `brainId`'s turn is at, `undefined` for a brain at nothing and for no brain at all. */
+export function doingFor(doing: TurnActivities, brainId: string | undefined): TurnDoing | undefined {
+  return brainId === undefined ? undefined : doing.get(brainId);
+}
+
 /** What the machine exposes to whatever renders it. */
 export interface AssistantMachineState {
   /** Where the active brain's session stands; idle while the host has named no brain. */
   readonly status: AssistantStatus;
   /** Where every brain's session stands. */
   readonly sessions: SessionStatuses;
+  /**
+   * What each brain's running turn is at, as the newest signal of the turn left
+   * it: the tool call the model is writing, the batch most recently served, and
+   * nothing while the turn is narrating or over. Read one brain's with
+   * {@link doingFor}.
+   */
+  readonly doing: TurnActivities;
   readonly store: ConversationStore;
 }
 
@@ -114,6 +143,7 @@ export class AssistantMachine {
   private current: AssistantMachineState = {
     status: AssistantStatus.Idle,
     sessions: emptySessions(),
+    doing: new Map(),
     store: emptyConversationStore(),
   };
   private readonly channels = new Map<string, AssistantChannel>();
@@ -184,6 +214,7 @@ export class AssistantMachine {
       sessions: withSessionStatus(sessions, brainId, AssistantStatus.TurnActive),
       store: withUpdate(store, brainId, { kind: "user", text }),
     });
+    this.beginDoing(brainId, { kind: "planning" });
     void this.runTurn(brainId, text);
   }
 
@@ -225,7 +256,7 @@ export class AssistantMachine {
     this.refused.clear();
     this.stopRequested.clear();
     this.changesAtTurnStart.clear();
-    this.commit({ sessions: emptySessions() });
+    this.commit({ sessions: emptySessions(), doing: new Map() });
   }
 
   /**
@@ -255,7 +286,26 @@ export class AssistantMachine {
     this.commit({ store: withUpdate(this.current.store, brainId, update) });
   }
 
-  /** Record every call of `asked` on `brainId`'s turn with the outcome `answered` gave it. */
+  /** Stand `brainId`'s turn at `doing`, leaving every other brain's untouched. */
+  private beginDoing(brainId: string, doing: TurnDoing): void {
+    const next = new Map(this.current.doing);
+    next.set(brainId, doing);
+    this.commit({ doing: next });
+  }
+
+  /** Stand `brainId`'s turn at nothing, doing nothing when it already is. */
+  private endDoing(brainId: string): void {
+    if (!this.current.doing.has(brainId)) return;
+    const next = new Map(this.current.doing);
+    next.delete(brainId);
+    this.commit({ doing: next });
+  }
+
+  /**
+   * Record every call of `asked` on `brainId`'s turn with the outcome `answered`
+   * gave it. The brain keeps standing at these tools until the turn's next
+   * signal or its end.
+   */
   private recordBatch(brainId: string, asked: RelayToolCallBatch, answered: RelayToolResultBatch): void {
     for (const [index, request] of asked.requests.entries()) {
       const outcome = answered.results[index]!.outcome;
@@ -282,6 +332,7 @@ export class AssistantMachine {
   private finish(brainId: string, ending: ConversationTurnEnding): void {
     this.stopRequested.delete(brainId);
     this.changesAtTurnStart.delete(brainId);
+    this.endDoing(brainId);
     this.record(brainId, { kind: "ending", ending });
     const held = this.channels.has(brainId);
     this.commit({
@@ -525,6 +576,7 @@ export class AssistantMachine {
       const message = await channel.next();
       switch (message.type) {
         case "turn:narration":
+          this.endDoing(brainId);
           this.record(brainId, {
             kind: "narration",
             text: message.text,
@@ -533,7 +585,14 @@ export class AssistantMachine {
             ...(message.judgment === undefined ? {} : { judgment: message.judgment }),
           });
           break;
+        case "turn:writing":
+          this.beginDoing(brainId, { kind: "writing", tool: message.tool, chars: message.chars });
+          break;
         case "turn:toolCalls": {
+          this.beginDoing(brainId, {
+            kind: "serving",
+            tools: message.requests.map((request) => request.name),
+          });
           let served: RelayToolResultBatch;
           try {
             served = await serveToolCalls(this.options.workspace(brainId), message, this.mediatorFor(brainId));
@@ -553,6 +612,7 @@ export class AssistantMachine {
           }
           this.recordBatch(brainId, message, served);
           channel.send(served);
+          this.beginDoing(brainId, { kind: "planning" });
           break;
         }
         case "turn:end":
@@ -562,6 +622,8 @@ export class AssistantMachine {
         case "session:accepted":
         case "session:refused":
           break;
+        default:
+          assertUnreachable(message);
       }
     }
   }

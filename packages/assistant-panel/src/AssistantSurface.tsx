@@ -59,7 +59,7 @@ export function AssistantSurface({
   brainSurface,
   brainPlaces,
 }: AssistantSurfaceProps) {
-  const { status, record, send, stop, openSession } = useAssistant();
+  const { status, record, doing, send, stop, openSession } = useAssistant();
   const [intent, setIntent] = useState("");
 
   const submit = (): void => {
@@ -90,6 +90,7 @@ export function AssistantSurface({
       brainSurface={brainSurface}
       brainPlaces={brainPlaces}
       onAnswer={send}
+      doing={doing}
     />
   );
 }

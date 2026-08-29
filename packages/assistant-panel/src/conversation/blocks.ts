@@ -7,8 +7,6 @@ import type {
   NarrationRole,
 } from "@wendoo/assistant-relay";
 import { NarrationRole as RoleCode } from "@wendoo/assistant-relay";
-import type { ToolActivity } from "./activity";
-import { toolActivity } from "./activity";
 import { callIdentity } from "./call-identity";
 import type { EditStoryRow } from "./edit-story";
 import { editCommands, editStoryRow } from "./edit-story";
@@ -29,8 +27,6 @@ export const ConversationBlockKind = {
   Run: "run",
   /** A build that came back dirty, and everything it reported. */
   Build: "build",
-  /** Everything the turn looked at without changing, gathered under one fold. */
-  Lookups: "lookups",
 } as const;
 
 /** What one block of a turn stands for. */
@@ -61,9 +57,15 @@ export interface NarrationBlock {
   /** `true` when this note took the place of the diagnosis that went looking for it. */
   readonly converted?: true;
   /**
-   * The answers a question to the person offers, one per line that stood under
-   * it. Present only on a run whose role is `ask`, and absent where the question
-   * offered none.
+   * What a question to the person said in the plain lines under it, standing
+   * open on its card above the answers. Present only on a run whose role is
+   * `ask`, and absent where the question carried the answers alone.
+   */
+  readonly said?: string;
+  /**
+   * The answers a question to the person offers, one per list-marked line that
+   * stood under it. Present only on a run whose role is `ask`, and absent where
+   * the question offered none.
    */
   readonly answers?: readonly string[];
 }
@@ -102,29 +104,6 @@ export interface SnagBlock {
   readonly captionBody?: string;
 }
 
-/** One thing a turn looked at, or one call that never ran. */
-export interface LookupStep {
-  /** Bridge tool name, as the model produced it. */
-  readonly name: string;
-  /** What the call did, for the reader. */
-  readonly text: string;
-  /** Calls asking for the very same thing that this row stands for. */
-  readonly repeats: number;
-}
-
-/** A lookup row being gathered, before it knows how many calls it stands for. */
-interface LookupDraft {
-  readonly name: string;
-  readonly text: string;
-  repeats: number;
-}
-
-/** Everything a turn did that changed nothing, gathered under one fold. */
-export interface LookupsBlock {
-  readonly kind: typeof ConversationBlockKind.Lookups;
-  readonly steps: readonly LookupStep[];
-}
-
 /** One rehearsal a turn asked for, and what the run did. */
 export interface RunBlock {
   readonly kind: typeof ConversationBlockKind.Run;
@@ -150,7 +129,7 @@ export interface BuildBlock {
 }
 
 /** One block of a turn, as the transcript lays it out. */
-export type ConversationBlock = NarrationBlock | ReceiptBlock | SnagBlock | RunBlock | BuildBlock | LookupsBlock;
+export type ConversationBlock = NarrationBlock | ReceiptBlock | SnagBlock | RunBlock | BuildBlock;
 
 /**
  * What a turn's blocks are read against: everything the conversation as a whole
@@ -368,6 +347,7 @@ interface NarrationDraft {
   judgment?: NarrationJudgment;
   superseded: boolean;
   converted?: true;
+  said?: string;
   answers?: readonly string[];
 }
 
@@ -409,37 +389,48 @@ function spokenLines(text: string): string[] {
     .filter((line) => line.length > 0);
 }
 
-/** A question to the person as it is put to them: what is asked, and the answers offered under it. */
+/** A question to the person as it is put to them: what is asked, said, and offered under it. */
 export interface AskOffer {
   /** The question itself, which is the first line the run carries. */
   readonly asked: string;
-  /** The answers offered under it, each read without the list marker it may open with. */
+  /** What the run said in plain lines under the question, kept as its own paragraphs; absent when it said nothing. */
+  readonly said?: string;
+  /** The answers offered under it, one per list-marked line, each read without its marker. */
   readonly answers: readonly string[];
 }
 
 /**
  * The question a run of words carrying `text` and `body` puts to the person: its
- * first line is asked, and every line under it is one of the answers it offers.
- * The lines are read from the whole of the run, headline and body alike; a blank
+ * first line is asked, every list-marked line under it is one of the answers it
+ * offers, and every plain line under it is something it said on the way. The
+ * lines are read from the whole of the run, headline and body alike; a blank
  * line between the question and its answers means nothing here. A run carrying
  * no line with anything on it asks nothing, and comes back `undefined`.
  */
 export function askOffer(text: string, body: string | undefined): AskOffer | undefined {
   const [asked, ...offered] = spokenLines(body === undefined ? text : `${text}\n${body}`);
   if (asked === undefined) return undefined;
-  return { asked, answers: offered.map((line) => line.replace(listMarker, "").trim()) };
+  const answers: string[] = [];
+  const plain: string[] = [];
+  for (const line of offered) {
+    if (listMarker.test(line)) answers.push(line.replace(listMarker, "").trim());
+    else plain.push(line);
+  }
+  return { asked, ...(plain.length > 0 ? { said: plain.join("\n\n") } : {}), answers };
 }
 
 /**
  * Turn `question` into the card that puts it to the person: it stands as the
- * question {@link askOffer} reads out of it, with the answers it offers, and it
- * keeps no folded body of its own.
+ * question {@link askOffer} reads out of it, saying what stood in its plain
+ * lines and offering its list-marked lines as the answers, and it keeps no
+ * folded body of its own.
  */
 function offerAnswers(question: NarrationDraft): void {
   const offer = askOffer(question.text, question.body);
   question.body = undefined;
   if (offer === undefined) return;
   question.text = offer.asked;
+  question.said = offer.said;
   if (offer.answers.length > 0) question.answers = offer.answers;
 }
 
@@ -519,6 +510,7 @@ function laidOutBlock(draft: BlockDraft, parentOf: ReadonlyMap<string, string>):
         ...(draft.judgment === undefined ? {} : { judgment: draft.judgment }),
         superseded: draft.superseded,
         ...(draft.converted === undefined ? {} : { converted: draft.converted }),
+        ...(draft.said === undefined ? {} : { said: draft.said }),
         ...(draft.answers === undefined ? {} : { answers: draft.answers }),
       };
   }
@@ -539,9 +531,8 @@ function laidOutReceipt(draft: ReceiptDraft, parentOf: ReadonlyMap<string, strin
 /**
  * Lay one turn out as the blocks the transcript draws: its narration in the
  * order it arrived, one receipt per page its accepted edits landed on, one snag
- * per way a proposal was refused, one card per rehearsal it asked for, one card
- * per way a build came back dirty, and one fold gathering everything it looked
- * at without changing.
+ * per way a proposal was refused, one card per rehearsal it asked for, and one
+ * card per way a build came back dirty. A call that only looked draws nothing.
  *
  * A receipt stands where the turn first touched its page and gathers every later
  * edit to that page. A snag stands where the turn was first refused that way and
@@ -572,22 +563,8 @@ export function conversationBlocks(
   const builds = new Map<string, BuildDraft>();
   const runs: RunDraft[] = [];
   const plans: NarrationDraft[] = [];
-  const lookups: LookupDraft[] = [];
-  const lookupsById = new Map<string, LookupDraft>();
   let openDiagnosis: NarrationDraft | undefined;
   let lastSnag: SnagDraft | undefined;
-
-  const noteLookup = (call: ConversationToolCall, activity: ToolActivity): void => {
-    const identity = callIdentity(call.name, call.input);
-    const seen = lookupsById.get(identity);
-    if (seen) {
-      seen.repeats++;
-      return;
-    }
-    const step: LookupDraft = { name: call.name, text: activity.text, repeats: 1 };
-    lookupsById.set(identity, step);
-    lookups.push(step);
-  };
 
   const gather = (call: ConversationToolCall): void => {
     const landed = landedCommands(call);
@@ -673,10 +650,7 @@ export function conversationBlocks(
       };
       builds.set(identity, build);
       drafts.push(build);
-      return;
     }
-
-    noteLookup(call, toolActivity(call));
   };
 
   for (const step of steps) {
@@ -717,7 +691,5 @@ export function conversationBlocks(
     drafts.push(said);
   }
 
-  const blocks: ConversationBlock[] = drafts.map((draft) => laidOutBlock(draft, context.parentOf));
-  if (lookups.length > 0) blocks.push({ kind: ConversationBlockKind.Lookups, steps: lookups });
-  return blocks;
+  return drafts.map((draft) => laidOutBlock(draft, context.parentOf));
 }

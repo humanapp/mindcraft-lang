@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { toolDefinitions, toolInputSchemas } from "./tool-schemas.js";
+import { maxBatchCommands, maxPlacedTiles, toolDefinitions, toolInputSchemas } from "./tool-schemas.js";
 
 describe("the bridge tool surface", () => {
   test("offers the six tools of the authoring slice", () => {
@@ -205,6 +205,42 @@ describe("tool input validation", () => {
 
     assert.equal(toolInputSchemas.propose_edit.safeParse({ op: "batch", commands: [command, command] }).success, true);
     assert.equal(toolInputSchemas.propose_edit.safeParse({ op: "batch", commands: [command] }).success, false);
+  });
+
+  test("accepts a batch at the command cap and refuses one over it", () => {
+    const batch = (length: number) => ({
+      op: "batch",
+      commands: Array.from({ length }, () => ({ op: "addRule", pageIndex: 0 })),
+    });
+
+    assert.equal(toolInputSchemas.propose_edit.safeParse(batch(maxBatchCommands)).success, true);
+    assert.equal(toolInputSchemas.propose_edit.safeParse(batch(maxBatchCommands + 1)).success, false);
+  });
+
+  test("advertises the command cap, so the model reads it before planning", () => {
+    const proposeEdit = toolDefinitions.find((tool) => tool.name === "propose_edit");
+    const properties = (proposeEdit?.inputSchema as { properties?: Record<string, { maxItems?: number }> }).properties;
+
+    assert.equal(properties?.commands?.maxItems, maxBatchCommands);
+  });
+
+  test("accepts a tile run at the cap and refuses one over it", () => {
+    const run = (length: number) => ({
+      op: "placeTiles",
+      ruleId: "rule-0",
+      side: "when",
+      tileIds: Array.from({ length }, () => "tile.sensor->sensor.fake.signal"),
+    });
+
+    assert.equal(toolInputSchemas.propose_edit.safeParse(run(maxPlacedTiles)).success, true);
+    assert.equal(toolInputSchemas.propose_edit.safeParse(run(maxPlacedTiles + 1)).success, false);
+  });
+
+  test("advertises the tile-run cap", () => {
+    const proposeEdit = toolDefinitions.find((tool) => tool.name === "propose_edit");
+    const properties = (proposeEdit?.inputSchema as { properties?: Record<string, { maxItems?: number }> }).properties;
+
+    assert.equal(properties?.tileIds?.maxItems, maxPlacedTiles);
   });
 
   test("refuses a batch carrying a batch", () => {

@@ -3,10 +3,11 @@
  * can be in: which card each thing a turn did is drawn as and in what order,
  * how edits gather into a receipt per page, how repeated refusals collapse into
  * one snag, what a rehearsal's timeline is cut into and what marks it, how a
- * dirty build reads, where a turn's look-ups go, which turns stand folded to
- * their header, where the account of what a conversation kept stands, what
- * marks a turn that did not simply finish, when the assistant's presence stands at
- * the live edge, which control the intent box stands beside, what a lost
+ * dirty build reads, that what a turn only looked at draws nothing, which turns
+ * stand folded to their header, where the account of what a conversation kept
+ * stands, what marks a turn that did not simply finish, when the assistant's
+ * presence stands at the live edge and what it says it is doing there, which
+ * control the intent box stands beside, what a lost
  * session offers, which lines read markup in what they carry, and which opens
  * of the panel land the keyboard in the intent box.
  *
@@ -835,6 +836,84 @@ describe("the assistant's presence while a turn runs", () => {
     assert.doesNotMatch(render({ status: AssistantStatus.Ready, record: ended }), /data-assistant-presence/);
     assert.doesNotMatch(render({ status: AssistantStatus.Connecting, record: running }), /data-assistant-presence/);
     assert.doesNotMatch(render(), /data-assistant-presence/);
+  });
+
+  test("says what the turn is having served, beside the dots, under the tool it named", () => {
+    const markup = render({
+      status: AssistantStatus.TurnActive,
+      record: running,
+      doing: { kind: "serving", tools: ["read_project"] },
+    });
+    const said = markup.match(/data-assistant-presence-doing="read_project"[^>]*>([^<]*)</);
+
+    assert.ok(said, "the mark carries the tool being served");
+    assert.ok((said[1] ?? "").length > 0, "and says something of it beside the dots");
+  });
+
+  test("says nothing beside the dots while the turn is at nothing", () => {
+    for (const doing of [undefined, { kind: "serving", tools: [] } as const]) {
+      const markup = render({ status: AssistantStatus.TurnActive, record: running, doing });
+
+      assert.match(markup, /data-assistant-presence/);
+      assert.doesNotMatch(markup, /data-assistant-presence-doing/);
+    }
+  });
+
+  test("says the turn is planning, beside the dots, between anything nameable", () => {
+    const markup = render({
+      status: AssistantStatus.TurnActive,
+      record: running,
+      doing: { kind: "planning" },
+    });
+    const said = markup.match(/data-assistant-presence-doing="planning"[^>]*>([^<]*)</);
+
+    assert.ok(said, "the mark carries the planning state");
+    assert.ok((said[1] ?? "").length > 0, "and says something of it beside the dots");
+  });
+
+  test("says nothing of what was served once the turn is over", () => {
+    const markup = render({
+      status: AssistantStatus.Ready,
+      record: running,
+      doing: { kind: "serving", tools: ["read_project"] },
+    });
+
+    assert.doesNotMatch(markup, /data-assistant-presence/);
+  });
+
+  test("carries the tool being written, and the count each progress tick brings", () => {
+    const markup = render({
+      status: AssistantStatus.TurnActive,
+      record: running,
+      doing: { kind: "writing", tool: "propose_edit", chars: 4312 },
+    });
+    const said = markup.match(/data-assistant-presence-doing="propose_edit"[^>]*>([^<]*)</);
+
+    assert.match(markup, /data-assistant-presence-written="4312"/);
+    assert.ok(said, "the mark carries the tool being written");
+    assert.ok((said[1] ?? "").length > 0, "and says something of it beside the dots");
+  });
+
+  test("carries a count the ticks move, so the same tool does not stand still", () => {
+    const at = (chars: number): string =>
+      render({
+        status: AssistantStatus.TurnActive,
+        record: running,
+        doing: { kind: "writing", tool: "propose_edit", chars },
+      });
+
+    assert.notEqual(at(2400), at(9600), "two counts of the same tool read differently");
+  });
+
+  test("carries no count for a call nothing has arrived for yet", () => {
+    const markup = render({
+      status: AssistantStatus.TurnActive,
+      record: running,
+      doing: { kind: "writing", tool: "propose_edit", chars: 0 },
+    });
+
+    assert.match(markup, /data-assistant-presence-doing="propose_edit"/);
+    assert.match(markup, /data-assistant-presence-written="0"/);
   });
 });
 
@@ -1700,24 +1779,38 @@ describe("a question the assistant puts to the person", () => {
   const standsDown = /\sdisabled=""/;
 
   test("stands the question on a card of its own, after the verdict it follows", () => {
-    const markup = render({ record: questioned("Yes please\nNo thanks"), onAnswer: () => {} });
+    const markup = render({ record: questioned("- Yes please\n- No thanks"), onAnswer: () => {} });
 
     assert.deepEqual(valuesOf(markup, "data-assistant-narration-role"), ["verdict", "ask"]);
     assert.deepEqual(cardKinds(markup), ["narration", "narration"]);
     assert.equal(bubbleAround(markup, "data-assistant-answers"), undefined, "the question never stands in a bubble");
   });
 
-  test("offers each line standing under the question as an answer, and folds none of it away", () => {
-    const markup = render({ record: questioned("Yes please\n\nNo thanks"), onAnswer: () => {} });
+  test("offers each list-marked line standing under the question as an answer, and folds none of it away", () => {
+    const markup = render({ record: questioned("- Yes please\n\n- No thanks"), onAnswer: () => {} });
 
     assert.deepEqual(valuesOf(markup, "data-assistant-answers"), ["2"]);
     assert.equal(answerControls(markup).length, 2);
     assert.doesNotMatch(markup, /data-assistant-fold="narration"/);
   });
 
+  test("says the plain lines under the question on the card, and offers only the list-marked ones", () => {
+    const markup = render({
+      record: questioned("A box keeps a value between thinks.\n\nWhat should it keep?\n- A count\n- A score"),
+      onAnswer: () => {},
+    });
+
+    assert.deepEqual(valuesOf(markup, "data-assistant-answers"), ["2"]);
+    assert.equal(answerControls(markup).length, 2);
+    assert.match(markup, /data-assistant-ask-said/);
+    assert.match(markup, /data-assistant-answer[^>]*>A count</);
+    assert.doesNotMatch(markup, /data-assistant-answer[^>]*>A box keeps/);
+    assert.doesNotMatch(markup, /data-assistant-fold="narration"/);
+  });
+
   test("offers the answers that followed the question with no blank line between", () => {
     const markup = render({
-      record: questioned(undefined, "Want it to call out when it flees?\nYes please\nNo thanks"),
+      record: questioned(undefined, "Want it to call out when it flees?\n- Yes please\n- No thanks"),
       onAnswer: () => {},
     });
 
@@ -1746,7 +1839,7 @@ describe("a question the assistant puts to the person", () => {
   });
 
   test("stands the chip that leaves the question beside every question, however many answers it offered", () => {
-    const markup = render({ record: questioned("Yes please\nNo thanks"), onAnswer: () => {} });
+    const markup = render({ record: questioned("- Yes please\n- No thanks"), onAnswer: () => {} });
 
     assert.equal(leaveControls(markup).length, 1);
   });
@@ -1762,7 +1855,7 @@ describe("a question the assistant puts to the person", () => {
 
   test("leaves every chip under the question untakeable while a turn is running", () => {
     const markup = render({
-      record: questioned("Yes please\nNo thanks"),
+      record: questioned("- Yes please\n- No thanks"),
       onAnswer: () => {},
       status: AssistantStatus.TurnActive,
     });
@@ -1771,13 +1864,13 @@ describe("a question the assistant puts to the person", () => {
   });
 
   test("leaves every chip under the question untakeable where the host takes no answer", () => {
-    const markup = render({ record: questioned("Yes please\nNo thanks") });
+    const markup = render({ record: questioned("- Yes please\n- No thanks") });
 
     for (const control of [...answerControls(markup), ...leaveControls(markup)]) assert.match(control, standsDown);
   });
 
   test("takes an answer while the turn is done and the host takes one", () => {
-    const markup = render({ record: questioned("Yes please\nNo thanks"), onAnswer: () => {} });
+    const markup = render({ record: questioned("- Yes please\n- No thanks"), onAnswer: () => {} });
 
     const controls = [...answerControls(markup), ...leaveControls(markup)];
     assert.equal(controls.length, 3);
@@ -1787,7 +1880,7 @@ describe("a question the assistant puts to the person", () => {
   test("folds a question of an older turn away with the turn it belongs to", () => {
     const markup = render({
       record: record([
-        ...questioned("Yes please").entries,
+        ...questioned("- Yes please").entries,
         { kind: "user", text: "yes please" },
         { kind: "assistant", steps: [{ kind: "narration", text: "Done." }] },
       ]),

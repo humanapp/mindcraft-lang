@@ -1,6 +1,6 @@
 import type { ConversationToolCall } from "@wendoo/assistant-relay";
 
-/** What one call that changed nothing did, as the fold gathering them reads it. */
+/** What one call did to the document. */
 export const ToolActivityKind = {
   /** The call looked at something and changed nothing. */
   Read: "read",
@@ -10,33 +10,36 @@ export const ToolActivityKind = {
   Blocked: "blocked",
 } as const;
 
-/** What one call that changed nothing did, as the fold gathering them reads it. */
+/** What one call did to the document. */
 export type ToolActivityKind = (typeof ToolActivityKind)[keyof typeof ToolActivityKind];
 
-/** One row of the fold gathering what a turn looked at: what happened, and how it reads. */
+/** What one call reads as: what it did, and the wording that stands for it. */
 export interface ToolActivity {
   readonly kind: ToolActivityKind;
   /** Display wording for the reader. */
   readonly text: string;
 }
 
-/** How a served call reads, by the tool it named. */
-function servedCall(call: ConversationToolCall): ToolActivity {
-  switch (call.name) {
+/**
+ * How the call of `name` reads, stated as the assistant's own activity. A tool
+ * this vocabulary does not name reads as a plain look.
+ */
+export function namedToolActivity(name: string): ToolActivity {
+  switch (name) {
     case "read_catalog":
-      return { kind: ToolActivityKind.Read, text: "checking what tiles I can use" };
+      return { kind: ToolActivityKind.Read, text: "checking tiles" };
     case "read_project":
       return { kind: ToolActivityKind.Read, text: "reading brain" };
     case "suggest_tiles":
-      return { kind: ToolActivityKind.Read, text: "looking for a tile that fits" };
+      return { kind: ToolActivityKind.Read, text: "finding tiles" };
     case "compile":
-      return { kind: ToolActivityKind.Ran, text: "building" };
+      return { kind: ToolActivityKind.Ran, text: "validating" };
     case "simulate":
-      return { kind: ToolActivityKind.Ran, text: "watching it run" };
+      return { kind: ToolActivityKind.Ran, text: "rehearsing" };
     case "propose_edit":
-      return { kind: ToolActivityKind.Blocked, text: "looked for something that was not there" };
+      return { kind: ToolActivityKind.Ran, text: "editing" };
     default:
-      return { kind: ToolActivityKind.Read, text: "having a look" };
+      return { kind: ToolActivityKind.Read, text: "working" };
   }
 }
 
@@ -48,5 +51,5 @@ export function toolActivity(call: ConversationToolCall): ToolActivity {
   const { outcome } = call;
   if (outcome.kind !== "ok") return { kind: ToolActivityKind.Blocked, text: "stopped there" };
   if (outcome.isError) return { kind: ToolActivityKind.Blocked, text: "that did not work" };
-  return servedCall(call);
+  return namedToolActivity(call.name);
 }

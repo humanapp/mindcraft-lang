@@ -1,3 +1,4 @@
+import type { z } from "zod";
 import { compileBrain } from "./compile.js";
 import { proposeEdit, proposeEditBatch } from "./propose-edit.js";
 import { readCatalog } from "./read-catalog.js";
@@ -41,6 +42,19 @@ export function isToolName(name: string): name is ToolName {
   return name in toolInputSchemas;
 }
 
+/**
+ * One schema failure as the `detail` of a {@link ToolCallError} reports it:
+ * the path that failed and the issue's code, followed by the bound it ran into
+ * when the issue names one, so a call refused for being too large reads back
+ * the size it may take.
+ */
+function issueDetail(issue: z.core.$ZodIssue): string {
+  const at = issue.path.join(".") || "<root>";
+  if (issue.code === "too_big") return `${at}: ${issue.code} (maximum ${String(issue.maximum)})`;
+  if (issue.code === "too_small") return `${at}: ${issue.code} (minimum ${String(issue.minimum)})`;
+  return `${at}: ${issue.code}`;
+}
+
 /** Run one validated call against the workspace. */
 async function runTool(workspace: AuthoringWorkspace, name: ToolName, input: unknown): Promise<unknown> {
   switch (name) {
@@ -80,7 +94,7 @@ export async function executeToolCall(
   if (!parsed.success) {
     const payload: ToolCallError = {
       error: ToolCallErrorCode.InvalidInput,
-      detail: parsed.error.issues.map((issue) => `${issue.path.join(".") || "<root>"}: ${issue.code}`).join("; "),
+      detail: parsed.error.issues.map(issueDetail).join("; "),
     };
     return { payload, isError: true };
   }

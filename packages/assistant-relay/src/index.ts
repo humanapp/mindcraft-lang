@@ -22,6 +22,7 @@ export type {
   RelayToolResultBatch,
   RelayTurnEnd,
   RelayTurnStart,
+  RelayTurnWriting,
   RelayUpstreamMessage,
   RelayUserMessage,
 } from "./messages.js";

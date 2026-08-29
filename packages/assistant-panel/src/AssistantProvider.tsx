@@ -3,7 +3,7 @@ import type { AssistantContextValue } from "./assistant-context";
 import { AssistantContext } from "./assistant-context";
 import { activeRecord } from "./conversation/store";
 import type { AssistantMachineOptions } from "./session/machine";
-import { AssistantMachine } from "./session/machine";
+import { AssistantMachine, doingFor } from "./session/machine";
 
 /** What the provider is built over, plus the tree it wraps. */
 export interface AssistantProviderProps extends AssistantMachineOptions {
@@ -36,7 +36,12 @@ export function AssistantProvider({ children, ...options }: AssistantProviderPro
   );
 
   const value = useMemo<AssistantContextValue>(
-    () => ({ status: state.status, record: activeRecord(state.store), ...actions }),
+    () => ({
+      status: state.status,
+      record: activeRecord(state.store),
+      doing: doingFor(state.doing, state.store.activeBrainId),
+      ...actions,
+    }),
     [actions, state]
   );
 

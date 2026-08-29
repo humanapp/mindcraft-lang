@@ -75,6 +75,20 @@ export interface RelayNarrationDelta {
   readonly judgment?: NarrationJudgment;
 }
 
+/**
+ * The model is writing a tool call right now. The first of one call's pulses
+ * carries a `chars` of `0` and names the tool the model has begun writing; the
+ * ones after it are progress ticks the service throttles, sent while the call's
+ * JSON accumulates.
+ */
+export interface RelayTurnWriting {
+  readonly type: "turn:writing";
+  /** Bridge name of the tool being written. */
+  readonly tool: string;
+  /** Characters of the call's JSON written so far; `0` at write-start. */
+  readonly chars: number;
+}
+
 /** The tool calls the turn's current model step asked for, to be served as one batch. */
 export interface RelayToolCallBatch {
   readonly type: "turn:toolCalls";
@@ -134,6 +148,7 @@ export type RelayDownstreamMessage =
   | RelayConnectRefused
   | RelayTurnStart
   | RelayNarrationDelta
+  | RelayTurnWriting
   | RelayToolCallBatch
   | RelayTurnEnd;
 
@@ -159,6 +174,11 @@ export const relayDownstreamMessageSchema = z.discriminatedUnion("type", [
     part: z.enum(NarrationPart).optional(),
     role: z.enum(NarrationRole).optional(),
     judgment: z.enum(NarrationJudgment).optional(),
+  }),
+  z.strictObject({
+    type: z.literal("turn:writing"),
+    tool: z.string().min(1),
+    chars: z.number().int().nonnegative(),
   }),
   z.strictObject({ type: z.literal("turn:toolCalls"), requests: z.array(relayToolCallRequestSchema) }),
   z.strictObject({

@@ -14,7 +14,7 @@ import { proposeEdit } from "./propose-edit.js";
 import { catalogTiles, readCatalog } from "./read-catalog.js";
 import { readProject } from "./read-project.js";
 import { suggestTiles } from "./suggest-tiles.js";
-import { toolDefinitions } from "./tool-schemas.js";
+import { maxBatchCommands, toolDefinitions } from "./tool-schemas.js";
 import type { AuthoringWorkspace } from "./workspace.js";
 import { createAuthoringWorkspace } from "./workspace.js";
 
@@ -306,6 +306,32 @@ describe("the bridge tools over a real target", () => {
     assert.deepEqual(unknown.payload, { error: "unknown_tool", detail: "read_trace" });
     assert.equal(invalid.isError, true);
     assert.equal((invalid.payload as { error: string }).error, "invalid_input");
+  });
+
+  test("refuses a batch over the command cap before any command runs", async () => {
+    const ws = workspace();
+    const before = readProject(ws);
+
+    const refused = await executeToolCall(ws, "propose_edit", {
+      op: "batch",
+      commands: Array.from({ length: maxBatchCommands + 1 }, () => ({ op: "addRule", pageIndex: 0 })),
+    });
+
+    assert.equal(refused.isError, true);
+    assert.equal((refused.payload as { error: string }).error, "invalid_input");
+    assert.match((refused.payload as { detail: string }).detail, /commands/);
+    assert.deepEqual(readProject(ws), before, "the document is untouched");
+  });
+
+  test("reads back the bound a call ran into, so an oversize call knows its size", async () => {
+    const ws = workspace();
+
+    const refused = await executeToolCall(ws, "propose_edit", {
+      op: "batch",
+      commands: Array.from({ length: maxBatchCommands + 1 }, () => ({ op: "addRule", pageIndex: 0 })),
+    });
+
+    assert.match((refused.payload as { detail: string }).detail, new RegExp(String(maxBatchCommands)));
   });
 
   test("reports a scenario naming a subject the target does not offer", async () => {

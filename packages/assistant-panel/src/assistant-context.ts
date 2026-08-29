@@ -1,12 +1,19 @@
 import type { ConversationRecord } from "@wendoo/assistant-relay";
 import { createContext, useContext } from "react";
-import type { AssistantStatus } from "./session/machine";
+import type { AssistantStatus, TurnDoing } from "./session/machine";
 
 /** The assistant session, as anything under the provider reads and drives it. */
 export interface AssistantContextValue {
   readonly status: AssistantStatus;
   /** The active brain's conversation; absent until {@link AssistantContextValue.setActiveBrain} has named one. */
   readonly record: ConversationRecord | undefined;
+  /**
+   * What the active brain's running turn is at -- the tool call the model is
+   * writing, or the batch most recently served, held until the turn's next
+   * signal. Absent while the turn is narrating, has done nothing nameable, or
+   * is over; never recorded in the conversation.
+   */
+  readonly doing: TurnDoing | undefined;
   /** Start a turn on the active brain from what the person said. */
   readonly send: (text: string) => void;
   /** Ask the running turn to stop. */

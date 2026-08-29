@@ -11,6 +11,7 @@ import type { RenderMarkdownReference } from "@wendoo/ui/markdown/SafeMarkdown";
 import { SafeMarkdown } from "@wendoo/ui/markdown/SafeMarkdown";
 import { MarkdownReferenceForm } from "@wendoo/ui/markdown/safe-markdown-tokens";
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { namedToolActivity } from "./conversation/activity";
 import type {
   BuildBlock,
   ConversationBlock,
@@ -33,6 +34,7 @@ import { answerless, standingHolds, standingState } from "./conversation/standin
 import { ReferenceChip, TileChip } from "./conversation/TileChip";
 import type { BrainSurface, TileLook } from "./conversation/tile-visuals";
 import { BrainSurfaceProvider, unresolvedTileLook, useCallLooks, useTileLooks } from "./conversation/tile-visuals";
+import type { TurnDoing } from "./session/machine";
 import { AssistantStatus } from "./session/machine";
 
 /** What the conversation surface shows, and the controls it hands back. */
@@ -82,6 +84,12 @@ export interface ConversationViewProps {
    * answers a question offers. Absent leaves those answers untappable.
    */
   onAnswer?: ((text: string) => void) | undefined;
+  /**
+   * What the running turn is at -- the tool call the model is writing, or the
+   * batch most recently served. The presence mark says it beside the dots
+   * while the turn runs; absent says nothing.
+   */
+  doing?: TurnDoing | undefined;
 }
 
 /** Pixels of slack at the foot of the transcript that still count as being at the bottom. */
@@ -870,6 +878,11 @@ function NarrationCardView({ block, context }: { block: NarrationBlock; context:
       <div data-assistant-narration className="text-card-foreground text-sm">
         <SafeMarkdown text={block.text} renderReference={renderReference} />
       </div>
+      {block.role === NarrationRole.Ask && block.said !== undefined && (
+        <div data-assistant-ask-said className="text-card-foreground text-sm">
+          <SafeMarkdown text={block.said} renderReference={renderReference} />
+        </div>
+      )}
       {block.role === NarrationRole.Ask && <AnswerChips answers={block.answers ?? []} />}
       {block.body !== undefined && (
         <Fold kind="narration" summary="the long story">
@@ -895,9 +908,6 @@ function BlockView({ block, context }: { block: ConversationBlock; context: Tran
       return <RunView block={block} context={context} />;
     case ConversationBlockKind.Build:
       return <BuildView block={block} />;
-    case ConversationBlockKind.Lookups:
-      // Look-ups are gathered but draw nothing.
-      return null;
   }
 }
 
@@ -983,11 +993,33 @@ function connectionNote(status: AssistantStatus): string | undefined {
 }
 
 /**
- * The assistant's wordless presence, standing at the live edge of a turn that
- * is still running: the bubble its next narration will arrive in, still
- * forming.
+ * The tool a turn's activity is named by -- the one being written, or the first
+ * of the batch being served -- and `undefined` for an activity naming none.
  */
-function PresenceMark() {
+function doingTool(doing: TurnDoing | undefined): string | undefined {
+  if (doing === undefined || doing.kind === "planning") return undefined;
+  return doing.kind === "writing" ? doing.tool : doing.tools[0];
+}
+
+/**
+ * How far a tool call being written has got, in thousands of characters to one
+ * decimal. A call nothing has yet arrived for reads as `undefined`.
+ */
+function writtenSoFar(doing: TurnDoing | undefined): string | undefined {
+  if (doing?.kind !== "writing" || doing.chars === 0) return undefined;
+  return `${(doing.chars / 1000).toFixed(1)}k`;
+}
+
+/**
+ * The assistant's presence, standing at the live edge of a turn that is still
+ * running: the bubble its next narration will arrive in, still forming, saying
+ * what the turn is at beside the dots for as long as `doing` names something. A
+ * tool call being written also says how much of it has been written. Nothing of
+ * what it says is kept once the turn is over.
+ */
+function PresenceMark({ doing }: { doing: TurnDoing | undefined }) {
+  const tool = doingTool(doing);
+  const written = writtenSoFar(doing);
   return (
     <div
       data-assistant-bubble="entity"
@@ -1002,6 +1034,21 @@ function PresenceMark() {
           className="h-1.5 w-1.5 animate-pulse rounded-full bg-muted-foreground motion-reduce:animate-none motion-reduce:opacity-50"
         />
       ))}
+      {tool !== undefined && (
+        <span
+          data-assistant-presence-doing={tool}
+          {...(doing?.kind === "writing" ? { "data-assistant-presence-written": doing.chars } : {})}
+          className="ml-1 text-muted-foreground text-xs"
+        >
+          {namedToolActivity(tool).text}
+          {written !== undefined && ` ${written}`}
+        </span>
+      )}
+      {doing?.kind === "planning" && (
+        <span data-assistant-presence-doing="planning" className="ml-1 text-muted-foreground text-xs">
+          planning
+        </span>
+      )}
     </div>
   );
 }
@@ -1232,6 +1279,7 @@ export function ConversationView(props: ConversationViewProps) {
     brainSurface,
     brainPlaces,
     onAnswer,
+    doing,
   } = props;
   const entries = record?.entries ?? [];
   const context = useMemo(() => transcriptContext(record), [record]);
@@ -1247,8 +1295,8 @@ export function ConversationView(props: ConversationViewProps) {
   const followingBottom = useRef(true);
   const surface = useRef<HTMLDivElement>(null);
   const intentBox = useRef<HTMLTextAreaElement>(null);
-  const serving = useRef({ running, intent, onSend, onLeaveIntent });
-  serving.current = { running, intent, onSend, onLeaveIntent };
+  const latest = useRef({ running, intent, onSend, onLeaveIntent });
+  latest.current = { running, intent, onSend, onLeaveIntent };
 
   // The intent box's keys are served at the window, whose capture pass runs
   // ahead of the document the editor listens for Escape on. A leaving press
@@ -1258,7 +1306,7 @@ export function ConversationView(props: ConversationViewProps) {
     const handleKeyDown = (event: KeyboardEvent): void => {
       const box = intentBox.current;
       if (box === null || event.target !== box) return;
-      const held = serving.current;
+      const held = latest.current;
       const action = intentKeyAction(event.key, event.shiftKey, event.isComposing, held.running, held.intent);
       if (action === "pass") return;
       event.preventDefault();
@@ -1328,7 +1376,7 @@ export function ConversationView(props: ConversationViewProps) {
                   />
                 ))
               )}
-              {running && <PresenceMark />}
+              {running && <PresenceMark doing={doing} />}
             </div>
             {connection && (
               <div className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-1.5">

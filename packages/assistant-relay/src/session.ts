@@ -6,7 +6,7 @@ import type { ConversationRecord } from "./conversation.js";
  * end to end: the client declares the version it holds when it connects, and
  * the service admits only its own.
  */
-export const ASSISTANT_RELAY_PROTOCOL_VERSION = 1;
+export const ASSISTANT_RELAY_PROTOCOL_VERSION = 2;
 
 /**
  * Identifier of one relay session. The service mints it from a globally unique

@@ -12,6 +12,8 @@ export interface ScriptedCall {
 /** One thing the scripted service does inside a turn. */
 export type ScriptedStep =
   | { readonly kind: "narration"; readonly text: string }
+  /** One pulse of the model writing a tool call, before any batch is asked for. */
+  | { readonly kind: "writing"; readonly tool: string; readonly chars: number }
   | { readonly kind: "toolCalls"; readonly calls: readonly ScriptedCall[] }
   | { readonly kind: "awaitStop" }
   | { readonly kind: "close" };
@@ -51,6 +53,9 @@ async function playTurn(service: ServiceEnd, turn: ScriptedTurn, at: number): Pr
     switch (step.kind) {
       case "narration":
         service.send({ type: "turn:narration", text: step.text });
+        break;
+      case "writing":
+        service.send({ type: "turn:writing", tool: step.tool, chars: step.chars });
         break;
       case "toolCalls": {
         service.send({

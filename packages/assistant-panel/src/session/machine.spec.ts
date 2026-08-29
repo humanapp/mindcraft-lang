@@ -26,10 +26,11 @@ import { recordFor } from "../conversation/store";
 import type { ScriptedCall, ScriptedService } from "../testing/scripted-service";
 import { runScriptedService } from "../testing/scripted-service";
 import type { AssistantChannel } from "./channel";
-import type { AssistantMachineOptions, AssistantMachineState } from "./machine";
+import type { AssistantMachineOptions, AssistantMachineState, TurnDoing } from "./machine";
 import {
   AssistantMachine,
   AssistantStatus,
+  doingFor,
   sessionOpenTimeoutMs,
   sessionReopenHeadDelaysMs,
   sessionReopenIntervalMs,
@@ -668,6 +669,184 @@ describe("serving a turn's tool calls", () => {
     );
     stand.machine.close();
     await stand.served;
+  });
+});
+
+describe("what a running turn is having served", () => {
+  test("stands the turn at planning the moment it is sent", () => {
+    const stand = harness(oneQuietTurn);
+    stand.machine.setActiveBrain("brain-a");
+
+    stand.machine.send("make it hide");
+
+    assert.deepEqual(doingFor(stand.machine.getState().doing, "brain-a"), { kind: "planning" });
+  });
+
+  /** A batch of two calls, so what stands for it is the whole batch and not one call of it. */
+  const batch = [
+    firstTurnCalls.catalog,
+    { name: "read_project", input: {} },
+  ] as const satisfies readonly ScriptedCall[];
+
+  /** The names {@link batch} is served under. */
+  const batchNames = batch.map((call) => call.name);
+
+  /** A mediation holding every call of `name` until the gate is opened, letting every other call run. */
+  function heldAt(name: string): { readonly mediate: AssistantMachineOptions["mediate"]; readonly open: () => void } {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return {
+      mediate: async (request) => {
+        if (request.name === name) await gate;
+        return undefined;
+      },
+      open: () => release(),
+    };
+  }
+
+  /** Resolve once `brainId` is having something served. */
+  function serves(machine: AssistantMachine, brainId: string): Promise<void> {
+    return until(machine, (state) => doingFor(state.doing, brainId)?.kind === "serving");
+  }
+
+  test("names every tool of the batch while the turn runs, and names none once the turn has ended", async () => {
+    const gate = heldAt(firstTurnCalls.catalog.name);
+    const stand = harness({ turns: [{ steps: [{ kind: "toolCalls", calls: batch }] }] }, { mediate: gate.mediate });
+    stand.machine.setActiveBrain("brain-a");
+
+    stand.machine.send("make it hide");
+    await serves(stand.machine, "brain-a");
+
+    assert.deepEqual(doingFor(stand.machine.getState().doing, "brain-a"), { kind: "serving", tools: batchNames });
+
+    gate.open();
+    await settled(stand.machine);
+    await stand.served;
+
+    assert.equal(doingFor(stand.machine.getState().doing, "brain-a"), undefined, "the ended turn is at nothing");
+    assert.equal(callsIn(conversation(stand.machine, "brain-a").entries[1]!).length, batch.length);
+  });
+
+  test("keeps each brain's own batch, clearing only the one whose turn ended", async () => {
+    const gate = heldAt(firstTurnCalls.catalog.name);
+    // One script per session, in the order the two brains open theirs.
+    const scripts: ScriptedService[] = [
+      { turns: [{ steps: [{ kind: "toolCalls", calls: [firstTurnCalls.catalog] }] }] },
+      { turns: [{ steps: [{ kind: "toolCalls", calls: [batch[1]] }] }] },
+    ];
+    const stand = harness((at) => scripts[at]!, { mediate: gate.mediate });
+
+    stand.machine.setActiveBrain("brain-a");
+    stand.machine.send("make it hide");
+    await serves(stand.machine, "brain-a");
+    stand.machine.setActiveBrain("brain-b");
+    stand.machine.send("make it seek");
+    await settledFor(stand.machine, "brain-b");
+
+    const { doing } = stand.machine.getState();
+    assert.deepEqual(
+      doingFor(doing, "brain-a"),
+      { kind: "serving", tools: [firstTurnCalls.catalog.name] },
+      "the held brain is still serving"
+    );
+    assert.equal(doingFor(doing, "brain-b"), undefined, "the brain that finished is at nothing");
+
+    gate.open();
+    await settledFor(stand.machine, "brain-a");
+    await stand.served;
+
+    assert.equal(doingFor(stand.machine.getState().doing, "brain-a"), undefined);
+  });
+});
+
+describe("what a running turn stands at, in the order it stood there", () => {
+  /** Everything `brainId`'s turn stood at, in order, each entry the state as it changed. */
+  function trackDoing(machine: AssistantMachine, brainId: string): readonly (TurnDoing | undefined)[] {
+    const seen: (TurnDoing | undefined)[] = [doingFor(machine.getState().doing, brainId)];
+    machine.subscribe(() => {
+      const at = doingFor(machine.getState().doing, brainId);
+      if (at !== seen[seen.length - 1]) seen.push(at);
+    });
+    return seen;
+  }
+
+  /** Run one scripted turn on `brain-a` to its end and answer with what it stood at along the way. */
+  async function stoodAt(script: ScriptedService): Promise<readonly (TurnDoing | undefined)[]> {
+    const stand = harness(script);
+    stand.machine.setActiveBrain("brain-a");
+    const seen = trackDoing(stand.machine, "brain-a");
+    stand.machine.send("make it hide");
+    await settled(stand.machine);
+    await stand.served;
+    return seen;
+  }
+
+  test("takes up the tool each pulse names, and each tick's count after it", async () => {
+    const seen = await stoodAt({
+      turns: [
+        {
+          steps: [
+            { kind: "writing", tool: "propose_edit", chars: 0 },
+            { kind: "writing", tool: "propose_edit", chars: 4312 },
+          ],
+        },
+      ],
+    });
+
+    assert.deepEqual(seen, [
+      undefined,
+      { kind: "planning" },
+      { kind: "writing", tool: "propose_edit", chars: 0 },
+      { kind: "writing", tool: "propose_edit", chars: 4312 },
+      undefined,
+    ]);
+  });
+
+  test("stands at nothing while narration arrives, which says for itself what the turn is at", async () => {
+    const seen = await stoodAt({
+      turns: [
+        {
+          steps: [
+            { kind: "writing", tool: "propose_edit", chars: 0 },
+            { kind: "narration", text: "Placing the sensor." },
+            { kind: "writing", tool: "compile", chars: 1200 },
+          ],
+        },
+      ],
+    });
+
+    assert.deepEqual(seen, [
+      undefined,
+      { kind: "planning" },
+      { kind: "writing", tool: "propose_edit", chars: 0 },
+      undefined,
+      { kind: "writing", tool: "compile", chars: 1200 },
+      undefined,
+    ]);
+  });
+
+  test("stands at the batch once it is asked for, leaving the call it was writing behind", async () => {
+    const seen = await stoodAt({
+      turns: [
+        {
+          steps: [
+            { kind: "writing", tool: firstTurnCalls.catalog.name, chars: 2400 },
+            { kind: "toolCalls", calls: [firstTurnCalls.catalog] },
+          ],
+        },
+      ],
+    });
+
+    assert.deepEqual(seen, [
+      undefined,
+      { kind: "planning" },
+      { kind: "writing", tool: firstTurnCalls.catalog.name, chars: 2400 },
+      { kind: "serving", tools: [firstTurnCalls.catalog.name] },
+      { kind: "planning" },
+      undefined,
+    ]);
   });
 });
 
