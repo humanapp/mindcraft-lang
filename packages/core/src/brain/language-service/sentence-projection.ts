@@ -167,7 +167,6 @@ const kConnectiveContext = "sentence-connective";
 const kVerbTemplate = "When I {form} {object}";
 const kStateTemplate = "When I am {form} {object}";
 const kEventTemplate = "When {form} {object}";
-const kAdverbTemplate = "{form} {object}";
 const kSubjectlessTemplate = "When {condition}";
 const kNegatedVerbTemplate = "When I do {negation} {form} {object}";
 const kNegatedStateTemplate = "When I am {negation} {form} {object}";
@@ -197,7 +196,6 @@ const kSentenceGlueTemplate = "{sentence} {rest}";
 const kChildVerbTemplate = "I {form} {object}";
 const kChildStateTemplate = "I am {form} {object}";
 const kChildEventTemplate = "{form} {object}";
-const kChildAdverbTemplate = "{form} {object}";
 const kChildSubjectlessTemplate = "{condition}";
 const kChildNegatedVerbTemplate = "I do {negation} {form} {object}";
 const kChildNegatedStateTemplate = "I am {negation} {form} {object}";
@@ -570,9 +568,6 @@ function frameTemplate(frame: TileSentenceFrame): string {
   if (frame === "event") {
     return kEventTemplate;
   }
-  if (frame === "adverb") {
-    return kAdverbTemplate;
-  }
   return kVerbTemplate;
 }
 
@@ -591,16 +586,9 @@ function negatedFrameTemplate(frame: TileSentenceFrame): string {
  * Whether the WHEN side of `tiles` reads as a bare condition: true for a side
  * headed by any tile other than a sensor, and for a side headed by an inline
  * sensor, whose value heads a condition.
- *
- * An adverb-frame sensor is the exception. Alone on the side its word is the
- * whole clause, so it takes its frame; beside other tiles it is one operand of
- * the condition and reads as bare as any other.
  */
 function isSubjectlessWhenSide(tiles: ReadonlyList<IBrainTileDef>): boolean {
   const head = tiles.get(0);
-  if (head.kind === "sensor" && tileFrame(head) === "adverb") {
-    return tiles.size() > 1;
-  }
   return head.kind !== "sensor" || isInlineTileDef(head);
 }
 
@@ -611,16 +599,15 @@ function startsOwnExpression(tileDef: IBrainTileDef): boolean {
 
 /**
  * The sensor a NOT-headed `tiles` negates, or undefined when the negation covers
- * no whole sensor call: an expression operand, a sensor that a further operator
- * or grouping extends, or an adverb-frame sensor, whose word is a whole clause
- * and so carries no frame a negation can read inside.
+ * no whole sensor call: an expression operand, or a sensor that a further
+ * operator or grouping extends.
  */
 function negatedSensor(tiles: ReadonlyList<IBrainTileDef>): IBrainTileDef | undefined {
   if (tiles.size() < 2 || tiles.get(0).tileId !== mkOperatorTileId(CoreOpId.Not)) {
     return undefined;
   }
   const operand = tiles.get(1);
-  if (operand.kind !== "sensor" || tileFrame(operand) === "adverb") {
+  if (operand.kind !== "sensor") {
     return undefined;
   }
   for (let i = 2; i < tiles.size(); i++) {
@@ -684,9 +671,6 @@ function childFrameTemplate(frame: TileSentenceFrame): string {
   }
   if (frame === "event") {
     return kChildEventTemplate;
-  }
-  if (frame === "adverb") {
-    return kChildAdverbTemplate;
   }
   return kChildVerbTemplate;
 }

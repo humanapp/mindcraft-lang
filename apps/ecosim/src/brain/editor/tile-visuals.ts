@@ -65,7 +65,6 @@ export const tileVisuals = new Map<string, Partial<TileVisual>>([
   [mkSensorTileId(CoreHostActions.Timeout.key), { iconUrl: `${ICON_BASE}/timer.svg` }],
   [mkSensorTileId(CoreHostActions.CurrentPage.key), { iconUrl: `${ICON_BASE}/page.svg` }],
   [mkSensorTileId(CoreHostActions.PreviousPage.key), { iconUrl: `${ICON_BASE}/page2.svg` }],
-  [mkSensorTileId(CoreHostActions.Otherwise.key), { iconUrl: `${ICON_BASE}/otherwise.svg` }],
   // Actuators
   [mkActuatorTileId(CoreHostActions.SwitchPage.key), { iconUrl: `${ICON_BASE}/switch_page.svg` }],
   [mkActuatorTileId(CoreHostActions.RestartPage.key), { iconUrl: `${ICON_BASE}/restart-page.svg` }],

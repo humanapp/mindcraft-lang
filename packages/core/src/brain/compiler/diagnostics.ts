@@ -92,8 +92,8 @@ export enum ParseDiagCode {
   /** Rule carrying the `then` trigger mode placed first at its level, where it has no rule to follow */
   ThenTriggerNoPrecedingSiblingRule = 1022,
 
-  /** WHEN side carries the deprecated `otherwise` sensor tile; emitted at "warning" severity */
-  DeprecatedOtherwiseTile = 1023,
+  /** Free slot -- available for reuse. */
+  Unused1023 = 1023,
 }
 
 /**
@@ -270,7 +270,6 @@ export function diagnosticSeverity(code: DiagCode): DiagnosticSeverity {
     case ParseDiagCode.InvalidAssignmentTarget:
     case ParseDiagCode.ReadOnlyFieldAssignment:
     case ParseDiagCode.ReadOnlyResultFieldAssignment:
-    case ParseDiagCode.DeprecatedOtherwiseTile:
       return "warning";
 
     case TypeDiagCode.NoOverloadForBinaryOp:

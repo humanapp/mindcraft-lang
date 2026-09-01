@@ -310,6 +310,28 @@ describe("brain-json", () => {
     assert.equal(restored.name(), "Stringify Test");
   });
 
+  test("a rule naming a tile id no catalog holds loads as a missing-tile placeholder", () => {
+    const parsed = brainJsonFromPlain({
+      version: 1,
+      name: "Unregistered Tile",
+      catalog: [],
+      pages: [
+        {
+          version: 2,
+          pageId: "unregistered-tile-page",
+          name: "Page 1",
+          rules: [{ version: 1, when: ["tile.sensor->otherwise"], do: [], children: [] }],
+        },
+      ],
+    });
+
+    const restored = BrainDef.fromJson(parsed, services);
+
+    const placed = restored.pages().get(0).children().get(0).when().tiles().get(0);
+    assert.equal(placed.kind, "missing");
+    assert.equal(placed.tileId, "tile.sensor->otherwise");
+  });
+
   test("rejects unsupported JSON version", () => {
     const json: BrainJson = {
       version: 999,

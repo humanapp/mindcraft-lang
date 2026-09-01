@@ -34,7 +34,6 @@ import { computeInferredTypes } from "./inferred-types";
 import {
   parseBrainTiles,
   validateCapabilityRequirements,
-  validateDeprecatedOtherwiseTile,
   validateOutputProviders,
   validatePrecedingSiblingConsumers,
   validateTilePlacement,
@@ -441,7 +440,6 @@ export class BrainCompiler {
     this.pushParseDiags(validatePrecedingSiblingConsumers(doTiles, siblingIndex > 0, this.localizer), rulePath);
 
     this.pushParseDiags(validateTriggerMode(ruleDef.trigger(), siblingIndex > 0), rulePath);
-    this.pushParseDiags(validateDeprecatedOtherwiseTile(whenTiles), rulePath);
 
     // An output tile with no providing sensor in the rule hierarchy (this
     // rule's WHEN and DO sides plus every ancestor rule's) blocks the build.

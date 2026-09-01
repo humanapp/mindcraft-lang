@@ -2,7 +2,6 @@ import { Error } from "../../platform/error";
 import { type ActionDescriptor, mkSensorTileId, type TypeId, type UserActionIdentity } from "../../runtime";
 import fnCurrentPage from "../../runtime/sensors/current-page";
 import fnOnPageEntered from "../../runtime/sensors/on-page-entered";
-import fnOtherwise from "../../runtime/sensors/otherwise";
 import fnPreviousPage from "../../runtime/sensors/previous-page";
 import fnRandom from "../../runtime/sensors/random";
 import fnTimeout from "../../runtime/sensors/timeout";
@@ -93,11 +92,5 @@ export function registerCoreSensorTileDefs(services: BrainServices) {
     placement: TilePlacement.EitherSide | TilePlacement.Inline,
     capabilities: pageSensorCaps,
     metadata: { label: "previous page", language: { form: "the previous page" } },
-  });
-  register(fnOtherwise.key, fnOtherwise.descriptor, {
-    deprecated: true,
-    placement: TilePlacement.WhenSide | TilePlacement.Inline,
-    capabilities: new BitSet().set(CoreCapabilityBits.RequiresPrecedingSiblingRule),
-    metadata: { label: "otherwise", language: { form: "otherwise", frame: "adverb" } },
   });
 }

@@ -72,12 +72,8 @@ export enum TilePlacement {
  * - "state" -- a condition, rendered with the locale's copula
  *   ("When I am hungry")
  * - "event" -- a happening ("When this page starts")
- * - "adverb" -- a word that is the whole trigger, rendered with neither a
- *   subject nor a trigger word ("Otherwise, wander"). A sensor of this frame
- *   takes it only where it stands alone on the side; beside other tiles it
- *   reads as an ordinary operand of the condition.
  */
-export type TileSentenceFrame = "verb" | "state" | "event" | "adverb";
+export type TileSentenceFrame = "verb" | "state" | "event";
 
 /**
  * Sentence-projection metadata for a tile. Every field is optional; the

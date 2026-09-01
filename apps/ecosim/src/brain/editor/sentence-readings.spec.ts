@@ -281,17 +281,6 @@ describe("ecosim condition readings", () => {
     assert.equal(reading([operator(CoreOpId.Not), see()], [move()]), "When I do not see anything, move.");
   });
 
-  test("the else signal reads as the whole trigger, and mid-sentence as an operand", () => {
-    const otherwise = () => sensor(CoreHostActions.Otherwise.key);
-
-    assert.equal(reading([otherwise()], [actuator(EcosimHostActions.Move.key)]), "Otherwise, move.");
-    assert.equal(reading([otherwise()]), "Otherwise,");
-    assert.equal(
-      reading([otherwise(), operator(CoreOpId.And), sensor(EcosimHostActions.Bump.key)]),
-      "When otherwise and bump,"
-    );
-  });
-
   test("a rule with no DO tiles reads as its condition alone", () => {
     assert.equal(
       reading([sensor(EcosimHostActions.See.key), modifier(TileIds.Modifier.ActorKindCarnivore)]),
@@ -341,11 +330,11 @@ describe("ecosim paragraph readings", () => {
     assert.equal(
       paragraph([
         {
-          when: [sensor(CoreHostActions.Otherwise.key)],
+          when: [see(), plant()],
           children: [{ when: [bump()], do: [move(), modifier(TileIds.Modifier.MovementAwayFrom)] }],
         },
       ]),
-      "Otherwise, when I bump anything, move away from."
+      "When I see a plant, when I bump anything, move away from."
     );
   });
 

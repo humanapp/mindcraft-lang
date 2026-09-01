@@ -14,12 +14,10 @@ import { UniqueSet } from "../../platform/uniqueset";
 import {
   type BrainActionCallArgSpec,
   type BrainActionCallSpec,
-  CoreHostActions,
   CoreOpId,
   type IConversionRegistry,
   type ITypeRegistry,
   MAX_COERCION_PATH_LENGTH,
-  mkSensorTileId,
   type TypeId,
 } from "../../runtime";
 import type { BitSet, ReadonlyBitSet } from "../../util/bitset";
@@ -1363,30 +1361,6 @@ export function validateTriggerMode(trigger: RuleTriggerMode, hasPrecedingSiblin
       : "A 'then' rule needs a rule above it at the same level to follow",
     span: { from: 0, to: 0 },
   });
-  return diags;
-}
-
-/**
- * Report every occurrence of the deprecated `otherwise` sensor tile in a rule's
- * WHEN-side tile list. Returns one
- * {@link ParseDiagCode.DeprecatedOtherwiseTile} diagnostic per occurrence,
- * spanning the tile's index in `tiles`, at "warning" severity.
- *
- * @param tiles - The rule's WHEN-side tile list.
- */
-export function validateDeprecatedOtherwiseTile(tiles: ReadonlyList<IBrainTileDef>): List<ParseDiag> {
-  const diags = List.empty<ParseDiag>();
-  const otherwiseTileId = mkSensorTileId(CoreHostActions.Otherwise.key);
-  for (let i = 0; i < tiles.size(); i++) {
-    const tile = tiles.get(i);
-    if (tile.tileId !== otherwiseTileId) continue;
-    diags.push({
-      code: ParseDiagCode.DeprecatedOtherwiseTile,
-      message: "The 'otherwise' tile is deprecated; give the rule the 'otherwise' trigger mode instead",
-      span: { from: i, to: i + 1 },
-      params: { tileId: tile.tileId },
-    });
-  }
   return diags;
 }
 

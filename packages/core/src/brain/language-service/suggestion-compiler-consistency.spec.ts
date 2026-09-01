@@ -71,7 +71,6 @@ import {
 } from "@wendoo/core/brain/tiles";
 import {
   bag,
-  CoreHostActions,
   CoreOpId,
   CoreParameterId,
   CoreTypeIds,
@@ -79,7 +78,6 @@ import {
   type IConversionRegistry,
   mkActionDescriptor,
   mkCallDef,
-  mkSensorTileId,
   mod,
   NIL_VALUE,
   optional,
@@ -432,11 +430,6 @@ function appendRootRule(brain: BrainDef): IBrainRuleDef {
   return brain.pages().get(0).appendNewRule()!;
 }
 
-/** The core `otherwise` sensor: the deprecated WHEN-side inline tile reading the rule above it. */
-function otherwiseTile(): IBrainTileDef {
-  return services.edit.tiles.get(mkSensorTileId(CoreHostActions.Otherwise.key))!;
-}
-
 function corpus(): CorpusEntry[] {
   const t = probeTiles;
   const entries: CorpusEntry[] = [
@@ -710,19 +703,6 @@ function corpus(): CorpusEntry[] {
       },
     },
     {
-      // An unmigrated document: the middle rule's WHEN is the deprecated
-      // `otherwise` tile, so the picker keeps offering into a side the tile
-      // itself is no longer offered on.
-      name: "root-siblings-otherwise-run",
-      build: () => {
-        const { brain, rule } = newBrain("root-siblings-otherwise-run");
-        fill(rule, [t.seesSensor], [t.beepActuator]);
-        fill(appendRootRule(brain), [otherwiseTile()], [t.beepActuator]);
-        fill(appendRootRule(brain), [], [t.beepActuator]);
-        return brain;
-      },
-    },
-    {
       // Both root rules hold a boolean conjunction on WHEN, so each operand is
       // a composed expression position -- audited once without a preceding
       // sibling and once with one.
@@ -919,9 +899,6 @@ const INCOMPLETENESS_CODES = new Set<number>([
   ParseDiagCode.ExpectedClosingParen,
 ]);
 
-/** Parse diagnostics that advise on a tile already standing on the side, not on the expression it forms. */
-const ADVISORY_CODES = new Set<number>([ParseDiagCode.DeprecatedOtherwiseTile]);
-
 function catalogList(): List<ITileCatalog> {
   return List.from([services.edit.tiles]);
 }
@@ -1054,7 +1031,6 @@ function sideVerdict(
   let verdict: Verdict = "complete";
   for (let i = 0; i < result.parseResult.diags.size(); i++) {
     const code = result.parseResult.diags.get(i).code as number;
-    if (ADVISORY_CODES.has(code)) continue;
     if (INCOMPLETENESS_CODES.has(code)) {
       if (verdict === "complete") verdict = "incomplete";
     } else {

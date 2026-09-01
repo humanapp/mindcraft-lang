@@ -4,7 +4,7 @@ status: Accepted
 # Active status:   Draft -> Review -> Accepted -> Committed -> In-Progress -> Shipped
 # Terminal status: Rejected | Withdrawn | Superseded (set superseded-by)
 created: 2026-08-31
-updated: 2026-08-31
+updated: 2026-09-01
 ---
 
 # Spec: rule trigger modes (WHEN / OTHERWISE / THEN)
@@ -44,24 +44,22 @@ OTHERWISE when tilted  DO show frown        // thinks the second then did not fi
 
 ## A mode, not a tile
 
-An inter-rule signal can live inside the WHEN expression -- the deprecated
-`otherwise` tile did -- but the mode surface is where these signals belong:
+An inter-rule signal could live inside the WHEN expression, as a sensor tile
+reading the rule above it. The mode surface is where these signals belong
+instead:
 
-- A flat run of `otherwise` tiles alternates instead of laddering (rule 3's
-  subject is rule 2, and "rule 2 did not fire" includes "rule 1 fired").
-  Ladder semantics need a chain-aware firing record, which as a tile would be
-  a special case on a sensor designed to have none. As a mode, the chain is
-  visible in the document structure and the semantics attach to it directly.
-- The tile form must legislate compositions with no good meaning (`NOT
-  otherwise`, `otherwise OR x`, several `otherwise` in one WHEN, `then` mid
+- A flat run of such tiles alternates rather than laddering (rule 3's subject
+  is rule 2, and "rule 2 did not fire" includes "rule 1 fired"). Ladder
+  semantics need a chain-aware firing record, which on a sensor designed to
+  have none would be a special case. As a mode, the chain is visible in the
+  document structure and the semantics attach to it directly.
+- A tile form must legislate compositions with no good meaning (`NOT
+  otherwise`, `otherwise OR x`, several occurrences in one WHEN, `then` mid
   expression). A mode makes them unrepresentable.
 - "The sibling completed" is a relation between rules, not a reading from the
   world; a rule header is its natural home.
 - Sentence composition improves: the mode is the connective word, and the
   expression renders through the ordinary WHEN path.
-
-The `otherwise` tile is deprecated in favor of the mode (see Document model
-and migration).
 
 ## Adjacency
 
@@ -156,9 +154,8 @@ above: a parked chain member retains `DidFire` and keeps the rest of the chain
 quiet while its action is in flight; `Evaluating` propagates and keeps the
 chain quiet.
 
-A flat run of `otherwise` rules is a ladder. (The deprecated tile's flat runs
-alternate instead; see Document model and migration.) Nesting remains
-available for any structure a ladder does not express.
+A flat run of `otherwise` rules is a ladder. Nesting remains available for any
+structure a ladder does not express.
 
 ## THEN semantics: the await model
 
@@ -301,28 +298,18 @@ Ordinary rules apply, plus the pre-wait write from trigger case 1:
   and the suggestion-compiler consistency oracle covers the modes in both
   directions.
 
-## Document model and migration
+## Document model
 
 - `RuleJson` carries one optional field: `trigger?: "when" | "otherwise" |
-  "then"`; absent means `when`, so documents that predate the field parse
-  unchanged.
+  "then"`; absent means `when`, so a document that carries no mode on a rule
+  parses as a `when` rule.
 - The field is a product contract shared by both consumer apps
   (`apps/microbit-sim` in wendoo-mcu, and `apps/ecosim` in this repo).
-- **Tile deprecation.** The `otherwise` tile is not offered by the picker.
-  On document load, two shapes migrate to the mode:
-  - WHEN side exactly `[otherwise]` -> `trigger: "otherwise"`, empty WHEN.
-  - WHEN side `[otherwise, AND, ...rest]` -> `trigger: "otherwise"`, WHEN
-    `rest`.
-  - Any other placement (mid-expression, OR forms, multiple occurrences)
-    keeps its tiles, compiles and runs with tile semantics, and carries a
-    **deprecation warning** naming the rewrite. The tile's runtime sensor
-    stays registered for these documents; tile-bearing rules are `when`-mode
-    rules, so their gates keep the ordinary record write and the tile
-    semantics hold exactly -- including the tile's alternating flat runs.
-- A migrated rule inside a flat run changes meaning (alternation -> ladder);
-  this is the intended semantics of the mode, not a migration defect, and
-  the deprecation warning names the nesting rewrite for authors who relied
-  on alternation.
+- The modes are carried entirely by that field. No tile expresses an
+  inter-rule signal, so a document naming a tile id the catalogs do not hold
+  takes the ordinary missing-tile path: the load inserts a missing-tile
+  placeholder preserving the id, and the rule compiles with the diagnostic
+  that tile kind carries.
 
 ## Sentence composition
 
@@ -336,8 +323,6 @@ Ordinary rules apply, plus the pre-wait write from trigger case 1:
   - "Then, when shaken, scroll 'bye'."
 - The connective words localize as sentence template strings under the
   sentence contexts, not as tile words.
-- The `adverb` sentence frame serves only documents carrying the deprecated
-  tile.
 
 ## UI
 
@@ -392,9 +377,9 @@ apps sweep):
   field, and an op switches an existing rule's mode, mirroring the editor
   affordance.
 - `read_project` renders each rule's mode alongside its sides.
-- The deprecated `otherwise` tile's digest line carries the `deprecated`
-  flag rather than going hidden, so `read_project` output for unmigrated
-  documents stays explicable to the model.
+- A deprecated tile's digest line carries the `deprecated` flag rather than
+  going hidden, so `read_project` output for a document still holding one
+  stays explicable to the model.
 - The mode diagnostics have entries wherever rejection codes are explained
   to the model.
 
@@ -447,7 +432,7 @@ The backend teaching kernel teaches the same grammar the editor accepts.
 - Golden coverage names, at minimum: a three-rule ladder where the head
   fires / the middle fires / none fire; a ladder with a parked head; a ladder
   headed by a `then` rule, exercised during the wait and after the fire; a
-  migrated bare else pair; bare `then` after a childless sibling and after a
+  bare else pair; bare `then` after a childless sibling and after a
   sibling whose child parks on an awaited actuator across thinks; `then when
   <sensor>` holding and not holding at the wake think; a root-level and a
   child-level `then` chain of three; a chain whose middle subject skips; a

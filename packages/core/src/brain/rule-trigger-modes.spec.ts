@@ -106,6 +106,32 @@ function makeMarker(): Marker {
   return { tile: def.tile as BrainTileActuatorDef, ticks };
 }
 
+/** An actuator tile plus the WHEN results its rule carried on each run. */
+interface WhenResultReader {
+  tile: BrainTileActuatorDef;
+  captured: Value[];
+}
+
+/** Registers an actuator that records its rule's captured WHEN result on each run. */
+function makeWhenResultReader(): WhenResultReader {
+  hostIdCounter += 1;
+  const captured: Value[] = [];
+  const def = createHostActuator({
+    key: `trigger-mode-when-result-${hostIdCounter}`,
+    actionId: 8100 + hostIdCounter,
+    fnId: 9100 + hostIdCounter,
+    callDef: mkCallDef({ type: "bag", items: [] }),
+    fn: {
+      exec: (ctx: ExecutionContext) => {
+        captured.push(ctx.services.brain.ruleVars.getByName(ctx.currentRuleFuncId, "__whenResult"));
+        return VOID_VALUE;
+      },
+    },
+  });
+  registerHost(def);
+  return { tile: def.tile as BrainTileActuatorDef, captured };
+}
+
 /** An awaited actuator that parks its rule until the test settles its handle. */
 interface ParkingActuator {
   tile: BrainTileActuatorDef;
@@ -434,6 +460,34 @@ describe("otherwise mode -- the ladder", () => {
 
     assert.deepEqual(branch.ticks, []);
     assert.deepEqual(elseBranch.ticks, [1, 2]);
+  });
+
+  test("a ladder headed by an empty-WHEN rule never leaves the head", () => {
+    const { brainDef, page } = newBrain();
+    const head = makeMarker();
+    const tail = makeMarker();
+    fillRule(page.children().get(0)! as BrainRuleDef, [], [head.tile]);
+    addRootRule(page, RuleTriggerMode.Otherwise, [], [tail.tile]);
+
+    const run = startBrain(brainDef);
+    run.think();
+    run.think();
+    run.think();
+
+    assert.deepEqual(head.ticks, [1, 2, 3], "an empty WHEN fires every think");
+    assert.deepEqual(tail.ticks, []);
+  });
+
+  test("an armed bare otherwise rule captures true as its WHEN result", () => {
+    const { brainDef, page } = newBrain();
+    const reader = makeWhenResultReader();
+    fillRule(page.children().get(0)! as BrainRuleDef, [boolLiteral(false)], []);
+    addRootRule(page, RuleTriggerMode.Otherwise, [], [reader.tile]);
+
+    const run = startBrain(brainDef);
+    run.think();
+
+    assert.deepEqual(reader.captured, [TRUE_VALUE]);
   });
 });
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { isPageTileId } from "@wendoo/core/brain";
-import { CoreHostActions, mkSensorTileId } from "@wendoo/core/runtime";
+import { CoreHostActions, mkActuatorTileId } from "@wendoo/core/runtime";
 import { CatalogScope } from "../catalog/scope.js";
 import { createTargetAdapter, ruleIdAt } from "../testing/index.js";
 import { proposeEdit } from "./propose-edit.js";
@@ -12,8 +12,8 @@ import { createAuthoringWorkspace } from "./workspace.js";
 /** A sensor the fake target installs. */
 const installedSensor = "tile.sensor->sensor.fake.signal";
 
-/** Tile id of the core `otherwise` sensor. */
-const otherwiseSensor = mkSensorTileId(CoreHostActions.Otherwise.key);
+/** Tile id of the core `restart page` actuator, which the catalog carries deprecated. */
+const restartPageActuator = mkActuatorTileId(CoreHostActions.RestartPage.key);
 
 /** A workspace over the fake target, one empty rule ready on its first page. */
 function workspace(): AuthoringWorkspace {
@@ -100,14 +100,14 @@ describe("the scopes read_catalog groups tiles under", () => {
 });
 
 describe("the tiles the catalog tells the model not to author with", () => {
-  test("marks the superseded `otherwise` sensor deprecated, and still lists it", () => {
+  test("marks a superseded tile deprecated, and still lists it", () => {
     const listed = catalogTiles(readCatalog(workspace(), {}));
 
-    const otherwise = listed.find((tile) => tile.tileId === otherwiseSensor);
+    const restartPage = listed.find((tile) => tile.tileId === restartPageActuator);
 
-    assert.ok(otherwise, `the catalog lists ${otherwiseSensor}`);
-    assert.equal(otherwise.deprecated, true);
-    assert.notEqual(otherwise.hidden, true, "a deprecated tile is read, not hidden");
+    assert.ok(restartPage, `the catalog lists ${restartPageActuator}`);
+    assert.equal(restartPage.deprecated, true);
+    assert.notEqual(restartPage.hidden, true, "a deprecated tile is read, not hidden");
   });
 
   test("marks no tile deprecated that the language still authors with", () => {

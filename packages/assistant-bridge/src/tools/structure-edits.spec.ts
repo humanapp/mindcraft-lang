@@ -3,7 +3,6 @@ import { describe, test } from "node:test";
 import { mkPageTileId } from "@wendoo/core/brain";
 import { ParseDiagCode } from "@wendoo/core/brain/compiler";
 import { kMaxBrainPageCount } from "@wendoo/core/brain/model";
-import { CoreHostActions, mkSensorTileId } from "@wendoo/core/runtime";
 import { createTargetAdapter } from "../testing/index.js";
 import type { BatchAccepted, ProposalAccepted, ProposalRejected, ProposalUnresolved } from "./propose-edit.js";
 import { proposeEdit, proposeEditBatch } from "./propose-edit.js";
@@ -700,22 +699,6 @@ describe("the trigger mode a rule is made with and switched to", () => {
       assert.deepEqual(readProject(ws).pages[0]!.rules[0]!.children, []);
     });
   }
-
-  test("refuses the deprecated `otherwise` tile, so the mode is the only way to branch", () => {
-    const ws = workspace();
-    const added = proposeEdit(ws, { op: "addRule", pageIndex: 0 }) as ProposalAccepted;
-
-    const result = proposeEdit(ws, {
-      op: "placeTile",
-      ruleId: added.rule!.ruleId,
-      side: "when",
-      tileId: mkSensorTileId(CoreHostActions.Otherwise.key),
-    });
-
-    assert.equal(result.ok, false, JSON.stringify(result));
-    assert.equal((result as ProposalRejected).code, ParseDiagCode.DeprecatedOtherwiseTile);
-    assert.deepEqual(readProject(ws).pages[0]!.rules[1]!.when, []);
-  });
 
   test("a batch carrying a mode its position does not admit leaves the document as it stood", async () => {
     const ws = workspace();

@@ -23,7 +23,6 @@ export {
   collectProvidedOutputKeys,
   parseBrainTiles,
   validateCapabilityRequirements,
-  validateDeprecatedOtherwiseTile,
   validateOutputProviders,
   validatePrecedingSiblingConsumers,
   validateTriggerMode,
@@ -69,7 +68,6 @@ import {
   collectProvidedOutputKeys,
   parseBrainTiles,
   validateCapabilityRequirements,
-  validateDeprecatedOtherwiseTile,
   validateOutputProviders,
   validatePrecedingSiblingConsumers,
   validateTilePlacement,
@@ -138,9 +136,6 @@ function appendParseDiags(result: ParseResult, extra: ReadonlyList<ParseDiag>): 
  * {@link ParseDiagCode.OtherwiseTriggerNoPrecedingSiblingRule} or
  * {@link ParseDiagCode.ThenTriggerNoPrecedingSiblingRule} diagnostic. It
  * defaults to `when`, which reports nothing.
- * Each occurrence of the deprecated `otherwise` sensor tile on the WHEN side
- * gets a {@link ParseDiagCode.DeprecatedOtherwiseTile} diagnostic at "warning"
- * severity.
  * `localizer` is the locale every diagnostic names a tile in.
  */
 export function parseRule(
@@ -184,26 +179,23 @@ export function parseRule(
 
   // Each side also carries the placement, output-provider,
   // capability-requirement, WHEN-result, and preceding-sibling diagnostics for
-  // its own tiles; the WHEN side additionally carries the trigger-mode and
-  // deprecated-tile diagnostics.
+  // its own tiles; the WHEN side additionally carries the trigger-mode
+  // diagnostics.
   const whenParseResult = appendParseDiags(
     appendParseDiags(
       appendParseDiags(
         appendParseDiags(
           appendParseDiags(
-            appendParseDiags(
-              appendParseDiags(whenParsed, validateTilePlacement(whenSrc, RuleSide.When, localizer)),
-              validateOutputProviders(whenSrc, providedOutputKeys, localizer)
-            ),
-            validateCapabilityRequirements(whenSrc, availableCapabilities, catalogs, localizer)
+            appendParseDiags(whenParsed, validateTilePlacement(whenSrc, RuleSide.When, localizer)),
+            validateOutputProviders(whenSrc, providedOutputKeys, localizer)
           ),
-          validateWhenResultConsumers(whenSrc, whenSideWhenResult, conversions, typeRegistry, localizer)
+          validateCapabilityRequirements(whenSrc, availableCapabilities, catalogs, localizer)
         ),
-        validatePrecedingSiblingConsumers(whenSrc, hasPrecedingSiblingRule, localizer)
+        validateWhenResultConsumers(whenSrc, whenSideWhenResult, conversions, typeRegistry, localizer)
       ),
-      validateTriggerMode(trigger, hasPrecedingSiblingRule)
+      validatePrecedingSiblingConsumers(whenSrc, hasPrecedingSiblingRule, localizer)
     ),
-    validateDeprecatedOtherwiseTile(whenSrc)
+    validateTriggerMode(trigger, hasPrecedingSiblingRule)
   );
   const doParseResult = appendParseDiags(
     appendParseDiags(

@@ -259,7 +259,6 @@ function fixtureRules(): IBrainRuleDef[] {
       [coreTile(mkOperatorTileId(CoreOpId.Not)), makeObjectSensor("see", { label: "see" })],
       [makeActuator("walk", { label: "walk" })]
     ),
-    makeRule([coreTile(mkSensorTileId(CoreHostActions.Otherwise.key))], [makeActuator("wander", { label: "wander" })]),
   ];
 }
 
@@ -681,74 +680,6 @@ describe("negated WHEN readings", () => {
   });
 });
 
-// -- adverb-frame conditions --------------------------------------------------
-
-describe("adverb-frame WHEN readings", () => {
-  const otherwise = () => coreTile(mkSensorTileId(CoreHostActions.Otherwise.key));
-  const wander = () => makeActuator("wander", { label: "wander" });
-
-  test("an adverb-frame sensor alone is the rule's whole trigger", () => {
-    const rule = makeRule([otherwise()], [wander()]);
-
-    assert.deepEqual(project(rule), [initialWord("otherwise", 0), glue(", "), word("wander", 1), glue(".")]);
-    assert.equal(projectedText(rule), "Otherwise, wander.");
-  });
-
-  test("an adverb-frame sensor with no DO side reads as its word alone", () => {
-    const rule = makeRule([otherwise()], []);
-
-    assert.deepEqual(project(rule), [initialWord("otherwise", 0), glue(",")]);
-    assert.equal(projectedText(rule), "Otherwise,");
-  });
-
-  test("the trigger is one word segment carrying the tile's own span", () => {
-    const rule = makeRule([otherwise()], [wander()]);
-    const spans: number[] = [];
-    for (const segment of project(rule)) {
-      if (segment.kind === "word") {
-        spans.push(segment.sourceTileIndex);
-      }
-    }
-
-    assert.deepEqual(spans, [0, 1]);
-  });
-
-  test("an adverb-frame sensor beside other tiles reads as an ordinary operand", () => {
-    const rule = makeRule(
-      [otherwise(), coreTile(mkOperatorTileId(CoreOpId.And)), coreTile(mkSensorTileId(CoreHostActions.Random.key))],
-      [wander()]
-    );
-
-    assert.deepEqual(project(rule), [
-      glue("When "),
-      word("otherwise", 0),
-      glue(" "),
-      word("and", 1),
-      glue(" "),
-      word("a random number", 2),
-      glue(", "),
-      word("wander", 3),
-      glue("."),
-    ]);
-    assert.equal(projectedText(rule), "When otherwise and a random number, wander.");
-  });
-
-  test("a negation over an adverb-frame sensor selects no negated frame", () => {
-    const rule = makeRule([coreTile(mkOperatorTileId(CoreOpId.Not)), otherwise()], [wander()]);
-
-    assert.deepEqual(project(rule), [
-      glue("When "),
-      word("not", 0),
-      glue(" "),
-      word("otherwise", 1),
-      glue(", "),
-      word("wander", 2),
-      glue("."),
-    ]);
-    assert.equal(projectedText(rule), "When not otherwise, wander.");
-  });
-});
-
 // -- the sentence a rule with no action reads ---------------------------------
 
 describe("a rule whose DO side is empty", () => {
@@ -759,12 +690,6 @@ describe("a rule whose DO side is empty", () => {
 
     assert.deepEqual(project(rule), [glue("When I "), word("see", 0), glue(",")]);
     assert.equal(projectedText(rule), "When I see,");
-  });
-
-  test("an adverb-frame trigger reads the same way", () => {
-    const rule = makeRule([coreTile(mkSensorTileId(CoreHostActions.Otherwise.key))], []);
-
-    assert.equal(projectedText(rule), "Otherwise,");
   });
 
   test("one tile on the DO side finishes the sentence", () => {
@@ -778,7 +703,6 @@ describe("a rule whose DO side is empty", () => {
     () => [makeSensor("terminal-verb", { label: "hear" })],
     () => [makeSensor("terminal-state", { label: "hungry", language: { frame: "state" } })],
     () => [coreTile(mkSensorTileId(CoreHostActions.OnPageEntered.key))],
-    () => [makeAdverbSensor("terminal-adverb", "meanwhile")],
     () => [makeVariable("speed"), coreTile(mkOperatorTileId(CoreOpId.GreaterThan)), makeLiteral(CoreTypeIds.Number, 5)],
     () => [coreTile(mkOperatorTileId(CoreOpId.Not)), makeObjectSensor("terminal-negated", { label: "see" })],
   ];
@@ -797,27 +721,40 @@ describe("a rule whose DO side is empty", () => {
 // -- sentence-initial case ----------------------------------------------------
 
 /**
- * A tile whose word opens a sentence on its own, for the positional case rule:
- * an adverb-frame sensor alone on a WHEN side is the whole trigger, so its word
- * stands first.
+ * The WHEN-template override that puts a sensor's own word first in the
+ * sentence, which is what the positional case rule marks.
  */
-function makeAdverbSensor(sensorId: string, form: string): IBrainTileDef {
-  return makeSensor(sensorId, { label: form, language: { form, frame: "adverb" } });
-}
+const kSlotOpeningWhenContext = { "When I {form} {object}": "{form} {object}" };
+
+/** A locale whose WHEN template opens with the sensor's word and capitalizes it. */
+const slotOpeningLocalizer = createLocalizer({
+  locale: "zz",
+  pluralRule: defaultPluralRule,
+  entries: {},
+  contexts: { "sentence-when": kSlotOpeningWhenContext },
+});
+
+/** The same locale, declining to change the opening word's case. */
+const slotOpeningLowercaseLocalizer = createLocalizer({
+  locale: "zz",
+  pluralRule: defaultPluralRule,
+  entries: {},
+  contexts: { "sentence-when": kSlotOpeningWhenContext },
+  sentenceCase: { capitalizes: false },
+});
 
 describe("sentence-initial case", () => {
   const walk = () => makeActuator("walk", { label: "walk" });
 
   test("the word a sentence opens with is marked, and no other word is", () => {
-    const rule = makeRule([makeAdverbSensor("initial-mark-probe", "meanwhile")], [walk()]);
-    const marked: boolean[] = [];
-    for (const segment of project(rule)) {
-      if (segment.kind === "word") {
-        marked.push(segment.sentenceInitial === true);
-      }
-    }
+    const rule = makeRule([makeSensor("initial-mark-probe", { label: "meanwhile" })], [walk()]);
 
-    assert.deepEqual(marked, [true, false]);
+    assert.deepEqual(project(rule, slotOpeningLocalizer), [
+      initialWord("meanwhile", 0),
+      glue(", "),
+      word("walk", 1),
+      glue("."),
+    ]);
   });
 
   test("a sentence opening with template text marks no word at all", () => {
@@ -838,44 +775,34 @@ describe("sentence-initial case", () => {
   });
 
   test("the marked word keeps its authored text and takes the opening case only at display", () => {
-    const rule = makeRule([makeAdverbSensor("initial-authored-probe", "meanwhile")], [walk()]);
-    const opening = project(rule)[0];
+    const rule = makeRule([makeSensor("initial-authored-probe", { label: "meanwhile" })], [walk()]);
+    const opening = project(rule, slotOpeningLocalizer)[0];
 
     assert.equal(opening.text, "meanwhile");
-    assert.equal(segmentDisplayText(opening, localizer), "Meanwhile");
-    assert.equal(projectedText(rule), "Meanwhile, walk.");
+    assert.equal(segmentDisplayText(opening, slotOpeningLocalizer), "Meanwhile");
+    assert.equal(projectedText(rule, slotOpeningLocalizer), "Meanwhile, walk.");
   });
 
   test("a word authored with a capital reads as authored wherever it stands", () => {
-    const proper = () => makeAdverbSensor("initial-proper-noun-probe", "Reykjavik");
+    const proper = () => makeSensor("initial-proper-noun-probe", { label: "Reykjavik" });
     const opening = makeRule([proper()], [walk()]);
-    const inside = makeRule(
-      [proper(), coreTile(mkOperatorTileId(CoreOpId.And)), coreTile(mkSensorTileId(CoreHostActions.Random.key))],
-      [walk()]
-    );
+    const inside = makeRule([makeVariable("speed"), coreTile(mkOperatorTileId(CoreOpId.And)), proper()], [walk()]);
 
-    assert.equal(projectedText(opening), "Reykjavik, walk.");
-    assert.equal(projectedText(inside), "When Reykjavik and a random number, walk.");
+    assert.equal(projectedText(opening, slotOpeningLocalizer), "Reykjavik, walk.");
+    assert.equal(projectedText(inside, slotOpeningLocalizer), "When speed and Reykjavik, walk.");
   });
 
   test("no word is ever lowercased, opening one included", () => {
-    const rule = makeRule([makeAdverbSensor("initial-no-lowercase-probe", "ALLCAPS")], [walk()]);
+    const rule = makeRule([makeSensor("initial-no-lowercase-probe", { label: "ALLCAPS" })], [walk()]);
 
-    assert.equal(projectedText(rule), "ALLCAPS, walk.");
+    assert.equal(projectedText(rule, slotOpeningLocalizer), "ALLCAPS, walk.");
   });
 
   test("the locale decides the opening case, and can decline to change it", () => {
-    const lowercasing = createLocalizer({
-      locale: "zz",
-      pluralRule: defaultPluralRule,
-      entries: {},
-      contexts: {},
-      sentenceCase: { capitalizes: false },
-    });
-    const rule = makeRule([makeAdverbSensor("initial-locale-probe", "meanwhile")], [walk()]);
+    const rule = makeRule([makeSensor("initial-locale-probe", { label: "meanwhile" })], [walk()]);
 
-    assert.equal(projectedText(rule), "Meanwhile, walk.");
-    assert.equal(projectedText(rule, lowercasing), "meanwhile, walk.");
+    assert.equal(projectedText(rule, slotOpeningLocalizer), "Meanwhile, walk.");
+    assert.equal(projectedText(rule, slotOpeningLowercaseLocalizer), "meanwhile, walk.");
   });
 });
 
@@ -1130,7 +1057,6 @@ function testLocaleCatalog(): LocaleCatalog {
         "When I {form} {object}": "ZORP {form} {object} ZAP",
         "When I am {form} {object}": "ZORP MI {form} {object}",
         "When {form} {object}": "ZORP {form} {object}",
-        "{form} {object}": "ADVERBZ {form} {object}",
         "When {condition}": "ZORP KA {condition}",
         "When I do {negation} {form} {object}": "ZORP NAY {negation} {form} {object}",
         "When I am {negation} {form} {object}": "ZORP MI NAY {negation} {form} {object}",
@@ -1225,23 +1151,6 @@ describe("sentence projection locale parameterization", () => {
     const rule = makeRule([coreTile(mkSensorTileId(CoreHostActions.OnPageEntered.key))], []);
 
     assert.deepEqual(project(rule, translated), [glue("ZORP "), word("this page starts", 0), glue("?")]);
-  });
-
-  test("the adverb frame translates too", () => {
-    const translated = createLocalizer(testLocaleCatalog());
-    const rule = makeRule(
-      [coreTile(mkSensorTileId(CoreHostActions.Otherwise.key))],
-      [makeActuator("wander", { label: "wander" })]
-    );
-
-    assert.deepEqual(project(rule, translated), [
-      glue("ADVERBZ "),
-      word("otherwise", 0),
-      glue(" ;; "),
-      word("wander", 1),
-      glue("!"),
-    ]);
-    assert.equal(projectedText(rule, translated), "ADVERBZ otherwise ;; wander!");
   });
 
   test("the subjectless template translates too", () => {
@@ -1544,10 +1453,10 @@ function fixturePages(): IBrainPageDef[] {
     makePage([
       { when: [seeSensor()], do: [walkAction()] },
       {
-        when: [coreTile(mkSensorTileId(CoreHostActions.Otherwise.key))],
+        trigger: RuleTriggerMode.Otherwise,
         children: [
           { when: [hungrySensor()], do: [eatAction()] },
-          { when: [coreTile(mkSensorTileId(CoreHostActions.Otherwise.key))], do: [restAction()] },
+          { trigger: RuleTriggerMode.Otherwise, do: [restAction()] },
         ],
       },
     ]),
@@ -1792,49 +1701,6 @@ describe("page paragraph edge shapes", () => {
     assert.equal(paragraphAsText(page), "When I see anything, walk, and if I do not hear, eat.");
   });
 
-  test("an adverb-frame child reads its word as its whole subordinate clause", () => {
-    const page = makePage([
-      {
-        when: [seeSensor()],
-        do: [walkAction()],
-        children: [{ when: [coreTile(mkSensorTileId(CoreHostActions.Otherwise.key))], do: [restAction()] }],
-      },
-    ]);
-    const parent = topRule(page, 0);
-
-    assert.deepEqual(paragraph(page), [
-      clause(parent, glue("When I "), word("see", 0), glue(" "), word("anything", 0), glue(", "), word("walk", 1)),
-      connective(", and if "),
-      clause(childRule(parent, 0), word("otherwise", 0), glue(", "), word("rest", 1)),
-      connective("."),
-    ]);
-    assert.equal(paragraphAsText(page), "When I see anything, walk, and if otherwise, rest.");
-  });
-
-  test("an adverb-frame root rule opens its own sentence with no trigger word", () => {
-    const page = makePage([
-      { when: [seeSensor()], do: [walkAction()] },
-      { when: [coreTile(mkSensorTileId(CoreHostActions.Otherwise.key))], do: [restAction()] },
-    ]);
-    const second = topRule(page, 1);
-
-    assert.deepEqual(paragraph(page), [
-      clause(
-        topRule(page, 0),
-        glue("When I "),
-        word("see", 0),
-        glue(" "),
-        word("anything", 0),
-        glue(", "),
-        word("walk", 1)
-      ),
-      connective(". "),
-      clause(second, initialWord("otherwise", 0), glue(", "), word("rest", 1)),
-      connective("."),
-    ]);
-    assert.equal(paragraphAsText(page), "When I see anything, walk. Otherwise, rest.");
-  });
-
   test("an event-frame child reads as the event", () => {
     const page = makePage([
       {
@@ -1874,16 +1740,15 @@ describe("page paragraph edge shapes", () => {
 // -- a parent whose DO side is empty ------------------------------------------
 
 describe("page paragraph under a parent with no action", () => {
-  const otherwise = () => coreTile(mkSensorTileId(CoreHostActions.Otherwise.key));
   const bumpSensor = () => makeObjectSensor("bump", { label: "bump" });
   const moveAwayAction = () => makeActuator("move-away", { label: "move away from it" });
 
   test("the child's clause completes the parent's own sentence", () => {
-    const page = makePage([{ when: [otherwise()], children: [{ when: [bumpSensor()], do: [moveAwayAction()] }] }]);
+    const page = makePage([{ when: [hungrySensor()], children: [{ when: [bumpSensor()], do: [moveAwayAction()] }] }]);
     const parent = topRule(page, 0);
 
     assert.deepEqual(paragraph(page), [
-      clause(parent, initialWord("otherwise", 0)),
+      clause(parent, glue("When I am "), word("hungry", 0)),
       connective(", when "),
       clause(
         childRule(parent, 0),
@@ -1896,46 +1761,43 @@ describe("page paragraph under a parent with no action", () => {
       ),
       connective("."),
     ]);
-    assert.equal(paragraphAsText(page), "Otherwise, when I bump anything, move away from it.");
-  });
-
-  test("any parent with no action takes the completing connective", () => {
-    const page = makePage([{ when: [hungrySensor()], children: [{ when: [bumpSensor()], do: [moveAwayAction()] }] }]);
-
     assert.equal(paragraphAsText(page), "When I am hungry, when I bump anything, move away from it.");
   });
 
   test("a child with no condition completes it with no conjunction at all", () => {
-    const page = makePage([{ when: [otherwise()], children: [{ do: [moveAwayAction()] }] }]);
+    const page = makePage([{ when: [hungrySensor()], children: [{ do: [moveAwayAction()] }] }]);
     const parent = topRule(page, 0);
 
     assert.deepEqual(paragraph(page), [
-      clause(parent, initialWord("otherwise", 0)),
+      clause(parent, glue("When I am "), word("hungry", 0)),
       connective(", "),
       clause(childRule(parent, 0), word("move away from it", 0)),
       connective("."),
     ]);
-    assert.equal(paragraphAsText(page), "Otherwise, move away from it.");
+    assert.equal(paragraphAsText(page), "When I am hungry, move away from it.");
   });
 
   test("the next child joins the completed sentence with the ordinary conjunction", () => {
     const page = makePage([
       {
-        when: [otherwise()],
+        when: [hungrySensor()],
         children: [
           { when: [bumpSensor()], do: [moveAwayAction()] },
-          { when: [hungrySensor()], do: [eatAction()] },
+          { when: [hearSensor()], do: [eatAction()] },
         ],
       },
     ]);
 
-    assert.equal(paragraphAsText(page), "Otherwise, when I bump anything, move away from it, and if I am hungry, eat.");
+    assert.equal(
+      paragraphAsText(page),
+      "When I am hungry, when I bump anything, move away from it, and if I hear, eat."
+    );
   });
 
   test("a child that carries no action of its own leaves the sentence unfinished", () => {
-    const page = makePage([{ when: [otherwise()], children: [{ when: [hungrySensor()] }] }]);
+    const page = makePage([{ when: [hungrySensor()], children: [{ when: [hearSensor()] }] }]);
 
-    assert.equal(paragraphAsText(page), "Otherwise, when I am hungry,");
+    assert.equal(paragraphAsText(page), "When I am hungry, when I hear,");
   });
 });
 

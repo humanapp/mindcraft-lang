@@ -122,12 +122,6 @@ export const coreTileDocs: readonly CoreTileDocMeta[] = [
     category: "Sensors",
     contentKey: "sensor-timeout",
   },
-  {
-    tileId: "tile.sensor->otherwise",
-    tags: ["rules", "else", "conditions", "sensors"],
-    category: "Sensors",
-    contentKey: "sensor-otherwise",
-  },
 
   // -- Functions (inline sensors) --------------------------------------------
   {

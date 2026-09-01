@@ -50,17 +50,6 @@ export function makeObjectSensor(services: BrainServices, sensorId: string): Bra
   });
 }
 
-/**
- * A boolean sensor tile reading in the adverb frame, whose word is the whole
- * trigger when it stands alone on a WHEN side, so the sentence opens on it.
- */
-export function makeAdverbSensor(services: BrainServices, sensorId: string, form: string): BrainTileSensorDef {
-  const fnEntry = registerFn(services, sensorId, mkCallDef(bag()));
-  return new BrainTileSensorDef(sensorId, mkActionDescriptor("sensor", fnEntry, CoreTypeIds.Boolean), {
-    metadata: { label: form, language: { form, frame: "adverb" } },
-  });
-}
-
 /** An actuator tile whose call spec declares no argument slot. */
 export function makeActuator(services: BrainServices, actuatorId: string): BrainTileActuatorDef {
   const fnEntry = registerFn(services, actuatorId, mkCallDef(bag()));

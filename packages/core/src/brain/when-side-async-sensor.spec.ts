@@ -22,7 +22,7 @@ import {
   type ReadonlyList,
 } from "@wendoo/core";
 import type { BrainServices } from "@wendoo/core/brain";
-import { type IBrainTileDef, type ITileCatalog, TilePlacement } from "@wendoo/core/brain";
+import { type IBrainTileDef, type ITileCatalog, RuleTriggerMode, TilePlacement } from "@wendoo/core/brain";
 import { __test__appendTile, __test__createBrainServices } from "@wendoo/core/brain/__test__";
 import { runBrainLinkPipeline } from "@wendoo/core/brain/compiler";
 import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@wendoo/core/brain/model";
@@ -58,8 +58,6 @@ import {
 } from "@wendoo/core/runtime";
 
 let services: BrainServices;
-let otherwiseTile: IBrainTileDef;
-let opAnd: BrainTileOperatorDef;
 let opEqualTo: BrainTileOperatorDef;
 
 /** Distinguishes the host ids each test registers; ids must be unique per registry. */
@@ -67,10 +65,6 @@ let hostIdCounter = 0;
 
 before(() => {
   services = __test__createBrainServices();
-  const tile = services.edit.tiles.get(mkSensorTileId(CoreHostActions.Otherwise.key));
-  assert.ok(tile, "the otherwise sensor tile must be registered on the core catalog");
-  otherwiseTile = tile;
-  opAnd = new BrainTileOperatorDef(CoreOpId.And, {}, services);
   opEqualTo = new BrainTileOperatorDef(CoreOpId.EqualTo, {}, services);
 });
 
@@ -260,6 +254,18 @@ function fillRule(rule: BrainRuleDef, whenTiles: readonly IBrainTileDef[], doTil
   for (const tile of doTiles) __test__appendTile(rule.do(), tile);
 }
 
+/**
+ * Appends the two rules that watch a subject standing first on `page`: a bare
+ * `otherwise` rule marking the thinks the subject did not fire, and a `when`
+ * rule whose WHEN is `probe`, evaluated every think whatever the subject did.
+ */
+function addComplementAndProbe(page: BrainPageDef, complement: IBrainTileDef, probe: IBrainTileDef): void {
+  const elseRule = page.appendNewRule() as BrainRuleDef;
+  elseRule.setTrigger(RuleTriggerMode.Otherwise);
+  fillRule(elseRule, [], [complement]);
+  fillRule(page.appendNewRule() as BrainRuleDef, [probe], []);
+}
+
 /** Compiles, links, and treeshakes `brainDef` into the program a runtime loads. */
 function linkBrain(brainDef: BrainDef): { program: Program; pages: List<PageMetadata> } {
   const result = runBrainLinkPipeline(
@@ -373,7 +379,7 @@ describe("a WHEN section suspended on an asynchronous sensor", () => {
     const complement = makeMarker();
     const probe = makeRecordProbe();
     fillRule(page.children().get(0)! as BrainRuleDef, [sensor.tile], [subject.tile]);
-    fillRule(page.appendNewRule() as BrainRuleDef, [probe.tile, opAnd, otherwiseTile], [complement.tile]);
+    addComplementAndProbe(page, complement.tile, probe.tile);
 
     const run = startBrain(brainDef);
     probe.watch(run.roots[0]);
@@ -402,7 +408,7 @@ describe("a WHEN section suspended on an asynchronous sensor", () => {
     const complement = makeMarker();
     const probe = makeRecordProbe();
     fillRule(page.children().get(0)! as BrainRuleDef, [sensor.tile], [subject.tile]);
-    fillRule(page.appendNewRule() as BrainRuleDef, [probe.tile, opAnd, otherwiseTile], [complement.tile]);
+    addComplementAndProbe(page, complement.tile, probe.tile);
 
     const run = startBrain(brainDef);
     probe.watch(run.roots[0]);
@@ -434,7 +440,7 @@ describe("a WHEN section suspended on an asynchronous sensor", () => {
     const complement = makeMarker();
     const probe = makeRecordProbe();
     fillRule(page.children().get(0)! as BrainRuleDef, [sensor.tile], [subject.tile]);
-    fillRule(page.appendNewRule() as BrainRuleDef, [probe.tile, opAnd, otherwiseTile], [complement.tile]);
+    addComplementAndProbe(page, complement.tile, probe.tile);
 
     const run = startBrain(brainDef);
     probe.watch(run.roots[0]);

@@ -122,6 +122,26 @@ function makePresenceGatedSensor(): BrainTileSensorDef {
   return tile;
 }
 
+/** Registers an inline WHEN-side sensor tile declaring the preceding-sibling requirement. */
+function makePrecedingSiblingRequirer(): BrainTileSensorDef {
+  hostIdCounter += 1;
+  const def = createHostSensor({
+    key: `trigger-emit-requirer-${hostIdCounter}`,
+    actionId: 7700 + hostIdCounter,
+    fnId: 8700 + hostIdCounter,
+    callDef: mkCallDef({ type: "bag", items: [] }),
+    outputType: CoreTypeIds.Boolean,
+    fn: { exec: () => TRUE_VALUE },
+  });
+  registerHost(def.function, def.descriptor, def.actionId, def.actionFn);
+  const tile = new BrainTileSensorDef(def.descriptor.key, def.descriptor, {
+    placement: TilePlacement.WhenSide | TilePlacement.Inline,
+    capabilities: new BitSet().set(CoreCapabilityBits.RequiresPrecedingSiblingRule),
+  });
+  services.edit.tiles.registerTileDef(tile);
+  return tile;
+}
+
 /** A boolean literal tile. */
 function boolLiteral(b: boolean): BrainTileLiteralDef {
   return new BrainTileLiteralDef(CoreTypeIds.Boolean, b, {}, services);
@@ -453,6 +473,21 @@ describe("trigger-mode diagnostics", () => {
     const rule = ruleAt(page, 1);
     rule.setTrigger(RuleTriggerMode.Otherwise);
     fillRule(rule, [makeSensor()], [makeActuator()]);
+
+    assert.deepEqual(compileDiagCodes(brainDef), []);
+  });
+
+  test("a tile declaring the preceding-sibling requirement is rejected in the first rule at its level", () => {
+    const { brainDef, page } = newBrain();
+    fillRule(ruleAt(page, 0), [makePrecedingSiblingRequirer()], [makeActuator()]);
+
+    assert.deepEqual(compileDiagCodes(brainDef), [ParseDiagCode.NoPrecedingSiblingRule]);
+  });
+
+  test("a tile declaring the preceding-sibling requirement compiles clean below a sibling", () => {
+    const { brainDef, page } = newBrain();
+    fillRule(ruleAt(page, 0), [makeSensor()], []);
+    fillRule(ruleAt(page, 1), [makePrecedingSiblingRequirer()], [makeActuator()]);
 
     assert.deepEqual(compileDiagCodes(brainDef), []);
   });

@@ -4,7 +4,7 @@ import { List, type ReadonlyList } from "../../platform/list";
 import { StringUtils as SU } from "../../platform/string";
 import { task, type thread } from "../../platform/task";
 import { UniqueSet } from "../../platform/uniqueset";
-import { CoreHostActions, CoreOpId, type IConversionRegistry, type IRngServices, mkSensorTileId } from "../../runtime";
+import type { IConversionRegistry, IRngServices } from "../../runtime";
 import { EventEmitter, type EventEmitterConsumer } from "../../util";
 import { BitSet } from "../../util/bitset";
 import { collectProvidedCapabilities, collectProvidedOutputKeys, parseRule } from "../compiler";
@@ -15,7 +15,6 @@ import {
   type IBrainRuleDef,
   type IBrainTileSet,
   type ITileCatalog,
-  mkOperatorTileId,
   RuleSide,
   RuleTriggerMode,
 } from "../interfaces";
@@ -58,44 +57,6 @@ export const kMaxBrainRuleCommentLength = 500; // never reduce this value!
 
 // JSON serialization version.
 const kVersion = 1;
-
-/**
- * Rewrite a serialized rule that carries the deprecated `otherwise` sensor tile
- * in a migratable placement into the equivalent `otherwise` trigger mode.
- *
- * Two WHEN shapes migrate, both on a rule whose stored mode is `when`:
- * a WHEN side that is exactly the `otherwise` tile becomes the `otherwise` mode
- * with an empty WHEN, and a WHEN side of `otherwise`, `AND`, and at least one
- * further tile becomes the `otherwise` mode with those further tiles as its
- * WHEN. Every other placement is returned unchanged, keeping its tiles and its
- * tile semantics.
- *
- * Applying this to an already-migrated rule returns it unchanged.
- *
- * @param json - The serialized rule to inspect.
- * @returns The migrated rule, or `json` itself when nothing migrates.
- */
-export function migrateOtherwiseTileToTrigger(json: RuleJson): RuleJson {
-  const trigger = json.trigger ?? RuleTriggerMode.When;
-  if (trigger !== RuleTriggerMode.When) {
-    return json;
-  }
-  const when = json.when;
-  if (when.size() === 0 || when.get(0) !== mkSensorTileId(CoreHostActions.Otherwise.key)) {
-    return json;
-  }
-  if (when.size() === 1) {
-    return { ...json, when: List.empty<string>(), trigger: RuleTriggerMode.Otherwise };
-  }
-  if (when.size() < 3 || when.get(1) !== mkOperatorTileId(CoreOpId.And)) {
-    return json;
-  }
-  const rest = new List<string>();
-  for (let i = 2; i < when.size(); i++) {
-    rest.push(when.get(i));
-  }
-  return { ...json, when: rest, trigger: RuleTriggerMode.Otherwise };
-}
 
 /** Concrete {@link IBrainRuleDef}: a single rule with `when` and `do` tile-sets and child rules. */
 export class BrainRuleDef implements IBrainRuleDef {
@@ -798,17 +759,16 @@ export class BrainRuleDef implements IBrainRuleDef {
     if (serialized.version !== kVersion) {
       throw new Error(`BrainRuleDef.deserializeJson: unsupported version ${serialized.version}`);
     }
-    const json = migrateOtherwiseTileToTrigger(serialized);
-    this.when_.deserializeJson(json.when, catalogs);
-    this.do_.deserializeJson(json.do, catalogs);
-    this.comment_ = json.comment || undefined;
-    this.trigger_ = json.trigger || RuleTriggerMode.When;
+    this.when_.deserializeJson(serialized.when, catalogs);
+    this.do_.deserializeJson(serialized.do, catalogs);
+    this.comment_ = serialized.comment || undefined;
+    this.trigger_ = serialized.trigger || RuleTriggerMode.When;
 
     // Recursively deserialize child rules
-    for (let i = 0; i < json.children.size(); i++) {
-      const child = new BrainRuleDef(this.rng_, json.children.get(i).ruleId);
+    for (let i = 0; i < serialized.children.size(); i++) {
+      const child = new BrainRuleDef(this.rng_, serialized.children.get(i).ruleId);
       child.setPage(this.page());
-      child.deserializeJson(json.children.get(i), catalogs);
+      child.deserializeJson(serialized.children.get(i), catalogs);
       this.children_.push(child);
       child.ancestor_ = this;
       this.subscribeToChildRule_(child);
