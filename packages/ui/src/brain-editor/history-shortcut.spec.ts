@@ -18,7 +18,15 @@ const kSteppingModes = kEditorModes.filter((mode) => mode !== "text-literal" && 
 
 /** One rule, which the held-rule cases pick up. */
 const kRows = pageGridRows([
-  { ruleId: "r1", whenTileCount: 1, doTileCount: 1, whenAppendable: true, doAppendable: true, hasSentence: true },
+  {
+    ruleId: "r1",
+    whenTileCount: 1,
+    doTileCount: 1,
+    whenAppendable: true,
+    doAppendable: true,
+    triggerSwitchable: true,
+    hasSentence: true,
+  },
 ]);
 
 /** The rule's handle, which is where the keyboard stands while the rule is held. */

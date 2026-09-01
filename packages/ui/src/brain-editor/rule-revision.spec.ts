@@ -2,8 +2,8 @@
  * Pins which rules must recompute when one rule changes. A rule's revision
  * stands for its sentence, the capabilities and output keys in scope at it, and
  * the tiles the suggestion oracle offers on either side; each of those reads the
- * rule's own tiles, the tiles of the rules it is nested under, and whether it
- * has a rule above it at its own level, and nothing else.
+ * rule's own tiles, its trigger mode, the tiles of the rules it is nested under,
+ * and whether it has a rule above it at its own level, and nothing else.
  *
  * The cases below fix that reach in both directions: an edit inside a rule
  * reaches the rules nested under it and no further, and never reaches a sibling
@@ -12,15 +12,19 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { RuleTriggerMode } from "@wendoo/core/brain";
 import { type RevisionRuleNode, ruleRevisions } from "./rule-revision";
 
-/** A rule holding `whenTileIds` and `doTileIds` with `children` nested under it. */
+/**
+ * A rule holding `whenTileIds` and `doTileIds` with `children` nested under it,
+ * in the `when` trigger mode.
+ */
 function rule(
   whenTileIds: readonly string[],
   doTileIds: readonly string[],
   children: readonly RevisionRuleNode[] = []
 ): RevisionRuleNode {
-  return { whenTileIds, doTileIds, children };
+  return { trigger: RuleTriggerMode.When, whenTileIds, doTileIds, children };
 }
 
 /**

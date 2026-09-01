@@ -208,6 +208,12 @@ export const coreConceptDocs: readonly CoreConceptDocMeta[] = [
     contentKey: "rule-evaluation",
   },
   {
+    id: "trigger-modes",
+    title: "What Starts a Rule",
+    tags: ["rules", "triggers", "else", "then", "sequencing", "fundamentals"],
+    contentKey: "trigger-modes",
+  },
+  {
     id: "pages",
     title: "Pages and Navigation",
     tags: ["pages", "navigation", "control flow", "fundamentals"],

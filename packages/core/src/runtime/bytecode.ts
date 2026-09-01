@@ -137,6 +137,23 @@ export enum Op {
   // Closure operations
   MAKE_CLOSURE = 170,
   LOAD_CAPTURE,
+
+  /**
+   * Ends a WHEN boundary: captures the WHEN result into the rule's
+   * `__whenResult`, fires when that result is truthy, and on a skip advances the
+   * PC by the signed `a` offset past the DO section. Records `DidFire` when it
+   * fired, and on a rule that did not fire the firing record of the rule
+   * directly above it at its own nesting level.
+   */
+  WHEN_END_CHAIN = 172,
+  /**
+   * Ends a WHEN boundary: captures the WHEN result into the rule's
+   * `__whenResult`, fires when that result is present (non-nil), and on a skip
+   * advances the PC by the signed `a` offset past the DO section. Records
+   * `DidFire` when it fired, and on a rule that did not fire the firing record
+   * of the rule directly above it at its own nesting level.
+   */
+  WHEN_END_PRESENT_CHAIN = 173,
 }
 
 /** Current bytecode format version. */
@@ -172,8 +189,9 @@ const UVAR_OPT: OperandSpec = { encoding: "uvar", optional: true };
  * Per-opcode operand layout for binary instruction serialization, transcribed
  * from the operand columns of `docs/specs/contracts/vm-contract.md`. Each opcode
  * maps to its operands as a contiguous prefix of `a, b, c`, in order. `svar`
- * marks the six signed rel-offset opcodes (`JMP`, `JMP_IF_FALSE`,
- * `JMP_IF_TRUE`, `WHEN_END`, `WHEN_END_PRESENT`, `TRY`); the optional trailing `b` marks the four
+ * marks the eight signed rel-offset opcodes (`JMP`, `JMP_IF_FALSE`,
+ * `JMP_IF_TRUE`, `WHEN_END`, `WHEN_END_PRESENT`, `WHEN_END_CHAIN`,
+ * `WHEN_END_PRESENT_CHAIN`, `TRY`); the optional trailing `b` marks the four
  * typeId-carrying constructors (`LIST_NEW`, `MAP_NEW`, `STRUCT_NEW`,
  * `STRUCT_COPY_EXCEPT`); every other operand is `uvar`.
  */
@@ -211,6 +229,8 @@ export const OPERAND_SCHEMA: Readonly<Record<Op, readonly OperandSpec[]>> = {
   [Op.DO_START]: [],
   [Op.DO_END]: [],
   [Op.WHEN_END_PRESENT]: [SVAR],
+  [Op.WHEN_END_CHAIN]: [SVAR],
+  [Op.WHEN_END_PRESENT_CHAIN]: [SVAR],
   [Op.LIST_NEW]: [UVAR, UVAR_OPT],
   [Op.LIST_PUSH]: [],
   [Op.LIST_GET]: [],

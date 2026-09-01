@@ -239,10 +239,32 @@ reference. No field holds an authoring-graph object, and there is no
 These id-keyed members live under `services.brain`:
 
 - `program` -- `getRuleFuncIdForFunc(funcId)`: owning rule id or `undefined`.
+  `getEnumSymbolValue(typeId, key)`: the declared primitive value of enum symbol
+  `key` on type `typeId`, or `undefined` when the loaded program's type table
+  carries no such enum entry or symbol.
+  `getPrecedingSiblingRuleFuncId(ruleFuncId)`: the rule directly above it at
+  its own nesting level under the same parent, or `undefined` for the first
+  rule at a level; derived from `Program.ruleAncestors` for child rules and
+  from the page's root-rule run for root rules.
 - `brainVars` -- `getByName` / `setByName` / `clearByName`: brain-global vars.
 - `ruleVars` -- same three, keyed by `(ruleFuncId, name)`. `undefined`
   ruleFuncId: reads return `NIL_VALUE`, writes are no-ops; store walks
   `Program.ruleAncestors` for inherited values.
+- `ruleFiring` -- `get(ruleFuncId)` / `set(ruleFuncId, state)`: the per-rule
+  firing record written at the WHEN boundary opcodes (see
+  [Section boundary markers](#section-boundary-markers)). An unwritten record
+  reads `DidFire`; an `undefined` ruleFuncId write is a no-op.
+- `ruleCompletion` -- `hasLiveSubtree(ruleFuncId)`: true while any fiber in that
+  rule's cluster is live (runnable or waiting), cluster membership being the
+  static rule ancestry. `getWatcher(ruleFuncId)` / `setWatcher(ruleFuncId,
+  handleId)` / `clearWatcher(ruleFuncId)`: the rule's single watcher slot,
+  filled by the rule trigger host action and read and cleared by the settle
+  walk (see [Fiber scheduling](#fiber-scheduling)).
+  `isAbandoned(ruleFuncId)` / `markAbandoned(ruleFuncId)` /
+  `clearAbandoned(ruleFuncId)`: the rule's abandonment mark, set by the settle
+  walk on a fault or a cancellation anywhere in the rule's cluster and cleared
+  when a fiber is spawned at that rule's own entry point, which begins its next
+  firing. All three are runtime-internal: never serialized, never traced.
 - `pages` -- `getCurrentPageId()`, `getPreviousPageId()`,
   `requestPageChange(pageIndex)`, `requestPageChangeByPageId(pageId)`,
   `requestPageRestart()`.
@@ -300,14 +322,39 @@ calling `execAsync`, and before advancing the pc -- and, when full, returns
 the fiber to the run queue for the next round with its pc unchanged. Because
 nothing was consumed on the failed attempt, the retry is an exact
 re-execution of the identical instruction; once an in-flight async settles a
-slot, it succeeds. Excess concurrent async therefore spills across thinks in
-bounded waves, losing no action and bounding live handles to `maxHandles` at
-any breadth. A drained child rule that backpressures re-enters the NEXT round
-(not a same-think retry), since handles free only across thinks. Below the
-cap the path is unreachable, so a brain that never exhausts handles behaves
-identically. `maxHandles` is thus a latency knob, not a correctness cliff.
+slot, it succeeds. Independent async breadth therefore spills across thinks in
+bounded waves, losing no action and bounding live capped handles to
+`maxHandles` at any breadth. A drained child rule that backpressures re-enters
+the NEXT round (not a same-think retry), since handles free only across
+thinks. Below the cap the path is unreachable, so a brain that never exhausts
+handles behaves identically. For independent breadth over hosts that settle,
+`maxHandles` is a latency knob, not a correctness cliff: the longest run of
+consecutive retries is bounded by the breadth over the cap.
 (Fiber-pool exhaustion at `ACTION_CALL_ASYNC` is separate and still faults
 `StackOverflow`.)
+
+**Uncapped handles.** A `HostActionBinding` may set `uncappedHandles`. Its
+`HOST_ACTION_CALL_ASYNC` dispatches then skip the capacity check entirely and
+allocate handles that are not counted while live, so they never consume or
+backpressure against `maxHandles`. The flag is only correct on an action whose
+live pending handles the runtime already bounds by construction; `maxHandles`
+then measures concurrent host work alone. The rule-trigger sensor sets it: a
+waiting `then` parks on its subject's watcher slot, a rule holds at most one
+watcher, and the live trigger-handle count is therefore bounded by the
+program's rule count. Every other handle path is capped. `HandleTable`
+exposes the capped count separately from its total size, and only the capped
+count gates `hasCapacity()`.
+
+**Starvation faults.** A dispatch that keeps backpressuring is not retried
+forever. When one fiber re-executes the same dispatch pc without a free handle
+for `HANDLE_BACKPRESSURE_FAULT_ROUNDS` consecutive rounds, the runtime faults
+that fiber `ErrorCode.StackOverflow` through the ordinary fault path: the
+fault reaches `Scheduler.onFiberFault`, marks the rule's cluster abandoned, and
+cascades the skip down any `then` chain watching it. A dispatch that allocates
+clears the count, and a backpressure at a different pc restarts it. The
+threshold sits far above any bounded-wave spill (whose run is the breadth over
+the cap, itself bounded by `maxFibers`), so it fires only when a host has
+stopped honouring its obligation to settle. Both VMs use the same constant.
 
 ### Id-spaces
 
@@ -411,7 +458,10 @@ effect, side effects, fault conditions.
 > contract; the canonical TS expression of the same assignments is
 > the `Op` enum in `packages/core/src/runtime/bytecode.ts`. Any
 > divergence between the table and the enum is a bug in one of the
-> two; reconcile in the same change.
+> two; reconcile in the same change. The one admitted exception is a
+> number this contract assigns ahead of its implementation: such a row
+> says so in its prose, and the enum is appended at the recorded
+> number rather than at a number of its own choosing.
 
 ### Conventions
 
@@ -622,9 +672,9 @@ shape, sync-vs-async lifetime contract, and the host re-entry rule.
 | Mnemonic            | Numeric | Operands                                              | Stack effect                                | Faults |
 | ------------------- | ------- | ----------------------------------------------------- | ------------------------------------------- | ------ |
 | `ACTION_CALL`            | 42      | `actionSlot` (`a`), `argc` (`b`), `callSiteId` (`c`)  | `[arg0, ..., arg(argc-1)] -> [result]`      | `ScriptError` if `actionSlot` is out of bounds or the program defines no actions. |
-| `ACTION_CALL_ASYNC`      | 43      | `actionSlot` (`a`), `argc` (`b`), `callSiteId` (`c`)  | `[arg0, ..., arg(argc-1)] -> [handle]`      | Same as `ACTION_CALL`; a full handle table backpressures (parks and retries next think); `StackOverflow` only on fiber-pool exhaustion. |
+| `ACTION_CALL_ASYNC`      | 43      | `actionSlot` (`a`), `argc` (`b`), `callSiteId` (`c`)  | `[arg0, ..., arg(argc-1)] -> [handle]`      | Same as `ACTION_CALL`; a full handle table backpressures (parks and retries next think), faulting `StackOverflow` after `HANDLE_BACKPRESSURE_FAULT_ROUNDS` starved rounds or on fiber-pool exhaustion. |
 | `HOST_ACTION_CALL`       | 44      | `actionId` (`a`), `argc` (`b`), `callSiteId` (`c`)    | `[arg0, ..., arg(argc-1)] -> [result]`      | `ScriptError` if no action holds `actionId`, the resolved action is not host-backed, it is async, or its `execSync` is missing. |
-| `HOST_ACTION_CALL_ASYNC` | 45      | `actionId` (`a`), `argc` (`b`), `callSiteId` (`c`)    | `[arg0, ..., arg(argc-1)] -> [handle]`      | Same as `HOST_ACTION_CALL` but faults if the action is sync or its `execAsync` is missing; a full handle table backpressures (parks and retries next think), it does not fault. |
+| `HOST_ACTION_CALL_ASYNC` | 45      | `actionId` (`a`), `argc` (`b`), `callSiteId` (`c`)    | `[arg0, ..., arg(argc-1)] -> [handle]`      | Same as `HOST_ACTION_CALL` but faults if the action is sync or its `execAsync` is missing; a full handle table backpressures (parks and retries next think), faulting `StackOverflow` only after `HANDLE_BACKPRESSURE_FAULT_ROUNDS` starved rounds. A binding declaring `uncappedHandles` skips the capacity check and allocates outside the cap. |
 
 `actionSlot` indexes `Program.actions`, which holds bytecode actions
 only; `ACTION_CALL` / `ACTION_CALL_ASYNC` fault if the indexed entry is
@@ -642,6 +692,48 @@ validates it is host-backed with the opcode-matching sync/async-ness, and
 invokes `execSync` / `execAsync` with the same arg-buffer, callsite
 binding, and `HandleId` discipline as a host function call. They carry no
 `Program.actions` entry.
+
+#### Rule trigger host action
+
+This contract does not enumerate host actions; their ids and bodies
+belong to the modules that register them. One is specified here because
+the scheduler participates in settling it: the **rule trigger**,
+`actionId` 9, backed by core host function id 107. It is asynchronous,
+takes no arguments, and is dispatched through `HOST_ACTION_CALL_ASYNC`
+immediately before the WHEN expression of a rule whose trigger mode is
+`then`; the rule consumes the handle with an ordinary `AWAIT`.
+
+The action reads the calling rule's **subject** -- the immediately
+preceding sibling, resolved through
+`services.brain.program.getPrecedingSiblingRuleFuncId` -- and answers
+one of three ways:
+
+- **Immediate true**, when the subject completed this think: its firing
+  record reads `DidFire`, no fiber in its subtree is live, and it carries
+  no abandonment mark. The `AWAIT` falls through without suspending.
+- **A pending handle**, while any fiber in the subject's subtree is
+  live. Before returning it, the action writes the *calling* rule's own
+  firing record as `DidNotFire`, so a chain-gated sibling below it
+  evaluates during the wait. The handle occupies the subject's watcher
+  slot; see [Fiber scheduling](#fiber-scheduling).
+- **Immediate false**, when the subject is settled without a firing (its
+  record reads `DidNotFire`) or its firing was abandoned: a fault or a
+  cancellation anywhere in its cluster left it marked, so an emptied
+  subtree it fired into is not a completion.
+
+A pending handle resolves with the subject's final outcome: `true` when
+the subject's subtree emptied after a firing, `false` when the subject's
+evaluation ended without firing, its cluster faulted, or it was
+cancelled. Page cancellation cancels the waiting fiber like any child
+fiber; its pending trigger handle is settled by the cancelled subject
+cluster's settle walk, resolving `false` -- the ordinary skip -- so the
+handle never reports a distinct cancelled state and nothing leaks.
+
+The trigger's binding declares `uncappedHandles`, so its handles are
+allocated outside the `maxHandles` accounting. A rule holds at most one
+watcher, so the live trigger-handle count is bounded by the program's rule
+count; a `then` chain's length is therefore bounded by fibers and memory,
+never by the profile's concurrent-handle cap.
 
 ### Async and cooperative scheduling
 
@@ -692,19 +784,42 @@ async-action handle is rejected with the error.
 
 ### Section boundary markers
 
-| Mnemonic     | Numeric | Operands              | Stack effect          | Faults |
-| ------------ | ------- | --------------------- | --------------------- | ------ |
-| `WHEN_START`       | 70      | none                  | `[] -> []`            | -      |
-| `WHEN_END`         | 71      | `endRel: i16` (`a`)   | `[whenResult] -> []`  | -      |
-| `DO_START`         | 72      | none                  | `[] -> []`            | -      |
-| `DO_END`           | 73      | none                  | `[] -> []`            | -      |
-| `WHEN_END_PRESENT` | 74      | `endRel: i16` (`a`)   | `[whenResult] -> []`  | -      |
+| Mnemonic                 | Numeric | Operands            | Stack effect         | Faults |
+| ------------------------ | ------- | ------------------- | -------------------- | ------ |
+| `WHEN_START`             | 70      | none                | `[] -> []`           | -      |
+| `WHEN_END`               | 71      | `endRel: i16` (`a`) | `[whenResult] -> []` | -      |
+| `DO_START`               | 72      | none                | `[] -> []`           | -      |
+| `DO_END`                 | 73      | none                | `[] -> []`           | -      |
+| `WHEN_END_PRESENT`       | 74      | `endRel: i16` (`a`) | `[whenResult] -> []` | -      |
+| `WHEN_END_CHAIN`         | 172     | `endRel: i16` (`a`) | `[whenResult] -> []` | -      |
+| `WHEN_END_PRESENT_CHAIN` | 173     | `endRel: i16` (`a`) | `[whenResult] -> []` | -      |
 
-`WHEN_START` and `DO_START` / `DO_END` are pure markers: they
-advance the PC by one and have no other effect. They exist so the
-compiled bytecode preserves the source-level rule structure for
-diagnostics and debug walkers; conforming VMs must execute them
-without observable side effect.
+`DO_START` and `DO_END` are pure markers: they advance the PC by one
+and have no other effect. They exist so the compiled bytecode
+preserves the source-level rule structure for diagnostics and debug
+walkers; conforming VMs must execute them without observable side
+effect.
+
+`WHEN_START` opens the WHEN section. It has no stack effect, but it is
+not a pure marker: it writes the current rule's firing record as
+`Evaluating`.
+
+**The firing record.** Every rule carries one three-state value --
+`Evaluating`, `DidFire`, `DidNotFire` -- held in
+`services.brain.ruleFiring` and keyed by rule funcId. `WHEN_START`
+writes `Evaluating`; each of the four gates below writes its computed
+outcome, `DidFire` or `DidNotFire` (an `otherwise` chain gate writes a
+chain-aware value derived from it, see below). The gates already
+compute that outcome, so the record stores it and never re-derives it
+from the WHEN value: the captured value is the pre-gate value, and
+re-deriving would report the wrong answer for a presence-gated sensor
+delivering a present-but-falsy value. A rule with no record reads
+`DidFire`, which is what an empty-WHEN rule observes -- such a rule
+emits no WHEN boundary opcodes and never writes a record, and an empty
+WHEN means always. The store is allocated with the brain instance and
+lives exactly as long as it; a brain re-initialization rebuilds it at
+that initial value. Records are runtime-internal: not serialized and not
+traced.
 
 `WHEN_END` is the conditional gate. It pops the result of the
 WHEN expression block and writes it into the current rule's reserved
@@ -712,8 +827,9 @@ WHEN expression block and writes it into the current rule's reserved
 below), so a DO-side actuator that received no explicit argument can
 read it back. Then, if the result is truthy, execution continues into
 the DO block (PC advances by one); if falsy, PC advances by `endRel`,
-skipping the DO block and any nested boundaries. The capture is a
-side effect only; the stack effect is unchanged.
+skipping the DO block and any nested boundaries. Either way it writes
+the rule's firing record with the gate outcome. The capture and the
+record write are side effects only; the stack effect is unchanged.
 
 `WHEN_END_PRESENT` is the presence-gated form of the WHEN boundary. It
 captures `__whenResult` identically to `WHEN_END` (every rule captures,
@@ -728,6 +844,30 @@ capability, and `WHEN_END` for every other rule. A presence-gated sensor
 used inside an expression (e.g. `(sensor) > 100`) is not the bare root, so
 that rule emits `WHEN_END` and gates on truthiness of the expression
 result. `isTruthy` is unchanged.
+
+`WHEN_END_CHAIN` and `WHEN_END_PRESENT_CHAIN` are the chain-gate
+variants, emitted in place of their base gates for a rule whose
+trigger mode is `otherwise`. Each carries the same single signed
+`endRel` operand, captures `__whenResult` identically, computes its
+fired outcome exactly as its base gate does (`WHEN_END_CHAIN` on
+truthiness, `WHEN_END_PRESENT_CHAIN` on presence), and advances or
+skips by `endRel` on that same condition. They differ only in the
+value written to the firing record, which is chain-aware. The rule's
+**subject** is the immediately preceding sibling, resolved at the gate
+through `services.brain.program.getPrecedingSiblingRuleFuncId`. With
+`S` the subject's record, the gate writes:
+
+- `DidFire` when the rule fired;
+- `DidNotFire` when the rule did not fire and `S` is `DidNotFire`;
+- `S` unchanged otherwise (the rule did not fire and `S` is `DidFire`
+  or `Evaluating`).
+
+Read down a run of chain-gated rules, `DidNotFire` therefore means "no
+rule in the run up to and including this one fired this think", which
+is what makes a flat run of `otherwise` rules an if / else-if / else
+ladder. Conforming VMs implement both variants; the reference
+implementations land in a subsequent change built to the numbers
+recorded above.
 
 ### Frame locals
 
@@ -1408,6 +1548,27 @@ reproduce it exactly.
   cancelling each removes it from the run queue, so the cascade is safe
   when a host body triggers it mid-round or mid-drain. No child fiber is
   orphaned.
+- **Settle walk at terminal transitions.** Every fiber terminal
+  transition -- `DONE`, `FAULT`, `CANCELLED` -- runs a settle walk: the
+  scheduler takes the finishing fiber's rule and walks it and its
+  ancestors. A fiber that faulted or was cancelled marks every rule on
+  that walk -- exactly the clusters it belonged to -- as an **abandoned
+  firing**. Then, for each rule whose subtree has emptied, the walk
+  resolves that rule's pending trigger handle, if it holds one, with that
+  rule's firing outcome: a `DidFire` record with no abandonment mark
+  resolves the handle `true`, and a `DidNotFire` record or an abandoned
+  firing resolves it as a skip (`false`). The mark, not the finishing
+  fiber's own terminal state, decides the skip, so a fault anywhere in a
+  cluster abandons it even when a later fiber empties the cluster `DONE`.
+  A rule's mark is cleared when a fiber is spawned at that rule's own
+  entry point, which begins its next firing, so the mark always describes
+  the rule's current firing. A rule holds at most one **watcher slot**,
+  because only the immediately following sibling can watch it. Subtree
+  membership is the static rule ancestry -- the same relation **Rule
+  respawn** uses for re-fire quiescence, evaluated here for an arbitrary
+  rule rather than only for a root, from the fiber table and
+  `Program.ruleAncestors`. Watcher slots and abandonment marks, like the
+  firing record, are runtime-internal: not serialized, not traced.
 - **Handle-completion resume timing.** A fiber made runnable by a handle
   settling joins the run queue and runs in the next round, never the
   current one (the round rule). A handle that settles while a round runs
@@ -1509,7 +1670,7 @@ out of `runFiber`). Four are per-fiber (`VmConfig`); two are global
 | `maxLocalsSize` | `VmConfig` (per fiber) | 4096                | A frame push (`CALL` / `CALL_INDIRECT` / `CALL_INDIRECT_ARGS` / `ACTION_CALL` / the entry frame) would carry the fiber's total live locals, summed across every frame, past this many values. |
 | `maxFrameDepth` | `VmConfig` (per fiber) | 256                 | A `CALL` / `CALL_INDIRECT` / `CALL_INDIRECT_ARGS` / `ACTION_CALL` would push a frame past this depth.                                                |
 | `maxHandlers`   | `VmConfig` (per fiber) | 64                  | A `TRY` would install a handler past this depth on the handler stack.                                                                                |
-| `maxHandles`    | `HandleTable` ctor arg | 100000 (production) | `HandleTable.createPending()` is invoked when the table already holds this many entries.                                                             |
+| `maxHandles`    | `HandleTable` ctor arg | 100000 (production) | A capped `HandleTable.createPending()` is invoked when the table already holds this many capped entries. Reached only by a host driving the table directly: a bytecode dispatch backpressures instead, and faults `StackOverflow` after `HANDLE_BACKPRESSURE_FAULT_ROUNDS` starved rounds. |
 | `maxFibers`     | `SchedulerConfig`      | 10000               | `FiberScheduler.addFiber()` (and therefore `spawn()` and async-action fiber creation) is invoked when the scheduler already tracks this many fibers. A generous runaway guard; the microbit-v2 profile pins 100. |
 
 Both kinds of violation surface to the offending fiber as
@@ -1573,9 +1734,12 @@ Per cap, an embed host should weigh:
   handler record (catch program counter, frame depth snapshot,
   handler stack snapshot). Overflow raises `ErrorCode.StackOverflow`.
   Fault gate on the TS VM; sizing input on a fixed-array port.
-- **`maxHandles`** -- bounds the global `HandleTable`. Weigh:
-  expected count of in-flight async actions across all fibers.
-  Each handle is one entry until it resolves and is collected.
+- **`maxHandles`** -- bounds the capped handles of the global
+  `HandleTable`. Weigh: expected count of in-flight async actions
+  across all fibers. Each handle is one entry until it resolves and
+  is collected. Handles from a binding declaring `uncappedHandles`
+  (the rule-trigger sensor) are excluded from the count, so a `then`
+  chain's length is bounded by fibers and memory, not by this cap.
   Pure fault gate on the TS VM (the `Dict` is lazy; lowering the
   cap saves zero bytes). On a fixed-array port that pre-allocates
   the handle slab, the cap also sizes the slab. Overflow raises

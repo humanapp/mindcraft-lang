@@ -16,6 +16,7 @@ import { List, type ReadonlyList } from "@wendoo/core";
 import type { BrainServices, IBrainTileDef, ITileCatalog } from "@wendoo/core/brain";
 import { RuleSide } from "@wendoo/core/brain";
 import { __test__createBrainServices } from "@wendoo/core/brain/__test__";
+import { availableTriggerModes } from "@wendoo/core/brain/language-service";
 import {
   AddRuleCommand,
   BrainCommandHistory,
@@ -77,6 +78,7 @@ const handleCell: PageGridCell = { kind: "handle", ruleId: kRuleId };
 const tileCell: PageGridCell = { kind: "tile", ruleId: kRuleId, side: RuleSide.When, tileIndex: 2 };
 const appendCell: PageGridCell = { kind: "append", ruleId: kRuleId, side: RuleSide.Do };
 const sentenceCell: PageGridCell = { kind: "sentence", ruleId: kRuleId };
+const triggerCell: PageGridCell = { kind: "trigger", ruleId: kRuleId };
 
 /** What `press` asks of `cell`. */
 function asked(cell: PageGridCell, press: PageGridKeyPress): PageGridOperation | undefined {
@@ -110,6 +112,12 @@ describe("the subject a cell stands for", () => {
   test("the sentence line stands no subject at all", () => {
     for (const press of [onCell("Delete"), onCell("c", true), onCell("x", true), onCell("v", true)]) {
       assert.equal(asked(sentenceCell, press), undefined);
+    }
+  });
+
+  test("the trigger-mode switch stands no subject at all", () => {
+    for (const press of [onCell("Delete"), onCell("c", true), onCell("x", true), onCell("v", true)]) {
+      assert.equal(asked(triggerCell, press), undefined);
     }
   });
 
@@ -186,7 +194,7 @@ describe("the insertion chord", () => {
   });
 
   test("Enter without the modifier is left alone", () => {
-    for (const cell of [handleCell, tileCell, appendCell, sentenceCell, kAppendRuleCell]) {
+    for (const cell of [handleCell, triggerCell, tileCell, appendCell, sentenceCell, kAppendRuleCell]) {
       assert.equal(asked(cell, onCell("Enter")), undefined);
     }
   });
@@ -223,7 +231,7 @@ describe("picking a rule up from its handle", () => {
   });
 
   test("no other cell picks anything up", () => {
-    for (const cell of [tileCell, appendCell, sentenceCell, kAppendRuleCell]) {
+    for (const cell of [triggerCell, tileCell, appendCell, sentenceCell, kAppendRuleCell]) {
       assert.equal(decidePageGridGrab(cell, onCell("Enter")), false);
     }
   });
@@ -249,6 +257,7 @@ function describeRule(ruleDef: BrainRuleDef): RuleCellDescriptor {
     doTileCount: ruleDef.do().tiles().size(),
     whenAppendable: sideOffersAppendedTile({ ruleDef, side: RuleSide.When, catalogs, services }),
     doAppendable: sideOffersAppendedTile({ ruleDef, side: RuleSide.Do, catalogs, services }),
+    triggerSwitchable: availableTriggerModes(ruleDef).size() > 1,
     hasSentence: true,
   };
 }

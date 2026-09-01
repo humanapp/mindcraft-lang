@@ -78,6 +78,23 @@ export type BrainRuleDefEvents = {
   rule_dirtyChanged: { isDirty: boolean };
 };
 
+/**
+ * What arms a rule's evaluation.
+ *
+ * - `When` -- the rule is armed on its own, every think it is scheduled.
+ * - `Otherwise` -- the rule is armed by the rules above it at its own level
+ *   not having fired.
+ * - `Then` -- the rule is armed by the preceding sibling completing.
+ */
+export const RuleTriggerMode = {
+  When: "when",
+  Otherwise: "otherwise",
+  Then: "then",
+} as const;
+
+/** Union of all {@link RuleTriggerMode} values. */
+export type RuleTriggerMode = (typeof RuleTriggerMode)[keyof typeof RuleTriggerMode];
+
 /** Definition of a single rule within a page: a `when` tile-set and a `do` tile-set, plus child rules and metadata. */
 export interface IBrainRuleDef {
   /** Id this rule is addressed by, stable across every structural edit around it. */
@@ -88,6 +105,8 @@ export interface IBrainRuleDef {
   setAncestor(ancestor: IBrainRuleDef | undefined): void;
   comment(): string | undefined;
   setComment(comment: string | undefined): void;
+  trigger(): RuleTriggerMode;
+  setTrigger(trigger: RuleTriggerMode): void;
   isDirty(): boolean;
   markDirty(): void;
   typecheck(): void;

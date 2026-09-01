@@ -1,8 +1,11 @@
 /**
- * A rule as {@link ruleRevisions} reads it: the tile ids standing on each of its
- * sides, and the rules nested under it in the order they stand.
+ * A rule as {@link ruleRevisions} reads it: its trigger mode, the tile ids
+ * standing on each of its sides, and the rules nested under it in the order they
+ * stand.
  */
 export interface RevisionRuleNode {
+  /** The rule's trigger mode, as `IBrainRuleDef.trigger()` reads it. */
+  readonly trigger: string;
   /** The ids of the tiles on the rule's WHEN side, in order. */
   readonly whenTileIds: readonly string[];
   /** The ids of the tiles on the rule's DO side, in order. */
@@ -26,7 +29,7 @@ function readRevisions(rules: readonly RevisionRuleNode[], ancestorRevision: str
   for (let index = 0; index < rules.length; index++) {
     const rule = rules[index];
     const precedes = index > 0 ? "1" : "0";
-    const revision = `${ancestorRevision}|${precedes}${spellIds(rule.whenTileIds)}>${spellIds(rule.doTileIds)}`;
+    const revision = `${ancestorRevision}|${precedes}${rule.trigger}:${spellIds(rule.whenTileIds)}>${spellIds(rule.doTileIds)}`;
     out.push(revision);
     readRevisions(rule.children, revision, out);
   }
@@ -44,6 +47,7 @@ function readRevisions(rules: readonly RevisionRuleNode[], ancestorRevision: str
  * changes exactly when
  *
  * - the rule's own WHEN or DO tiles change,
+ * - the rule's own trigger mode changes,
  * - the WHEN or DO tiles of any rule it is nested under change, or
  * - the rule gains or loses a rule above it at its own level, which a move, an
  *   insertion or a deletion among its siblings does.

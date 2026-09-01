@@ -7,7 +7,7 @@ import type { IOperatorOverloads, IOperatorTable } from "./operator-defs";
 import type { ProfileNumerics } from "./profile-numerics";
 import type { RuleFiringState } from "./rule-services";
 import type { ITypeRegistry } from "./type-defs";
-import type { Value } from "./value";
+import type { HandleId, Value } from "./value";
 
 /**
  * Program-table lookups exposed to the VM and host functions. Allocations are
@@ -81,6 +81,48 @@ export interface IRuleFiringServices {
    * is not inside a rule) is a no-op.
    */
   set(ruleFuncId: number | undefined, state: RuleFiringState): void;
+}
+
+/**
+ * Rule-cluster liveness, the per-rule watcher slot behind the rule trigger, and
+ * the per-rule abandonment mark that records a fault or cancellation in a
+ * rule's cluster.
+ *
+ * A rule's cluster is its own fiber plus every fiber spawned beneath it;
+ * membership is the static rule ancestry declared by `Program.ruleAncestors`.
+ * Slots and marks are runtime-internal: never VM values, never serialized,
+ * never traced.
+ */
+export interface IRuleCompletionServices {
+  /**
+   * True while any fiber in `ruleFuncId`'s cluster is live (runnable or
+   * waiting), including the rule's own fiber.
+   */
+  hasLiveSubtree(ruleFuncId: number): boolean;
+
+  /** The handle parked on `ruleFuncId`'s completion, or `undefined` when no rule watches it. */
+  getWatcher(ruleFuncId: number): HandleId | undefined;
+
+  /**
+   * Park `handleId` on `ruleFuncId`'s completion, replacing any handle the slot
+   * already holds.
+   */
+  setWatcher(ruleFuncId: number, handleId: HandleId): void;
+
+  /** Empty `ruleFuncId`'s watcher slot. */
+  clearWatcher(ruleFuncId: number): void;
+
+  /**
+   * True while `ruleFuncId`'s current firing has lost a fiber to a fault or a
+   * cancellation anywhere in its cluster.
+   */
+  isAbandoned(ruleFuncId: number): boolean;
+
+  /** Mark `ruleFuncId`'s current firing abandoned. */
+  markAbandoned(ruleFuncId: number): void;
+
+  /** Drop `ruleFuncId`'s abandonment mark, so it describes the firing starting now. */
+  clearAbandoned(ruleFuncId: number): void;
 }
 
 /**
@@ -270,6 +312,9 @@ export interface BrainInstanceServices {
 
   /** Per-rule WHEN-evaluation outcome records by rule funcId. */
   ruleFiring: IRuleFiringServices;
+
+  /** Per-rule cluster liveness and pending trigger-handle slots by rule funcId. */
+  ruleCompletion: IRuleCompletionServices;
 
   /** Page lifecycle operations. */
   pages: IBrainPageServices;

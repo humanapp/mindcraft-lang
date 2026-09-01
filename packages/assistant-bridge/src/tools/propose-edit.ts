@@ -1,4 +1,4 @@
-import type { IBrainTileDef, ITileCatalog, RuleSide } from "@wendoo/core/brain";
+import type { IBrainTileDef, ITileCatalog, RuleSide, RuleTriggerMode } from "@wendoo/core/brain";
 import { isVariableFactoryTileId, mkPageTileId } from "@wendoo/core/brain";
 import type { BrainCommand, BrainDef, BrainPageDef, BrainRuleDef } from "@wendoo/core/brain/model";
 import {
@@ -13,6 +13,7 @@ import {
   RemovePageCommand,
   RemoveTileCommand,
   ReplaceTileCommand,
+  SetRuleTriggerCommand,
 } from "@wendoo/core/brain/model";
 import type { BrainTileFactoryDef } from "@wendoo/core/brain/tiles";
 import { manufactureLiteralTile, manufactureVariableTile } from "@wendoo/core/brain/tiles";
@@ -21,7 +22,7 @@ import { toToolDiagnostic } from "./diagnostics.js";
 import type { ProjectPageRef, ProjectRule } from "./read-project.js";
 import { readRule } from "./read-project.js";
 import { decideProposal, rejectionParams } from "./rejection-policy.js";
-import type { ProposeEditBatchInput, ProposeEditInput, TileRunEntry } from "./tool-schemas.js";
+import type { ProposeEditBatchInput, ProposeEditInput, RuleTriggerName, TileRunEntry } from "./tool-schemas.js";
 import { batchPageTileIndex, batchRuleIndex } from "./tool-schemas.js";
 import type { AuthoringWorkspace, LandedEdit } from "./workspace.js";
 import {
@@ -198,6 +199,38 @@ class NestRuleCommand implements BrainCommand {
 }
 
 /**
+ * Gives `trigger` to the rule `resolve` names, which the commands running
+ * before this one leave standing. The rule is resolved on the first execute and
+ * kept, so undo and every later execute address that same rule; a `resolve`
+ * naming none leaves the document untouched.
+ */
+class SetNewRuleTriggerCommand implements BrainCommand {
+  private applied_?: SetRuleTriggerCommand;
+
+  constructor(
+    private readonly resolve: () => BrainRuleDef | undefined,
+    private readonly trigger: RuleTriggerMode
+  ) {}
+
+  execute(): void {
+    if (!this.applied_) {
+      const rule = this.resolve();
+      if (!rule) return;
+      this.applied_ = new SetRuleTriggerCommand(rule, this.trigger);
+    }
+    this.applied_.execute();
+  }
+
+  undo(): void {
+    this.applied_?.undo();
+  }
+
+  getDescription(): string {
+    return "Set rule trigger";
+  }
+}
+
+/**
  * Appends a page and gives it `name` when one is asked for. The first execute
  * makes the page and names it, and names it through {@link MakePageCommand.page};
  * every later execute puts that same page back, so its id, its name, and the
@@ -296,6 +329,18 @@ function placementCommand(
     : new InsertTileCommand(rule, side, position, tile);
 }
 
+/**
+ * The commands giving the rule `resolve` names the mode `trigger` asks for, and
+ * none for a rule left in the `when` mode every new rule already carries.
+ */
+function triggerCommands(
+  resolve: () => BrainRuleDef | undefined,
+  trigger: RuleTriggerName | undefined
+): BrainCommand[] {
+  if (trigger === undefined || trigger === "when") return [];
+  return [new SetNewRuleTriggerCommand(resolve, trigger)];
+}
+
 /** The operations that name no rule of the document at all. */
 type RulelessInput = Extract<ProposeEditInput, { op: "addRule" | "addPage" | "deletePage" }>;
 
@@ -327,13 +372,17 @@ function buildEdit(
   if (input.op === "addRule") {
     const page = findPage(workspace.brainDef, input.pageIndex);
     if (!page) return { ok: false, error: "unknown_page", named: String(input.pageIndex) };
+    const appended = () => {
+      const rules = page.children();
+      return rules.get(rules.size() - 1) as BrainRuleDef;
+    };
     return {
-      commands: [new AddRuleCommand(page)],
+      commands: [new AddRuleCommand(page), ...triggerCommands(appended, input.trigger)],
       land: () => {
-        const rules = page.children();
-        const rule = rules.get(rules.size() - 1) as BrainRuleDef;
+        const rule = appended();
         return ruleLanding(workspace.brainDef, { ruleId: rule.ruleId(), rule });
       },
+      historyLabel: "Add rule",
     };
   }
 
@@ -343,6 +392,12 @@ function buildEdit(
   const located = target as RuleRef;
   if (input.op === "addChildRule") return nestedEdit(workspace, located, input);
   if (input.op === "deleteRule") return deleteRuleEdit(workspace, located);
+  if (input.op === "setRuleTrigger") {
+    return {
+      commands: [new SetRuleTriggerCommand(located.rule, input.trigger)],
+      land: () => ruleLanding(workspace.brainDef, located),
+    };
+  }
 
   const side = toRuleSide(input.side);
   const tileCount = located.rule.side(side).tiles().size();
@@ -466,12 +521,13 @@ function deletePageEdit(workspace: AuthoringWorkspace, pageId: string): BuiltEdi
 function nestedEdit(workspace: AuthoringWorkspace, parent: RuleRef, input: AddChildRuleInput): BuiltEdit {
   const command = new NestRuleCommand(parent.rule);
   return {
-    commands: [command],
+    commands: [command, ...triggerCommands(() => command.nestedRule(), input.trigger)],
     land: () => {
       const nested = command.nestedRule();
       return nested ? ruleLanding(workspace.brainDef, { ruleId: nested.ruleId(), rule: nested }) : undefined;
     },
     absent: { ok: false, error: "rule_nesting_too_deep", named: input.parentRuleId },
+    historyLabel: "Add child rule",
   };
 }
 

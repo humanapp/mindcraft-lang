@@ -1,6 +1,7 @@
 import { List } from "@wendoo/core";
-import { type IBrainTileDef, type ITileCatalog, RuleSide } from "@wendoo/core/brain";
+import { type IBrainTileDef, type ITileCatalog, RuleSide, RuleTriggerMode } from "@wendoo/core/brain";
 import type { TypecheckResult } from "@wendoo/core/brain/compiler";
+import { availableTriggerModes } from "@wendoo/core/brain/language-service";
 import type { BrainCommand, BrainCommandHistory, BrainRuleDef, RulePlacement } from "@wendoo/core/brain/model";
 import {
   AddTileCommand,
@@ -12,7 +13,7 @@ import {
   RemoveTileCommand,
   ReplaceTileCommand,
 } from "@wendoo/core/brain/model";
-import { Plus } from "lucide-react";
+import { CircleAlert, Plus } from "lucide-react";
 import {
   type CSSProperties,
   memo,
@@ -34,6 +35,7 @@ import {
   useArmedTargetActions,
   useArmedTargetController,
 } from "./ArmedTargetContext";
+import { BrainBadge } from "./BrainBadge";
 import {
   kCandidateDragMimeType,
   type StripComposerBinding,
@@ -80,7 +82,13 @@ import {
 } from "./rule-move-marker";
 import { canEndSideExpression } from "./sentence-composer";
 import { kSentenceTypeClasses } from "./sentence-type";
-import { applyBrokenTileBadges, buildNodeMap, computeTileBadges, type TileBadge } from "./tile-badges";
+import {
+  applyBrokenTileBadges,
+  buildNodeMap,
+  computeTileBadges,
+  computeTriggerBadge,
+  type TileBadge,
+} from "./tile-badges";
 import {
   copyTileToClipboard,
   hasTileInClipboard,
@@ -88,6 +96,7 @@ import {
   peekTileInClipboard,
 } from "./tile-clipboard";
 import { positionOffersTile, sideOffersAppendedTile } from "./tile-offering";
+import { triggerModeLabel, triggerSwitchName, triggerSwitchState } from "./trigger-mode";
 
 /** Surface, hover, ink, and border of the rule row's round pills: the rule handle and each side's add-tile button. */
 const pillChromeClasses = "bg-brain-pill hover:bg-brain-pill-hover text-brain-pill-ink border-2 border-brain-pill-edge";
@@ -105,6 +114,85 @@ const pillTransitionClasses = "transition-[scale,background-color,border-color,c
  * add-tile button, and the page's add-rule button.
  */
 export const kAddButtonClasses = `relative rounded-full w-9 h-9 ${pillChromeClasses} hover:scale-105 ${pillTransitionClasses} font-semibold cursor-pointer flex items-center justify-center`;
+
+/**
+ * Shape, spacing and shadow of a capsule at the head of a rule side. Its fill
+ * and edge are supplied by the call site.
+ *
+ * The height is the tile height, held whatever the row it stands in holds, and
+ * the capsule centres itself in a taller row.
+ */
+const kCapsuleClasses =
+  "px-2 py-1 border-2 rounded-md rounded-l-2xl flex h-24 self-center items-center justify-center shadow-sm relative overflow-hidden";
+
+/**
+ * How a capsule's stacked-upright letters are set, in the ink the capsule
+ * around them carries. The uppercasing is the locale's own, applied to
+ * whichever word the capsule stands.
+ */
+const kCapsuleLettersClasses = "font-semibold text-sm uppercase";
+
+/** The fill, edge and ink of a capsule reading in the `when` mode, which the DO capsule wears. */
+const kWhenCapsuleChrome = "bg-brain-capsule border-brain-capsule-edge text-brain-capsule-ink";
+
+/**
+ * The leading each stacked letter carries along the capsule's vertical inline
+ * axis, which is what `mx-*` sets under the capsule's vertical writing mode.
+ * Every letter carries the same, so the word's rows are evenly spaced.
+ */
+const kCapsuleLetterLeading = "mx-0.75";
+
+/**
+ * The hover and press growth of a switchable capsule, worn by the box holding
+ * the capsule and its badge so the two grow as one. The transition stops under
+ * reduced motion.
+ */
+const kTriggerSwitchBoxClasses =
+  "transition-transform duration-100 motion-reduce:transition-none hover:scale-105 active:scale-95";
+
+/**
+ * The pressable affordance the trigger switch wears over a static capsule: the
+ * pointer, and the transition its fill and edge take as the mode changes, which
+ * stops under reduced motion.
+ */
+const kTriggerSwitchClasses =
+  "cursor-pointer transition-[background-color,border-color] duration-150 motion-reduce:transition-none";
+
+/**
+ * The badge marking a capsule whose mode its rule's position rejects, wearing
+ * the treatment a tile's error badge wears.
+ */
+const kTriggerBadgeClasses = `absolute -top-1.5 -right-1.5 ${kRuleChromeLayer} flex items-center justify-center rounded-full w-6 h-6 shadow-md border pointer-events-auto bg-destructive border-destructive text-destructive-foreground`;
+
+/** The fill, edge and ink each trigger mode's capsule is painted in. */
+const triggerModeChrome: Record<RuleTriggerMode, string> = {
+  [RuleTriggerMode.When]: kWhenCapsuleChrome,
+  [RuleTriggerMode.Otherwise]:
+    "bg-brain-capsule-otherwise border-brain-capsule-otherwise-edge text-brain-capsule-otherwise-ink",
+  [RuleTriggerMode.Then]: "bg-brain-capsule-then border-brain-capsule-then-edge text-brain-capsule-then-ink",
+};
+
+/**
+ * The badge `ruleDef`'s trigger switch carries from the typecheck result its
+ * WHEN side holds, and undefined while that side has never been checked.
+ */
+function storedTriggerBadge(ruleDef: BrainRuleDef): TileBadge | undefined {
+  const result = ruleDef.when().typecheckResult() as TypecheckResult | undefined;
+  return result === undefined ? undefined : computeTriggerBadge(result.whenParseResult);
+}
+
+/** `word` as one upright span per character, which reads down a vertical capsule. */
+function stackedLetters(word: string): React.ReactNode[] {
+  return [...word].map((character, index) => (
+    <span
+      // biome-ignore lint/suspicious/noArrayIndexKey: a letter's place in the word is its identity
+      key={index}
+      className={`inline-block rotate-270 ${kCapsuleLetterLeading}`}
+    >
+      {character}
+    </span>
+  ));
+}
 
 /** How far one step of nesting stands a rule card in, in CSS pixels. */
 const kRuleIndentStep = 32;
@@ -229,6 +317,10 @@ function BrainRuleEditorCard({
   const stripId = useId();
   const [isDirty, setIsDirty] = useState(ruleDef.isDirty());
   const [whenBadges, setWhenBadges] = useState<Map<number, TileBadge>>(new Map());
+  // The badge the trigger switch carries, read from the same typecheck result
+  // the WHEN side's tile badges are read from, and opened at whatever that side
+  // already holds so a first render carries it.
+  const [triggerBadge, setTriggerBadge] = useState<TileBadge | undefined>(() => storedTriggerBadge(ruleDef));
   const [doBadges, setDoBadges] = useState<Map<number, TileBadge>>(new Map());
 
   const availableCapabilities = useRuleCapabilities(ruleDef, revision);
@@ -396,8 +488,10 @@ function BrainRuleEditorCard({
         const tiles = (side === RuleSide.When ? ruleDef.when() : ruleDef.do()).tiles().toArray();
         applyBrokenTileBadges(tiles, badges, isBrokenTile);
       }
-      if (side === RuleSide.When) setWhenBadges(badges);
-      else setDoBadges(badges);
+      if (side === RuleSide.When) {
+        setWhenBadges(badges);
+        setTriggerBadge(result === undefined ? undefined : computeTriggerBadge(result.whenParseResult));
+      } else setDoBadges(badges);
     },
     [ruleDef, isBrokenTile]
   );
@@ -862,6 +956,18 @@ function BrainRuleEditorCard({
   const currentCellKey = selectedCell === undefined ? undefined : pageGridCellKey(selectedCell);
   const whenTileCount = ruleDef.when().tiles().size();
   const doTileCount = ruleDef.do().tiles().size();
+  // The mode arming this rule, and whether its position admits another one. A
+  // rule with nothing above it at its own level takes `when` alone.
+  const triggerMode = ruleDef.trigger();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: revision is an intentional trigger signal
+  const triggerState = useMemo(
+    () => triggerSwitchState(ruleDef.trigger(), availableTriggerModes(ruleDef)),
+    [ruleDef, revision]
+  );
+  // A capsule whose rule's own mode is the sole admitted one offers no choice
+  // and stands no cell; every other state cycles, a mode the position rejects
+  // included.
+  const triggerSwitchable = triggerState !== "fixed";
   // The line stands for a rule reading a sentence, one being composed, and one
   // inviting a sentence; a rule holding no tiles and armed from the tray shows
   // none of the three.
@@ -873,9 +979,10 @@ function BrainRuleEditorCard({
       doTileCount,
       whenAppendable: appendable.whenSide,
       doAppendable: appendable.doSide,
+      triggerSwitchable,
       hasSentence,
     }),
-    [ruleId, whenTileCount, doTileCount, appendable.whenSide, appendable.doSide, hasSentence]
+    [ruleId, whenTileCount, doTileCount, appendable.whenSide, appendable.doSide, triggerSwitchable, hasSentence]
   );
   useEffect(() => registerRule?.(cellDescriptor), [registerRule, cellDescriptor]);
 
@@ -913,6 +1020,17 @@ function BrainRuleEditorCard({
     const withCommand = event.metaKey || event.ctrlKey;
     const grabs = decidePageGridGrab({ kind: "handle", ruleId }, { key: event.key, withCommand, placement: "on-cell" });
     if (grabs) pageGrid?.grabRule(ruleId);
+  };
+
+  /**
+   * A key pressed on the trigger-mode switch. Enter and a space take its mode
+   * one step forward and are consumed; every other key, the arrows included, is
+   * left to the page's own selection.
+   */
+  const handleTriggerKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    pageGrid?.cycleTrigger(ruleId);
   };
 
   /**
@@ -998,24 +1116,44 @@ function BrainRuleEditorCard({
               </svg>
             )}
           </button>
-          {/* When tiles */}{" "}
-          {/* biome-ignore lint/a11y/useSemanticElements: changing to fieldset requires restructuring tile layout */}{" "}
-          <div
-            className="px-2 py-1 ml-2 bg-brain-capsule border-2 border-brain-capsule-edge rounded-md rounded-l-2xl flex items-center justify-center shadow-sm relative overflow-hidden"
-            style={{ writingMode: "vertical-rl" }}
-            role="group"
-            aria-label="When condition tiles"
-          >
-            <span
-              className="rotate-[-90] text-brain-capsule-ink font-semibold text-md cursor-default"
-              aria-hidden="true"
+          {/* The trigger-mode capsule, standing at the head of the WHEN side. A
+              capsule offering a choice of mode is the switch that cycles it and
+              stands the rule's trigger cell; one offering none is a static
+              marker, as the DO capsule is. */}
+          {triggerState === "fixed" ? (
+            // biome-ignore lint/a11y/useSemanticElements: changing to fieldset requires restructuring tile layout
+            <div
+              className={`ml-2 ${triggerModeChrome[triggerMode]} ${kCapsuleClasses}`}
+              style={{ writingMode: "vertical-rl" }}
+              role="group"
+              aria-label="When condition tiles"
             >
-              <span className="inline-block rotate-270 mx-0">W</span>
-              <span className="inline-block rotate-270 mx-0.5">H</span>
-              <span className="inline-block rotate-270 mx-0.5">E</span>
-              <span className="inline-block rotate-270 mx-0.5">N</span>
-            </span>
-          </div>
+              <span className={`${kCapsuleLettersClasses} cursor-default`} aria-hidden="true">
+                {stackedLetters(triggerModeLabel(triggerMode, localizer))}
+              </span>
+            </div>
+          ) : (
+            <div className={`relative ml-2 self-center ${kTriggerSwitchBoxClasses}`}>
+              {triggerBadge && (
+                <BrainBadge className={kTriggerBadgeClasses} message={triggerBadge.message}>
+                  <CircleAlert className="w-4 h-4" />
+                </BrainBadge>
+              )}
+              <button
+                type="button"
+                className={`${kCapsuleClasses} ${triggerModeChrome[triggerMode]} ${kTriggerSwitchClasses}`}
+                style={{ writingMode: "vertical-rl" }}
+                aria-label={triggerSwitchName(triggerMode, triggerState, localizer)}
+                onClick={() => pageGrid?.cycleTrigger(ruleId)}
+                onKeyDown={handleTriggerKeyDown}
+                {...cellProps({ kind: "trigger", ruleId }, "capsule")}
+              >
+                <span className={kCapsuleLettersClasses} aria-hidden="true">
+                  {stackedLetters(triggerModeLabel(triggerMode, localizer))}
+                </span>
+              </button>
+            </div>
+          )}
           {ruleDef
             .when()
             .tiles()
@@ -1057,17 +1195,13 @@ function BrainRuleEditorCard({
           {/* Do tiles */}{" "}
           {/* biome-ignore lint/a11y/useSemanticElements: changing to fieldset requires restructuring tile layout */}{" "}
           <div
-            className="px-2 py-1 ml-3 bg-brain-capsule border-2 border-brain-capsule-edge rounded-md rounded-l-2xl flex items-center justify-center shadow-sm relative overflow-hidden"
+            className={`ml-3 ${kWhenCapsuleChrome} ${kCapsuleClasses}`}
             style={{ writingMode: "vertical-rl" }}
             role="group"
             aria-label="Do action tiles"
           >
-            <span
-              className="rotate-[-90] text-brain-capsule-ink font-semibold text-md cursor-default"
-              aria-hidden="true"
-            >
-              <span className="inline-block rotate-270 mx-0">D</span>
-              <span className="inline-block rotate-270 mx-0.5">O</span>
+            <span className={`${kCapsuleLettersClasses} cursor-default`} aria-hidden="true">
+              {stackedLetters("Do")}
             </span>
           </div>
           {ruleDef

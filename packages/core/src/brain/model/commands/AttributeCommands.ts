@@ -1,4 +1,4 @@
-import type { IBrainDef, IBrainRuleDef, IBrainTileSet } from "../../interfaces";
+import type { IBrainDef, IBrainRuleDef, IBrainTileSet, RuleTriggerMode } from "../../interfaces";
 import { BrainTileVariableDef } from "../../tiles/variables";
 import type { BrainDef } from "../braindef";
 import type { BrainPageDef } from "../pagedef";
@@ -146,5 +146,29 @@ export class SetRuleCommentCommand implements BrainCommand {
 
   getDescription(): string {
     return this.newComment ? `Set rule comment to "${this.newComment}"` : "Remove rule comment";
+  }
+}
+
+/** Command that sets the trigger mode on a {@link BrainRuleDef}. */
+export class SetRuleTriggerCommand implements BrainCommand {
+  private oldTrigger: RuleTriggerMode;
+
+  constructor(
+    private ruleDef: BrainRuleDef,
+    private newTrigger: RuleTriggerMode
+  ) {
+    this.oldTrigger = ruleDef.trigger();
+  }
+
+  execute(): void {
+    this.ruleDef.setTrigger(this.newTrigger);
+  }
+
+  undo(): void {
+    this.ruleDef.setTrigger(this.oldTrigger);
+  }
+
+  getDescription(): string {
+    return `Set rule trigger to "${this.newTrigger}"`;
   }
 }

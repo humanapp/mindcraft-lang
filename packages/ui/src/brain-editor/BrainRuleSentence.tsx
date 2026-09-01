@@ -5,7 +5,7 @@ import {
   flattenRuleTiles,
   projectRuleSentence,
   segmentDisplayText,
-  whenTriggerWord,
+  triggerModeWord,
 } from "@wendoo/core/brain/language-service";
 import type { BrainRuleDef } from "@wendoo/core/brain/model";
 import type { BrainTileLiteralDef } from "@wendoo/core/brain/tiles";
@@ -269,8 +269,8 @@ export function BrainRuleSentence({
   const isComposing = composerInput !== undefined;
   const segments = useMemo(() => (isComposing ? composeSentenceReading(settled) : settled), [isComposing, settled]);
   const pivot = useMemo(
-    () => (pivotComma ? composePivotReading(segments, whenTriggerWord(localizer)) : []),
-    [pivotComma, segments, localizer]
+    () => (pivotComma ? composePivotReading(segments, triggerModeWord(ruleDef.trigger(), localizer)) : []),
+    [pivotComma, segments, ruleDef, localizer]
   );
   const carets = useMemo(() => caretsBeforeSegments(segments), [segments]);
   const inputSlot = useMemo(

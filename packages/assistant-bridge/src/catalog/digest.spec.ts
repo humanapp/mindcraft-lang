@@ -74,6 +74,15 @@ describe("catalog digest", () => {
     assert.ok(!plain?.includes("note="), digest.text);
   });
 
+  test("marks a deprecated tile on its own line, keeping the line", () => {
+    const digest = catalogDigest([tile({ tileId: "a", deprecated: true }), tile({ tileId: "b" })]);
+    const [marked, plain] = digest.text.split("\n");
+
+    assert.equal(digest.tileCount, 2, "a deprecated tile is read, not hidden");
+    assert.ok(marked?.includes("| deprecated"), digest.text);
+    assert.ok(!plain?.includes("deprecated"), digest.text);
+  });
+
   test("carries the metadata the model plans from", () => {
     const digest = catalogDigest([
       tile({

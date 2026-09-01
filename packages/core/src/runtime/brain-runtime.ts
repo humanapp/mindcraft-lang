@@ -2,6 +2,7 @@ import { Dict } from "../platform/dict";
 import { Error } from "../platform/error";
 import { EventEmitter, type EventEmitterConsumer } from "../platform/event-emitter";
 import { List } from "../platform/list";
+import { UniqueSet } from "../platform/uniqueset";
 import { createCallsiteStore, type ICallsiteStore } from "./callsite-store";
 import type { BytecodeExecutableAction, ExecutionContext } from "./context";
 import type { VmEvents } from "./events";
@@ -9,11 +10,14 @@ import type { BrainEvents, IBrainRuntime, PageMetadata } from "./host-bindings";
 import type { Program } from "./program";
 import { NO_VARIABLE_INIT, variableInitAt } from "./program";
 import {
+  type AbandonedRuleFirings,
   createProgramServices,
+  createRuleCompletionServices,
   createRuleFiringServices,
   createRuleVariableServices,
   type RuleFiringStates,
   type RuleVariableStores,
+  type RuleWatcherSlots,
 } from "./rule-services";
 import { createRuntimeServices } from "./runtime-services";
 import type { PlatformServices } from "./services";
@@ -182,6 +186,8 @@ export class BrainRuntime implements IBrainRuntime {
     // One firing record per rule, keyed by rule funcId and allocated with the
     // runtime: a rule's record lives exactly as long as this brain instance.
     const ruleFiringStates: RuleFiringStates = new Dict();
+    const ruleWatcherSlots: RuleWatcherSlots = new Dict();
+    const abandonedRuleFirings: AbandonedRuleFirings = new UniqueSet();
     this.callsiteStore = callsiteStore;
     this.ruleVariableStores = ruleVariableStores;
 
@@ -203,6 +209,9 @@ export class BrainRuntime implements IBrainRuntime {
         brainVars: runtimeServices.brainVars,
         ruleVars: createRuleVariableServices(program, ruleVariableStores),
         ruleFiring: createRuleFiringServices(ruleFiringStates),
+        ruleCompletion: createRuleCompletionServices(ruleWatcherSlots, abandonedRuleFirings, (ruleFuncId: number) =>
+          this.scheduler.hasLiveRuleSubtree(ruleFuncId)
+        ),
         pages: runtimeServices.brainPages,
         callsite: callsiteStore,
       },

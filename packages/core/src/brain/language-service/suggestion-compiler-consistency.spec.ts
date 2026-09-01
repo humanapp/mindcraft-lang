@@ -34,6 +34,7 @@ import {
   mkControlFlowTileId,
   mkOperatorTileId,
   RuleSide,
+  RuleTriggerMode,
   TilePlacement,
 } from "@wendoo/core/brain";
 import { __test__appendTile, __test__createBrainServices } from "@wendoo/core/brain/__test__";
@@ -48,6 +49,7 @@ import {
   TypeDiagCode,
 } from "@wendoo/core/brain/compiler";
 import {
+  availableTriggerModes,
   availableWhenResultType,
   countUnclosedParens,
   getTileOutputType,
@@ -430,7 +432,7 @@ function appendRootRule(brain: BrainDef): IBrainRuleDef {
   return brain.pages().get(0).appendNewRule()!;
 }
 
-/** The core `otherwise` sensor: a WHEN-side inline tile reading the rule above it. */
+/** The core `otherwise` sensor: the deprecated WHEN-side inline tile reading the rule above it. */
 function otherwiseTile(): IBrainTileDef {
   return services.edit.tiles.get(mkSensorTileId(CoreHostActions.Otherwise.key))!;
 }
@@ -708,8 +710,9 @@ function corpus(): CorpusEntry[] {
       },
     },
     {
-      // A three-rule run whose middle rule's WHEN is `otherwise`: the third
-      // rule's preceding sibling is itself an `otherwise` rule.
+      // An unmigrated document: the middle rule's WHEN is the deprecated
+      // `otherwise` tile, so the picker keeps offering into a side the tile
+      // itself is no longer offered on.
       name: "root-siblings-otherwise-run",
       build: () => {
         const { brain, rule } = newBrain("root-siblings-otherwise-run");
@@ -729,6 +732,54 @@ function corpus(): CorpusEntry[] {
         const and = services.edit.tiles.get(mkOperatorTileId(CoreOpId.And))!;
         fill(rule, [t.boolLit, and, t.boolLit], [t.beepActuator]);
         fill(appendRootRule(brain), [t.boolLit, and, t.boolLit], [t.beepActuator]);
+        return brain;
+      },
+    },
+    {
+      // A flat ladder in the `otherwise` trigger mode: the middle rule filters,
+      // the last is the bare else branch.
+      name: "root-siblings-otherwise-ladder",
+      build: () => {
+        const { brain, rule } = newBrain("root-siblings-otherwise-ladder");
+        fill(rule, [t.seesSensor], [t.beepActuator]);
+        const middle = appendRootRule(brain);
+        middle.setTrigger(RuleTriggerMode.Otherwise);
+        fill(middle, [t.boolLit], [t.beepActuator]);
+        const tail = appendRootRule(brain);
+        tail.setTrigger(RuleTriggerMode.Otherwise);
+        fill(tail, [], [t.beepActuator]);
+        return brain;
+      },
+    },
+    {
+      // A `then` chain: the middle rule filters at its wake think, the last is
+      // bare, so its WHEN side is empty and still compiles boundaries.
+      name: "root-siblings-then-chain",
+      build: () => {
+        const { brain, rule } = newBrain("root-siblings-then-chain");
+        fill(rule, [t.seesSensor], [t.beepActuator]);
+        const middle = appendRootRule(brain);
+        middle.setTrigger(RuleTriggerMode.Then);
+        fill(middle, [t.boolLit], [t.beepActuator]);
+        const tail = appendRootRule(brain);
+        tail.setTrigger(RuleTriggerMode.Then);
+        fill(tail, [], [t.beepActuator]);
+        return brain;
+      },
+    },
+    {
+      // An `otherwise` chain headed by a `then` rule, both with empty WHEN
+      // sides: the else branch catches the thinks the `then` did not fire.
+      name: "then-headed-otherwise-chain",
+      build: () => {
+        const { brain, rule } = newBrain("then-headed-otherwise-chain");
+        fill(rule, [t.numSensor], [t.beepActuator]);
+        const head = appendRootRule(brain);
+        head.setTrigger(RuleTriggerMode.Then);
+        fill(head, [], [t.beepActuator]);
+        const branch = appendRootRule(brain);
+        branch.setTrigger(RuleTriggerMode.Otherwise);
+        fill(branch, [], [t.beepActuator]);
         return brain;
       },
     },
@@ -868,6 +919,9 @@ const INCOMPLETENESS_CODES = new Set<number>([
   ParseDiagCode.ExpectedClosingParen,
 ]);
 
+/** Parse diagnostics that advise on a tile already standing on the side, not on the expression it forms. */
+const ADVISORY_CODES = new Set<number>([ParseDiagCode.DeprecatedOtherwiseTile]);
+
 function catalogList(): List<ITileCatalog> {
   return List.from([services.edit.tiles]);
 }
@@ -1000,6 +1054,7 @@ function sideVerdict(
   let verdict: Verdict = "complete";
   for (let i = 0; i < result.parseResult.diags.size(); i++) {
     const code = result.parseResult.diags.get(i).code as number;
+    if (ADVISORY_CODES.has(code)) continue;
     if (INCOMPLETENESS_CODES.has(code)) {
       if (verdict === "complete") verdict = "incomplete";
     } else {
@@ -1550,7 +1605,79 @@ describe("suggestion-compiler consistency", () => {
       `Allowlisted discrepancies no longer reproduce (remove their entries):\n${stale.join("\n")}`
     );
   });
+
+  test("the offered trigger modes agree with compiler acceptance across the corpus", () => {
+    const allModes = [RuleTriggerMode.When, RuleTriggerMode.Otherwise, RuleTriggerMode.Then];
+    let ruleCount = 0;
+    let firstAtLevelCount = 0;
+    let laterAtLevelCount = 0;
+
+    for (const entry of corpus()) {
+      const brain = entry.build();
+      forEachRule(brain, (rule, path) => {
+        ruleCount++;
+        const offered = availableTriggerModes(rule).toArray();
+        const accepted = allModes.filter((mode) => compilerAcceptsTriggerMode(brain, rule, mode));
+        assert.deepEqual(offered, accepted, `${entry.name}/${path}: offered modes disagree with compiler acceptance`);
+        if (offered.length === 1) firstAtLevelCount++;
+        else laterAtLevelCount++;
+      });
+    }
+
+    assert.ok(ruleCount >= 20, `rule enumeration shrank to ${ruleCount}`);
+    assert.ok(firstAtLevelCount > 0, "the corpus must hold rules that are first at their level");
+    assert.ok(laterAtLevelCount > 0, "the corpus must hold rules with a preceding sibling");
+  });
 });
+
+/** Visit every rule in the brain, walking pages and child rules, with its document path. */
+function forEachRule(brain: BrainDef, visit: (rule: IBrainRuleDef, path: string) => void): void {
+  const walkRule = (rule: IBrainRuleDef, path: string) => {
+    visit(rule, path);
+    const children = rule.children();
+    for (let i = 0; i < children.size(); i++) walkRule(children.get(i), `${path}/${i}`);
+  };
+  const pages = brain.pages();
+  for (let p = 0; p < pages.size(); p++) {
+    const rules = pages.get(p).children();
+    for (let r = 0; r < rules.size(); r++) walkRule(rules.get(r), `${p}-${r}`);
+  }
+}
+
+/** The count of trigger-mode rejections the whole brain currently compiles with. */
+function triggerModeRejections(brain: BrainDef): number {
+  const result = runBrainLinkPipeline(
+    brain,
+    { catalogs: catalogList(), actionResolver: services.runtime.actions, typeRegistry: services.runtime.types },
+    services.shared.conversions
+  );
+  let count = 0;
+  for (let i = 0; i < result.diagnostics.size(); i++) {
+    const code = result.diagnostics.get(i).code as number;
+    if (
+      code === ParseDiagCode.OtherwiseTriggerNoPrecedingSiblingRule ||
+      code === ParseDiagCode.ThenTriggerNoPrecedingSiblingRule
+    ) {
+      count++;
+    }
+  }
+  return count;
+}
+
+/**
+ * Whether the compiler accepts `mode` on `rule`: giving the rule that mode adds
+ * no trigger-mode rejection to the brain's build. The rule's own mode is
+ * restored before returning.
+ */
+function compilerAcceptsTriggerMode(brain: BrainDef, rule: IBrainRuleDef, mode: RuleTriggerMode): boolean {
+  const original = rule.trigger();
+  rule.setTrigger(RuleTriggerMode.When);
+  const baseline = triggerModeRejections(brain);
+  rule.setTrigger(mode);
+  const probed = triggerModeRejections(brain);
+  rule.setTrigger(original);
+  return probed === baseline;
+}
 
 // ---- Rule build outcome (shared by the pins and the validation tests) ----
 

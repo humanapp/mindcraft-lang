@@ -59,6 +59,7 @@ function renderRuleCard(ruleDef: BrainRuleDef, pickup: RulePickup | null): strin
               composeRule: () => {},
               grabRule: () => {},
               moveRule: () => {},
+              cycleTrigger: () => {},
               offeringRail: null,
             },
           },

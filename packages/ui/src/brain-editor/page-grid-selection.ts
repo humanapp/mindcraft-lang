@@ -2,10 +2,11 @@ import { kPageGridCellAttribute, type PageGridCell } from "./page-grid-model";
 
 /**
  * How the page's selection is painted on the cell it rests on, which that cell's
- * own shape decides: `chip` for a placed tile, `circle` for a rule handle and for
- * the round add controls, and `line` for a rule's sentence.
+ * own shape decides: `chip` for a placed tile, `capsule` for a rule side's
+ * capsule, `circle` for a rule handle and for the round add controls, and `line`
+ * for a rule's sentence.
  */
-export type PageGridSelectionShape = "chip" | "circle" | "line";
+export type PageGridSelectionShape = "chip" | "capsule" | "circle" | "line";
 
 /**
  * Attribute the one cell the page's selection rests on carries, valued by the

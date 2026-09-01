@@ -258,7 +258,7 @@ function DocsRuleRow({ comment, whenTiles, doTiles, depth = 0, lineNumber }: Doc
           style={{ writingMode: "vertical-rl" }}
           aria-hidden="true"
         >
-          <span className="rotate-[-90] text-brain-capsule-ink font-semibold text-md cursor-default">
+          <span className="text-brain-capsule-ink font-semibold text-base cursor-default">
             <span className="inline-block rotate-270 mx-0">W</span>
             <span className="inline-block rotate-270 mx-0.5">H</span>
             <span className="inline-block rotate-270 mx-0.5">E</span>
@@ -280,7 +280,7 @@ function DocsRuleRow({ comment, whenTiles, doTiles, depth = 0, lineNumber }: Doc
           style={{ writingMode: "vertical-rl" }}
           aria-hidden="true"
         >
-          <span className="rotate-[-90] text-brain-capsule-ink font-semibold text-md cursor-default">
+          <span className="text-brain-capsule-ink font-semibold text-base cursor-default">
             <span className="inline-block rotate-270 mx-0">D</span>
             <span className="inline-block rotate-270 mx-0.5">O</span>
           </span>

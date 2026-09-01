@@ -34,6 +34,12 @@ export interface PageGridBinding {
    */
   moveRule(ruleId: string, direction: RuleMoveDirection): void;
   /**
+   * Takes `ruleId`'s trigger mode one step forward around the modes its position
+   * admits and reads the new mode out, as one undoable document edit. Does
+   * nothing for a rule whose position admits one mode only.
+   */
+  cycleTrigger(ruleId: string): void;
+  /**
    * The element the armed rule renders its offering panel into: a zero-height
    * strip of the rules scroller, pinned to the scroller's left edge and outside
    * the transform the rules are zoomed by. Null until the page has mounted it.

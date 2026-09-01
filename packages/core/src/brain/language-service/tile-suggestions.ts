@@ -33,6 +33,7 @@ import {
   mkControlFlowTileId,
   precedingSiblingConsumerEligible,
   RuleSide,
+  RuleTriggerMode,
   type TileId,
 } from "../interfaces";
 import type { BrainServices } from "../services";
@@ -1740,8 +1741,10 @@ export function whenExprResultType(
  * Reads only the WHEN side, typing its expression with `whenExprResultType`.
  *
  * An empty WHEN produces no result of its own; this walks the `ancestor()` chain
- * to the nearest enclosing rule that produces one. Returns undefined when no
- * enclosing rule produces a typable WHEN result.
+ * to the nearest enclosing rule that produces one. An empty WHEN under an
+ * `otherwise` or `then` trigger mode is the exception: the mode's arming read is
+ * the rule's WHEN value, so it produces `Boolean` and ends the walk. Returns
+ * undefined when no enclosing rule produces a typable WHEN result.
  */
 export function getRuleWhenResultType(
   ruleDef: IBrainRuleDef,
@@ -1754,6 +1757,9 @@ export function getRuleWhenResultType(
     if (whenTiles.size() > 0) {
       const expr = parseTilesForSuggestions(whenTiles);
       return whenExprResultType(expr, operatorOverloads, conversions);
+    }
+    if (current.trigger() !== RuleTriggerMode.When) {
+      return CoreTypeIds.Boolean;
     }
     current = current.ancestor();
   }
@@ -1831,6 +1837,21 @@ function hasPrecedingSiblingRule(ruleDef: IBrainRuleDef | undefined): boolean {
   const siblings = ancestor ? ancestor.children() : ruleDef.page()?.children();
   if (siblings === undefined) return false;
   return siblings.indexOf(ruleDef) > 0;
+}
+
+/**
+ * The trigger modes the compiler accepts on `ruleDef` at its position, in
+ * display order. `otherwise` complements the rule above it and `then` follows
+ * it, so the first rule at a nesting level takes `when` alone and every later
+ * rule takes all three. Returns `when` alone when no rule is supplied.
+ *
+ * Offer exactly this set in a rule's trigger-mode picker.
+ */
+export function availableTriggerModes(ruleDef: IBrainRuleDef | undefined): ReadonlyList<RuleTriggerMode> {
+  if (!hasPrecedingSiblingRule(ruleDef)) {
+    return List.from([RuleTriggerMode.When]);
+  }
+  return List.from([RuleTriggerMode.When, RuleTriggerMode.Otherwise, RuleTriggerMode.Then]);
 }
 
 // ---- Main API ----

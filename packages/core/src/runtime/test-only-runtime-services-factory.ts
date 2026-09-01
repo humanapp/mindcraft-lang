@@ -1,5 +1,6 @@
 import { createDefaultLocalizer } from "../localization/localizer";
 import { Dict } from "../platform/dict";
+import { UniqueSet } from "../platform/uniqueset";
 import { BrainActionRegistry } from "./action-registry";
 import { createCallsiteStore } from "./callsite-store";
 import { ConversionRegistry } from "./conversions";
@@ -7,13 +8,14 @@ import { FunctionRegistry } from "./functions";
 import { OperatorOverloads, OperatorTable } from "./operators";
 import { createF64ProfileNumerics } from "./profile-numerics";
 import { Rng } from "./rng";
-import { createRuleFiringServices, type RuleFiringState } from "./rule-services";
+import { createRuleCompletionServices, createRuleFiringServices, type RuleFiringState } from "./rule-services";
 import type {
   AppServices,
   IBrainPageServices,
   IBrainVariableServices,
   ICallsiteServices,
   IProgramServices,
+  IRuleCompletionServices,
   IRuleFiringServices,
   IRuleVariableServices,
   PlatformServices,
@@ -21,7 +23,7 @@ import type {
   SharedLangServices,
 } from "./services";
 import { TypeRegistry } from "./type-system";
-import { NIL_VALUE, type Value } from "./value";
+import { type HandleId, NIL_VALUE, type Value } from "./value";
 
 /**
  * TEST-ONLY. Per-tier overrides for {@link __test__createPlatformServices}.
@@ -42,6 +44,8 @@ export interface __test__PlatformServicesOptions {
   ruleVars?: IRuleVariableServices;
   /** Override the per-rule WHEN-evaluation outcome records. */
   ruleFiring?: IRuleFiringServices;
+  /** Override the per-rule cluster liveness, watcher slots, and abandonment marks. */
+  ruleCompletion?: IRuleCompletionServices;
   /** Override the brain-page lifecycle services. */
   brainPages?: IBrainPageServices;
   /** Override the per-callsite services (slots and host-owned state). */
@@ -143,6 +147,9 @@ export function __test__createPlatformServices(options?: __test__PlatformService
       brainVars: options?.brainVars ?? __test__defaultBrainVars(),
       ruleVars: options?.ruleVars ?? __test__defaultRuleVars(),
       ruleFiring: options?.ruleFiring ?? createRuleFiringServices(new Dict<number, RuleFiringState>()),
+      ruleCompletion:
+        options?.ruleCompletion ??
+        createRuleCompletionServices(new Dict<number, HandleId>(), new UniqueSet<number>(), () => false),
       pages: options?.brainPages ?? __test__defaultBrainPages(),
       callsite: options?.callsite ?? createCallsiteStore(),
     },

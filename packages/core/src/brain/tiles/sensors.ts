@@ -95,6 +95,7 @@ export function registerCoreSensorTileDefs(services: BrainServices) {
     metadata: { label: "previous page", language: { form: "the previous page" } },
   });
   register(fnOtherwise.key, fnOtherwise.descriptor, {
+    deprecated: true,
     placement: TilePlacement.WhenSide | TilePlacement.Inline,
     capabilities: new BitSet().set(CoreCapabilityBits.RequiresPrecedingSiblingRule),
     metadata: { label: "otherwise", language: { form: "otherwise", frame: "adverb" } },

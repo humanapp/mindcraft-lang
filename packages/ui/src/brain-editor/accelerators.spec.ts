@@ -126,7 +126,15 @@ before(() => {
   );
   run = caretRun(ruleDef);
   rows = pageGridRows([
-    { ruleId: "r1", whenTileCount: 1, doTileCount: 1, whenAppendable: true, doAppendable: true, hasSentence: true },
+    {
+      ruleId: "r1",
+      whenTileCount: 1,
+      doTileCount: 1,
+      whenAppendable: true,
+      doAppendable: true,
+      triggerSwitchable: true,
+      hasSentence: true,
+    },
   ]);
   const candidate: StripCandidate = {
     key: "lead",

@@ -1,7 +1,9 @@
 /**
  * Pins the word every shipped tile reads as: the word the sentence line renders
  * and the candidate strip labels its chips with is the one the tile's own
- * metadata authors, and no tile falls back to reading as its tile id.
+ * metadata authors, and no tile falls back to reading as its tile id. Sweeps the
+ * other direction too: every `tileVisuals` entry names a tile the environment
+ * still ships.
  */
 
 import assert from "node:assert/strict";
@@ -11,6 +13,7 @@ import { coreModule, createWendooEnvironment } from "@wendoo/core/app";
 import { tileSentenceWord } from "@wendoo/core/brain/language-service";
 import { createDefaultLocalizer } from "@wendoo/core/localization";
 import { createEcosimModule } from "../index";
+import { tileVisuals } from "./tile-visuals";
 
 /**
  * Tile kinds whose word comes from the tile's own data: a literal value, a
@@ -21,21 +24,26 @@ const DATA_LABELED_KINDS = new Set<string>(["literal", "variable", "accessor", "
 /** Separates a tile id's namespace from its local name; a word carrying it came from the id. */
 const kTileIdSeparator = "->";
 
-/** Every catalog tile of the shipped ecosim environment the tile picker can offer. */
-function visibleCatalogTiles(): IBrainTileDef[] {
+/** Every catalog tile of the shipped ecosim environment, including hidden and deprecated tiles. */
+function catalogTiles(): IBrainTileDef[] {
   const environment = createWendooEnvironment({ modules: [coreModule(), createEcosimModule()] });
   const tiles: IBrainTileDef[] = [];
   for (const catalog of environment.tileCatalogs()) {
     const all = catalog.getAll();
     for (let i = 0; i < all.size(); i++) {
       const tileDef = all.get(i);
-      if (!tileDef || tileDef.hidden || tileDef.deprecated) {
+      if (!tileDef) {
         continue;
       }
       tiles.push(tileDef);
     }
   }
   return tiles;
+}
+
+/** Every catalog tile of the shipped ecosim environment the tile picker can offer. */
+function visibleCatalogTiles(): IBrainTileDef[] {
+  return catalogTiles().filter((tileDef) => !tileDef.hidden && !tileDef.deprecated);
 }
 
 describe("ecosim tile visuals", () => {
@@ -62,5 +70,21 @@ describe("ecosim tile visuals", () => {
       .filter((tileDef) => tileSentenceWord(tileDef, localizer).includes(kTileIdSeparator))
       .map((tileDef) => tileDef.tileId);
     assert.deepEqual(leaking, [], `tiles reading as a tile-id fragment: ${leaking.join(", ")}`);
+  });
+
+  test("every tile-visuals map entry targets a shipped catalog tile and carries an icon", () => {
+    const shippedTileIds = new Set(catalogTiles().map((tileDef) => tileDef.tileId));
+    const staleKeys: string[] = [];
+    const iconless: string[] = [];
+    for (const [tileId, visual] of tileVisuals) {
+      if (!shippedTileIds.has(tileId)) {
+        staleKeys.push(tileId);
+      }
+      if (!visual.iconUrl) {
+        iconless.push(tileId);
+      }
+    }
+    assert.deepEqual(staleKeys, [], `map keys without a shipped catalog tile: ${staleKeys.join(", ")}`);
+    assert.deepEqual(iconless, [], `map entries without an icon: ${iconless.join(", ")}`);
   });
 });

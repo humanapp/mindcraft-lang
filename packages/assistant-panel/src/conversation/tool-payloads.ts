@@ -1,5 +1,6 @@
 import type { EditOutcome, ProjectPageRef, ProjectRule, ProjectTile } from "@wendoo/assistant-bridge";
 import type { ConversationToolCall } from "@wendoo/assistant-relay";
+import { RuleTriggerMode } from "@wendoo/core/brain";
 
 /**
  * A rejected proposal as the transcript reads it: the stable diagnostic code
@@ -42,6 +43,14 @@ function asTiles(value: unknown): ProjectTile[] {
   return tiles;
 }
 
+/** `value` as a trigger mode, or `undefined` for anything the modes do not name. */
+function asTriggerMode(value: unknown): RuleTriggerMode | undefined {
+  for (const mode of Object.values(RuleTriggerMode)) {
+    if (value === mode) return mode;
+  }
+  return undefined;
+}
+
 /** `value` as a rule of the document, or `undefined` when it does not carry one. */
 export function asProjectRule(value: unknown): ProjectRule | undefined {
   const rule = asObject(value);
@@ -53,7 +62,14 @@ export function asProjectRule(value: unknown): ProjectRule | undefined {
       if (child) children.push(child);
     }
   }
-  return { ruleId: rule.ruleId, when: asTiles(rule.when), do: asTiles(rule.do), children };
+  const trigger = asTriggerMode(rule.trigger);
+  return {
+    ruleId: rule.ruleId,
+    ...(trigger === undefined ? {} : { trigger }),
+    when: asTiles(rule.when),
+    do: asTiles(rule.do),
+    children,
+  };
 }
 
 /** `value` as what one editor command left behind, or `undefined` when it is not one. */

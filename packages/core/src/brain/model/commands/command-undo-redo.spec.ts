@@ -16,7 +16,13 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import { List } from "@wendoo/core";
 import type { BrainServices, IBrainTileDef } from "@wendoo/core/brain";
-import { CoreVariableFactoryId, isPageTileId, mkVariableFactoryTileId, RuleSide } from "@wendoo/core/brain";
+import {
+  CoreVariableFactoryId,
+  isPageTileId,
+  mkVariableFactoryTileId,
+  RuleSide,
+  RuleTriggerMode,
+} from "@wendoo/core/brain";
 import { __test__createBrainServices } from "@wendoo/core/brain/__test__";
 import {
   AddPageCommand,
@@ -48,6 +54,7 @@ import {
   ReplaceTileCommand,
   type RuleJson,
   SetRuleCommentCommand,
+  SetRuleTriggerCommand,
 } from "@wendoo/core/brain/model";
 import { type BrainTileFactoryDef, BrainTileLiteralDef, type BrainTileVariableDef } from "@wendoo/core/brain/tiles";
 import { CoreHostActions, CoreTypeIds, mkActuatorTileId, mkSensorTileId } from "@wendoo/core/runtime";
@@ -108,12 +115,13 @@ function numberVariableTile(brain: BrainDef, varName: string): BrainTileVariable
 // ---- Document shape --------------------------------------------------------
 // The round-trip oracle is a structural projection of the document: brain
 // name plus, per page, the page id, the page name, and the serialized rule
-// tree (tile-id lists, comments, children).
+// tree (tile-id lists, comments, trigger modes, children).
 
 interface RuleShape {
   when: string[];
   doSide: string[];
   comment?: string;
+  trigger?: RuleTriggerMode;
   children: RuleShape[];
 }
 
@@ -124,6 +132,7 @@ function ruleShape(json: RuleJson): RuleShape {
     children: json.children.toArray().map(ruleShape),
   };
   if (json.comment !== undefined) shape.comment = json.comment;
+  if (json.trigger !== undefined) shape.trigger = json.trigger;
   return shape;
 }
 
@@ -654,6 +663,31 @@ describe("rename and comment commands round-trip the document", () => {
     history.redo();
     assert.equal((brain.catalog().get(varTile.tileId) as BrainTileVariableDef).varName, "points");
     assert.equal((rule.do().tiles().get(0) as BrainTileVariableDef).varName, "points");
+  });
+});
+
+// ---- Trigger mode command --------------------------------------------------
+
+describe("SetRuleTriggerCommand round-trips the document", () => {
+  test("sets a mode on a rule that carries none", () => {
+    const brain = newBrain();
+    assertCommandRoundTrip(brain, new SetRuleTriggerCommand(firstRule(brain), RuleTriggerMode.Otherwise));
+    assert.equal(firstRule(brain).trigger(), RuleTriggerMode.Otherwise);
+  });
+
+  test("undo restores the mode the rule carried before", () => {
+    const brain = newBrain();
+    firstRule(brain).setTrigger(RuleTriggerMode.Then);
+
+    const history = new BrainCommandHistory();
+    history.executeCommand(new SetRuleTriggerCommand(firstRule(brain), RuleTriggerMode.When));
+    assert.equal(firstRule(brain).trigger(), RuleTriggerMode.When);
+
+    history.undo();
+    assert.equal(firstRule(brain).trigger(), RuleTriggerMode.Then);
+
+    history.redo();
+    assert.equal(firstRule(brain).trigger(), RuleTriggerMode.When);
   });
 });
 

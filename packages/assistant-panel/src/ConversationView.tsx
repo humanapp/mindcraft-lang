@@ -6,6 +6,7 @@ import type {
   ConversationTurnEnding,
 } from "@wendoo/assistant-relay";
 import { ConversationTurnFailureCode, NarrationRole, RelayTurnEndCode } from "@wendoo/assistant-relay";
+import { RuleTriggerMode } from "@wendoo/core/brain";
 import { kBrainDeskFill } from "@wendoo/ui/brain-editor/brain-desk";
 import type { RenderMarkdownReference } from "@wendoo/ui/markdown/SafeMarkdown";
 import { SafeMarkdown } from "@wendoo/ui/markdown/SafeMarkdown";
@@ -237,32 +238,62 @@ function LinePill({ line }: { line: number }) {
   );
 }
 
-/** The compact capsule opening one side of a rule, reading WHEN or DO. */
-function SideCap({ side }: { side: EditSide }) {
+/** The word the trigger band's capsule stands for each mode. */
+const triggerCapWords: Record<RuleTriggerMode, string> = {
+  [RuleTriggerMode.When]: "WHEN",
+  [RuleTriggerMode.Otherwise]: "ELSE",
+  [RuleTriggerMode.Then]: "THEN",
+};
+
+/** The fill, rim, and letters the DO band's capsule wears. */
+const doCapChrome = "bg-brain-capsule border-brain-capsule-edge text-brain-capsule-ink";
+
+/** The fill, rim, and letters the trigger band's capsule wears for each mode. */
+const triggerCapChrome: Record<RuleTriggerMode, string> = {
+  [RuleTriggerMode.When]: doCapChrome,
+  [RuleTriggerMode.Otherwise]:
+    "bg-brain-capsule-otherwise border-brain-capsule-otherwise-edge text-brain-capsule-otherwise-ink",
+  [RuleTriggerMode.Then]: "bg-brain-capsule-then border-brain-capsule-then-edge text-brain-capsule-then-ink",
+};
+
+/** Everything a side capsule wears but its fill, rim, and letter colors. */
+const capsuleClasses =
+  "inline-flex shrink-0 items-center rounded-sm rounded-l-md border px-1 py-px font-semibold text-[10px] tracking-wide";
+
+/** The compact capsule opening one side of a rule, reading the trigger mode's word or DO. */
+function SideCap({ word, chrome }: { word: string; chrome: string }) {
   return (
-    <span
-      className="inline-flex shrink-0 items-center rounded-sm rounded-l-md border border-brain-capsule-edge bg-brain-capsule px-1 py-px font-semibold text-[10px] text-brain-capsule-ink tracking-wide"
-      aria-hidden="true"
-    >
-      {side.toUpperCase()}
+    <span className={`${capsuleClasses} ${chrome}`} aria-hidden="true">
+      {word}
     </span>
   );
 }
 
-/** One side of a rule: the capsule opening it, and the tiles standing on it, wrapping as one band. */
+/**
+ * One side of a rule: the capsule opening it, and the tiles standing on it,
+ * wrapping as one band. A band holding no tiles draws nothing unless
+ * `standsEmpty`, which stands it on its capsule alone.
+ */
 function RuleBand({
   side,
+  word,
+  chrome,
+  standsEmpty,
   tiles,
   looks,
 }: {
   side: EditSide;
+  word: string;
+  chrome: string;
+  /** Draw the band on its capsule alone when it holds no tiles. */
+  standsEmpty: boolean;
   tiles: readonly ProjectTile[];
   looks: readonly TileLook[];
 }) {
-  if (tiles.length === 0) return null;
+  if (tiles.length === 0 && !standsEmpty) return null;
   return (
     <span data-assistant-side={side} className="flex flex-wrap items-center gap-1">
-      <SideCap side={side} />
+      <SideCap word={word} chrome={chrome} />
       {tiles.map((tile, at) => (
         <TileChip key={`${tile.tileId}-${at}`} tileId={tile.tileId} look={looks[at] as TileLook} />
       ))}
@@ -270,19 +301,34 @@ function RuleBand({
   );
 }
 
-/** How a rule reads aloud, for a reader who is given the whole line at once. */
-function ruleReading(when: readonly TileLook[], done: readonly TileLook[]): string {
-  const side = (word: string, looks: readonly TileLook[]): string =>
-    looks.length === 0 ? "" : `${word} ${looks.map((look) => look.label).join(", ")}`;
-  return [side("when", when), side("do", done)].filter((part) => part.length > 0).join(", ");
+/** How the trigger mode reads aloud, ahead of the tiles gating the rule. */
+const triggerReadings: Record<RuleTriggerMode, string> = {
+  [RuleTriggerMode.When]: "when",
+  [RuleTriggerMode.Otherwise]: "otherwise",
+  [RuleTriggerMode.Then]: "then",
+};
+
+/**
+ * How a rule reads aloud, for a reader who is given the whole line at once. A
+ * rule in a mode other than `when` opens on the mode's word, whether or not it
+ * carries any WHEN-side tiles.
+ */
+function ruleReading(trigger: RuleTriggerMode, when: readonly TileLook[], done: readonly TileLook[]): string {
+  const words = (looks: readonly TileLook[]): string => looks.map((look) => look.label).join(", ");
+  const mode = triggerReadings[trigger];
+  const parts: string[] = [];
+  if (when.length > 0) parts.push(`${mode} ${words(when)}`);
+  else if (trigger !== RuleTriggerMode.When) parts.push(mode);
+  if (done.length > 0) parts.push(`do ${words(done)}`);
+  return parts.join(", ");
 }
 
 /**
  * One rule a receipt shows, standing in as far as the rules it is nested under:
  * its number where the conversation has seen the page it stands on, and one
- * wrapping band per side, each opened by that side's capsule.
+ * wrapping band of chips per side, each opened by that side's capsule.
  */
-function RuleSentence({ rule, context }: { rule: ReceiptRule; context: TranscriptContext }) {
+function RuleCard({ rule, context }: { rule: ReceiptRule; context: TranscriptContext }) {
   const look = useTileLooks();
   const when = rule.when.map((tile) => look(tile.tileId, "when") ?? unresolvedTileLook(tile.label));
   const done = rule.do.map((tile) => look(tile.tileId, "do") ?? unresolvedTileLook(tile.label));
@@ -291,8 +337,9 @@ function RuleSentence({ rule, context }: { rule: ReceiptRule; context: Transcrip
     <div
       data-assistant-rule={rule.ruleId}
       data-assistant-rule-depth={rule.depth}
+      data-assistant-rule-trigger={rule.trigger}
       role="img"
-      aria-label={ruleReading(when, done)}
+      aria-label={ruleReading(rule.trigger, when, done)}
       style={{ marginLeft: rule.depth * ruleIndentPx, background: ruleCardFill }}
       className="flex items-start gap-1.5 rounded-lg border border-border px-1.5 py-1 text-sm shadow-sm"
     >
@@ -302,8 +349,15 @@ function RuleSentence({ rule, context }: { rule: ReceiptRule; context: Transcrip
         </span>
       )}
       <span className="flex min-w-0 flex-col gap-0.5">
-        <RuleBand side="when" tiles={rule.when} looks={when} />
-        <RuleBand side="do" tiles={rule.do} looks={done} />
+        <RuleBand
+          side="when"
+          word={triggerCapWords[rule.trigger]}
+          chrome={triggerCapChrome[rule.trigger]}
+          standsEmpty={rule.trigger !== RuleTriggerMode.When}
+          tiles={rule.when}
+          looks={when}
+        />
+        <RuleBand side="do" word="DO" chrome={doCapChrome} standsEmpty={false} tiles={rule.do} looks={done} />
       </span>
     </div>
   );
@@ -359,7 +413,7 @@ function ReceiptView({ block, context }: { block: ReceiptBlock; context: Transcr
       >
         <p className="text-card-foreground text-sm">{block.page ? block.page.name : "In your rules"}</p>
         {block.rules.map((rule) => (
-          <RuleSentence key={rule.ruleId} rule={rule} context={context} />
+          <RuleCard key={rule.ruleId} rule={rule} context={context} />
         ))}
       </div>
       {block.story.length > 0 && (
@@ -771,7 +825,7 @@ function GotToView({ state, context }: { state: StandingState; context: Transcri
               {page.page ? page.page.name : "In your rules"}
             </p>
             {page.rules.map((rule) => (
-              <RuleSentence key={rule.ruleId} rule={rule} context={context} />
+              <RuleCard key={rule.ruleId} rule={rule} context={context} />
             ))}
           </div>
         ))}

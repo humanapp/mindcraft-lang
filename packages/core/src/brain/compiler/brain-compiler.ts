@@ -15,11 +15,11 @@ import type {
   TypeId,
   UnlinkedBrainProgram,
 } from "../../runtime";
-import { anyVariableInit } from "../../runtime";
+import { anyVariableInit, CoreHostActions } from "../../runtime";
 import { BYTECODE_VERSION, type FunctionBytecode, type Instr, Op } from "../../runtime/bytecode";
 import { NIL_VALUE, TRUE_VALUE, type Value } from "../../runtime/value";
 import type { IBrainDef, IBrainPageDef, IBrainRuleDef, IBrainTileDef, ITileCatalog } from "../interfaces";
-import { CoreCapabilityBits, RuleSide } from "../interfaces";
+import { CoreCapabilityBits, RuleSide, RuleTriggerMode } from "../interfaces";
 import {
   availableWhenResultType,
   collectRuleHierarchyCapabilities,
@@ -34,9 +34,11 @@ import { computeInferredTypes } from "./inferred-types";
 import {
   parseBrainTiles,
   validateCapabilityRequirements,
+  validateDeprecatedOtherwiseTile,
   validateOutputProviders,
   validatePrecedingSiblingConsumers,
   validateTilePlacement,
+  validateTriggerMode,
   validateWhenResultConsumers,
 } from "./parser";
 import { type CompilationDiag, ExprCompiler } from "./rule-compiler";
@@ -438,6 +440,9 @@ export class BrainCompiler {
     this.pushParseDiags(validatePrecedingSiblingConsumers(whenTiles, siblingIndex > 0, this.localizer), rulePath);
     this.pushParseDiags(validatePrecedingSiblingConsumers(doTiles, siblingIndex > 0, this.localizer), rulePath);
 
+    this.pushParseDiags(validateTriggerMode(ruleDef.trigger(), siblingIndex > 0), rulePath);
+    this.pushParseDiags(validateDeprecatedOtherwiseTile(whenTiles), rulePath);
+
     // An output tile with no providing sensor in the rule hierarchy (this
     // rule's WHEN and DO sides plus every ancestor rule's) blocks the build.
     const providedOutputKeys = collectRuleHierarchyOutputKeys(ruleDef);
@@ -524,18 +529,41 @@ export class BrainCompiler {
 
     // Emit WHEN section. A bare presence-gated value sensor as the WHEN root
     // gates DO on presence (non-nil); every other WHEN gates on truthiness. A
-    // rule with no WHEN condition captures no WHEN result and fires
+    // `when`-mode rule with no WHEN condition captures no WHEN result and fires
     // unconditionally: it emits no WHEN section, so getWhenResult in its DO reads
-    // no own slot and falls through to an enclosing rule's captured result.
+    // no own slot and falls through to an enclosing rule's captured result. An
+    // `otherwise` or `then` rule always emits the section: its arming read is
+    // the WHEN value when the expression is empty.
     const whenIsEmpty = whenParseResult.exprs.get(0).kind === "empty";
-    if (!whenIsEmpty) {
-      emitter.whenStart();
-      this.emitExprs(whenParseResult.exprs, emitter, typeEnv, true, rulePath, RuleSide.When, whenTiles);
-      if (isBarePresenceGatedSensor(whenParseResult.exprs.get(0))) {
-        emitter.whenEndPresent(endLabel);
-      } else {
-        emitter.whenEnd(endLabel);
+    const presenceGated = !whenIsEmpty && isBarePresenceGatedSensor(whenParseResult.exprs.get(0));
+    const trigger = ruleDef.trigger();
+    if (trigger === RuleTriggerMode.When) {
+      if (!whenIsEmpty) {
+        emitter.whenStart();
+        this.emitExprs(whenParseResult.exprs, emitter, typeEnv, true, rulePath, RuleSide.When, whenTiles);
+        if (presenceGated) {
+          emitter.whenEndPresent(endLabel);
+        } else {
+          emitter.whenEnd(endLabel);
+        }
       }
+    } else {
+      emitter.whenStart();
+      this.emitTriggerPrologue(emitter, trigger);
+      if (!whenIsEmpty) {
+        // The arming read short-circuits the expression: an unarmed rule stands
+        // NIL in the expression's place, which both gate forms read as "did not
+        // fire", so the gate still runs and still writes the record.
+        const unarmedLabel = emitter.label();
+        const gateLabel = emitter.label();
+        emitter.jmpIfFalse(unarmedLabel);
+        this.emitExprs(whenParseResult.exprs, emitter, typeEnv, true, rulePath, RuleSide.When, whenTiles);
+        emitter.jmp(gateLabel);
+        emitter.mark(unarmedLabel);
+        emitter.pushConst(this.constantPool.addOther(NIL_VALUE));
+        emitter.mark(gateLabel);
+      }
+      this.emitTriggerGate(emitter, trigger, presenceGated, endLabel);
     }
 
     // Emit DO section
@@ -567,6 +595,55 @@ export class BrainCompiler {
       variableNames: this.variableNames,
       childFuncIds,
     };
+  }
+
+  /**
+   * Emit the arming read that opens the WHEN section of a rule whose trigger
+   * mode is not `when`, leaving its boolean answer on the operand stack.
+   *
+   * An `otherwise` rule reads the `otherwise` host sensor synchronously. A
+   * `then` rule dispatches the rule-trigger host action asynchronously and
+   * awaits it, so a rule whose subject is still in flight parks here.
+   */
+  private emitTriggerPrologue(emitter: BytecodeEmitter, trigger: RuleTriggerMode): void {
+    const callSiteId = this.nextCallSiteIdCounter.value++;
+    if (trigger === RuleTriggerMode.Otherwise) {
+      emitter.hostActionCall(CoreHostActions.Otherwise.actionId, 0, callSiteId);
+      return;
+    }
+    emitter.hostActionCallAsync(CoreHostActions.RuleTrigger.actionId, 0, callSiteId);
+    emitter.await();
+  }
+
+  /**
+   * Emit the WHEN gate closing a rule whose trigger mode is not `when`. An
+   * `otherwise` rule takes the chain variant of the gate its expression selects,
+   * so its record carries the ladder outcome; a `then` rule takes the ordinary
+   * variant.
+   *
+   * @param presenceGated - Whether the rule's WHEN expression selected the
+   *   presence gate.
+   * @param endLabel - Label past the DO section, taken when the gate does not fire.
+   */
+  private emitTriggerGate(
+    emitter: BytecodeEmitter,
+    trigger: RuleTriggerMode,
+    presenceGated: boolean,
+    endLabel: number
+  ): void {
+    if (trigger === RuleTriggerMode.Otherwise) {
+      if (presenceGated) {
+        emitter.whenEndPresentChain(endLabel);
+      } else {
+        emitter.whenEndChain(endLabel);
+      }
+      return;
+    }
+    if (presenceGated) {
+      emitter.whenEndPresent(endLabel);
+    } else {
+      emitter.whenEnd(endLabel);
+    }
   }
 
   /**

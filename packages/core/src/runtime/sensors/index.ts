@@ -5,9 +5,10 @@ import fnOnPageEntered from "./on-page-entered";
 import fnOtherwise from "./otherwise";
 import fnPreviousPage from "./previous-page";
 import fnRandom from "./random";
+import fnRuleTrigger from "./rule-trigger";
 import fnTimeout from "./timeout";
 
-/** Register the built-in sensors on `services`. */
+/** Register the built-in sensors on `services`: each sensor's host action and its host function. */
 export function registerCoreSensors(services: BrainServices) {
   services.runtime.actions.register(fnRandom.binding);
   services.runtime.actions.register(fnOnPageEntered.binding);
@@ -15,6 +16,7 @@ export function registerCoreSensors(services: BrainServices) {
   services.runtime.actions.register(fnCurrentPage.binding);
   services.runtime.actions.register(fnPreviousPage.binding);
   services.runtime.actions.register(fnOtherwise.binding);
+  services.runtime.actions.register(fnRuleTrigger.binding);
 
   services.runtime.functions.register(
     CoreHostActions.Random.fnId,
@@ -57,5 +59,12 @@ export function registerCoreSensors(services: BrainServices) {
     false,
     fnOtherwise.fn,
     fnOtherwise.callDef
+  );
+  services.runtime.functions.register(
+    CoreHostActions.RuleTrigger.fnId,
+    CoreHostActions.RuleTrigger.key,
+    true,
+    fnRuleTrigger.fn,
+    fnRuleTrigger.callDef
   );
 }

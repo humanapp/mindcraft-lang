@@ -14,10 +14,12 @@ import { UniqueSet } from "../../platform/uniqueset";
 import {
   type BrainActionCallArgSpec,
   type BrainActionCallSpec,
+  CoreHostActions,
   CoreOpId,
   type IConversionRegistry,
   type ITypeRegistry,
   MAX_COERCION_PATH_LENGTH,
+  mkSensorTileId,
   type TypeId,
 } from "../../runtime";
 import type { BitSet, ReadonlyBitSet } from "../../util/bitset";
@@ -31,6 +33,7 @@ import {
   parseTileId,
   precedingSiblingConsumerEligible,
   RuleSide,
+  RuleTriggerMode,
 } from "../interfaces";
 import { tileSentenceWord } from "../language-service/sentence-projection";
 import {
@@ -1328,6 +1331,60 @@ export function validatePrecedingSiblingConsumers(
       message: `Tile "${label}" needs a rule above it at the same level`,
       span: { from: i, to: i + 1 },
       params: { tileId: tile.tileId, tileLabel: label },
+    });
+  }
+  return diags;
+}
+
+/**
+ * Validate that a rule's trigger mode has the preceding sibling it reads.
+ * `otherwise` complements the rule above it and `then` follows the rule above
+ * it, so neither is legal in the first rule at its own nesting level; each
+ * reports its own code, spanning the head of the WHEN side.
+ *
+ * @param trigger - The rule's trigger mode.
+ * @param hasPrecedingSibling - Whether the rule has a rule above it at its own
+ *   nesting level.
+ * @returns One diagnostic when the mode needs a preceding sibling and has none,
+ *   an empty list otherwise.
+ */
+export function validateTriggerMode(trigger: RuleTriggerMode, hasPrecedingSibling: boolean): List<ParseDiag> {
+  const diags = List.empty<ParseDiag>();
+  if (hasPrecedingSibling || trigger === RuleTriggerMode.When) {
+    return diags;
+  }
+  const otherwiseMode = trigger === RuleTriggerMode.Otherwise;
+  diags.push({
+    code: otherwiseMode
+      ? ParseDiagCode.OtherwiseTriggerNoPrecedingSiblingRule
+      : ParseDiagCode.ThenTriggerNoPrecedingSiblingRule,
+    message: otherwiseMode
+      ? "An 'otherwise' rule needs a rule above it at the same level to complement"
+      : "A 'then' rule needs a rule above it at the same level to follow",
+    span: { from: 0, to: 0 },
+  });
+  return diags;
+}
+
+/**
+ * Report every occurrence of the deprecated `otherwise` sensor tile in a rule's
+ * WHEN-side tile list. Returns one
+ * {@link ParseDiagCode.DeprecatedOtherwiseTile} diagnostic per occurrence,
+ * spanning the tile's index in `tiles`, at "warning" severity.
+ *
+ * @param tiles - The rule's WHEN-side tile list.
+ */
+export function validateDeprecatedOtherwiseTile(tiles: ReadonlyList<IBrainTileDef>): List<ParseDiag> {
+  const diags = List.empty<ParseDiag>();
+  const otherwiseTileId = mkSensorTileId(CoreHostActions.Otherwise.key);
+  for (let i = 0; i < tiles.size(); i++) {
+    const tile = tiles.get(i);
+    if (tile.tileId !== otherwiseTileId) continue;
+    diags.push({
+      code: ParseDiagCode.DeprecatedOtherwiseTile,
+      message: "The 'otherwise' tile is deprecated; give the rule the 'otherwise' trigger mode instead",
+      span: { from: i, to: i + 1 },
+      params: { tileId: tile.tileId },
     });
   }
   return diags;

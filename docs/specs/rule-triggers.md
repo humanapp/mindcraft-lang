@@ -12,9 +12,8 @@ updated: 2026-08-31
 A core, target-agnostic tile-language feature: every rule carries a trigger
 mode that determines what arms its evaluation -- unconditional (`when`), the
 complement of the rules above it (`otherwise`), or the completion of the rule
-above it (`then`). This spec supersedes the tile surface of the `otherwise`
-spec; the firing record that spec defines is the substrate this spec builds
-on.
+above it (`then`). The two inter-rule modes rest on one piece of runtime
+state: the per-rule firing record defined below.
 
 ## What a trigger mode is
 
@@ -84,11 +83,54 @@ and migration).
 
 ## OTHERWISE semantics: the chain record
 
-Each rule carries the three-state firing record -- `Evaluating` / `DidFire` /
-`DidNotFire` -- written at the WHEN boundary opcodes, as the `otherwise` spec
-defines. Mode determines what the gate writes: `when` and `then` gates write
-the rule's own outcome; **an `otherwise` rule's gate writes a chain-aware
-value**.
+### The firing record
+
+Each rule carries one small record: a three-state value.
+
+- **`Evaluating`** -- the rule has begun its WHEN check and not yet completed
+  it.
+- **`DidFire`** -- the rule's most recent completed WHEN evaluation fired.
+- **`DidNotFire`** -- the rule's most recent completed WHEN evaluation did not
+  fire.
+
+The runtime writes it at the WHEN boundary opcodes the compiler already
+emits: `WHEN_START` writes `Evaluating`, and the two gates -- the truthiness
+gate (`WHEN_END`) and the presence gate (`WHEN_END_PRESENT`) -- write the
+outcome, `DidFire` or `DidNotFire`. Both gates already compute that outcome;
+the record stores it and never re-derives it from the WHEN value.
+
+The WHEN value cannot substitute for the record. The captured value is the
+pre-gate value, and the two gates consume it differently: the truthiness gate
+fires on truthiness, while a presence-gated sensor fires on presence, so a
+present-but-falsy value -- a received `0`, an empty string, `false` -- fires
+its rule. Deriving "did not fire" by testing the truthiness of a subject's
+WHEN value therefore reports the wrong answer for every presence-gated sensor
+delivering a falsy value, silently and data-dependently.
+
+Records are keyed by rule funcId, and a rule's record lives exactly as long as
+the brain instance holding it; a brain re-initialization rebuilds the store at
+its initial value.
+
+**The initial value is `DidFire`.** A rule with an empty WHEN emits no WHEN
+boundary opcodes at all, so it never writes its record; the initial value
+makes it read as always-fired -- an empty WHEN means always -- with no special
+emission and no bytecode change. For every other rule the initial value is
+unobservable: a subject begins or completes its WHEN check before the rule
+below it reads.
+
+Freshness needs no timestamps. Siblings evaluate top-down in document order,
+so on a think where both rules evaluate, the subject writes before the rule
+below it reads. On a think where the subject does not run, the record already
+holds the right answer: a rule parked or quiesced mid-DO last completed a fire
+and retains `DidFire`, and a rule stopped mid-WHEN-check -- a budget split or
+a fault -- reads `Evaluating`. A reader whose own evaluation is budget-split
+lands one think late and sees the subject's most recent completed outcome,
+never an answer that was not computed.
+
+### The chain write
+
+Mode determines what the gate writes: `when` and `then` gates write the rule's
+own outcome; **an `otherwise` rule's gate writes a chain-aware value**.
 
 For an `otherwise` rule R with subject S (the rule directly above):
 
@@ -109,10 +151,10 @@ OTHERWISE c      DO z     // fires iff !a-fired and !b and c
 OTHERWISE        DO w     // fires iff none of the above fired
 ```
 
-The parked-subject, budget-split, and empty-WHEN cases follow the record
-semantics of the `otherwise` spec: a parked chain member retains `DidFire`
-and keeps the rest of the chain quiet while its action is in flight;
-`Evaluating` propagates and keeps the chain quiet.
+The parked-subject, budget-split, and empty-WHEN cases fall out of the record
+above: a parked chain member retains `DidFire` and keeps the rest of the chain
+quiet while its action is in flight; `Evaluating` propagates and keeps the
+chain quiet.
 
 A flat run of `otherwise` rules is a ladder. (The deprecated tile's flat runs
 alternate instead; see Document model and migration.) Nesting remains
@@ -177,12 +219,40 @@ stamps, nothing to clear.
 waits**: `THEN when <sensor>` runs after the completion if the sensor holds
 at that moment ("then, if it is still dark, ..."), and skips the completion
 otherwise. The waiting form ("then, once shaken, ...") is a different
-feature (see Deferred); authors express it by nesting a `when` rule under
-the `then`.
+feature (see Deferred); authors express it with a flag variable -- the
+`then` sets the flag, and a separate `when` rule fires on the flag plus the
+awaited condition and clears it. (A `when` rule nested under the `then` does
+NOT wait: a child evaluates once per parent firing, on the wake think, so it
+filters at the same moment the `then` does.)
 
 A `then` parked on its **own** awaited action does not observe its subject,
 like any parked rule: completions that land while its DO is in flight are not
 queued, matching the per-think philosophy of the rest of the language.
+
+### Chain gating
+
+A `then` fires only when its subject **fired and completed**. The two ways a
+`then` can end a think without firing -- its subject skipped (the trigger
+answered false), or its subject completed but its own expression did not hold
+at the wake think -- are indistinguishable downstream: both end the
+evaluation as `DidNotFire`, and the next `then` in the chain receives that
+outcome as its trigger answer and skips without evaluating its own
+expression. The skip cascades, so a chain is a single spine that breaks at
+the first link that does not fire:
+
+```
+WHEN button-a     DO scroll "hi"
+THEN when shaken  DO beep
+THEN              DO scroll "bye"
+```
+
+A completion of the scroll with no shake at that moment means no beep AND no
+"bye": a conditioned `then` gates everything downstream of it, not only its
+own step. A `then`'s subject is always the immediately preceding sibling, so
+there is no way to attach the third step to the first directly; an author who
+wants "bye" regardless of the shake restructures -- drops the filter,
+reorders the steps, or nests. An `otherwise` after a `then` catches exactly
+these non-firing thinks, filter misses included.
 
 ### Evaluation order and visibility
 
@@ -215,8 +285,8 @@ Ordinary rules apply, plus the pre-wait write from trigger case 1:
   skip: the sequence abandons rather than firing on partial work, and the
   skip cascades down a `then` chain through the ordinary skip path.
 - Page exit cancels waiting `then` fibers exactly as it cancels any child
-  fiber; their pending trigger handles cancel with them, and re-entry starts
-  clean.
+  fiber; their pending trigger handles are settled as skips (resolved false)
+  by the cancelled subject cluster's settle walk, and re-entry starts clean.
 
 ## Enforcement
 
@@ -274,15 +344,24 @@ Ordinary rules apply, plus the pre-wait write from trigger case 1:
 - The WHEN affordance on the rule header is switchable among the modes legal
   at that rule's position: **tap-to-cycle** -- each activation advances
   WHEN -> ELSE -> THEN, with a subtle press affordance on the capsule.
-- Accessibility contract for the cycle control: the capsule is a true button
-  in the editor's keyboard model (focusable; Enter/Space cycles; arrow keys
-  step in either direction); its accessible name carries the current mode
-  ("Trigger mode: When") and each change is announced through a polite live
-  region; the first rule's capsule is exposed disabled with an explanatory
-  name ("A first rule is always When"); mode identity is carried by the
+- Accessibility contract for the cycle control: a capsule with a real choice
+  (more than one admitted mode, or a current mode its position rejects) is a
+  true button in the editor's keyboard model -- focusable, with Enter/Space
+  cycling; arrow keys always navigate and never mutate. Its accessible name
+  carries the current mode ("Trigger mode: When") and each change is
+  announced through a polite live region; mode identity is carried by the
   label word, never color alone (tints are supplementary); a mode change is
   an ordinary undoable document edit. Cycle transitions respect reduced
-  motion.
+  motion. A capsule with no choice -- `when` is both current and the sole
+  admitted mode -- is not a focus stop at all: it renders as a static
+  marker, exactly like the DO capsule.
+- **Escape from an invalid mode.** A structural move can carry a rule's mode
+  to a position that does not admit it (a `then` rule indented to first
+  child); the rule keeps its mode and its diagnostic, and its capsule stays
+  operable there: cycling steps only through the modes the position admits,
+  so a rule can always be switched OUT of a mode its position rejects but
+  never INTO one, and the accessible name states the mismatch. The invalid
+  state is marked visually with the same error badge tiles carry.
 - **Capsule display labels**: WHEN, ELSE, THEN -- all short enough for the
   editor's stacked-upright-letters capsule treatment. The `otherwise` mode
   deliberately splits its display label (ELSE, the term MakeCode and Scratch
@@ -324,25 +403,42 @@ The backend teaching kernel teaches the same grammar the editor accepts.
 ## Runtime and conformance
 
 - The `then` trigger is a host action, not an opcode: it compiles to the
-  async `HOST_ACTION_CALL` + `AWAIT` pair, and the handle table, resume
+  async `HOST_ACTION_CALL_ASYNC` + `AWAIT` pair, and the handle table, resume
   path, fiber states, and cancellation carry it with no bytecode-format
   change. There is no completion record: the resolved handle carries the
   answer for a waiting `then`, and the same-think case reads the firing
   record plus subtree liveness.
-- The runtime state behind the trigger is one watcher slot per rule -- the
-  pending trigger handle of the `then` watching it, if any; at most one,
-  since only the immediately-following sibling can watch a rule. The
-  scheduler resolves watchers at fiber terminal transitions (done, fault,
-  cancelled): it walks the finished rule and its ancestors and resolves the
-  watcher of each rule whose subtree emptied, with that rule's firing
-  outcome. Subtree liveness for an arbitrary rule derives from the fiber
-  table and the rule-ancestor table the program carries.
+- The runtime state behind the trigger is two per-rule facts: a watcher
+  slot -- the pending trigger handle of the `then` watching it, if any; at
+  most one, since only the immediately-following sibling can watch a rule --
+  and an abandonment mark recording that the rule's current firing lost a
+  fiber to a fault or cancellation anywhere in its cluster. The scheduler
+  resolves watchers at fiber terminal transitions (done, fault, cancelled):
+  it walks the finished rule and its ancestors, marking each visited rule
+  abandoned on a fault or cancellation, and resolves the watcher of each
+  rule whose subtree emptied -- true only for an unmarked `DidFire`, false
+  otherwise. The mark clears when the rule next spawns a firing. Subtree
+  liveness for an arbitrary rule derives from the fiber table and the
+  rule-ancestor table the program carries.
 - The one mode-aware VM behavior is the **`otherwise` chain gate write**,
   carried by two gate-variant opcodes -- chain forms of `WHEN_END` and
   `WHEN_END_PRESENT`. Each computes its fired outcome exactly as its base
   gate does, then writes the chain value; the subject lookup is the resolver
-  the `otherwise` sensor uses. Opcode, host-action, and diagnostic ids are
-  assigned at implementation, append-only.
+  the `otherwise` sensor uses. Ids are append-only: the chain-gate opcode
+  numbers and the trigger host action's ids are recorded in the VM contract,
+  and diagnostic ids are assigned at implementation.
+- The trigger host action declares `uncappedHandles`, so a waiting `then`'s
+  pending handle is allocated outside the runtime's `maxHandles` accounting. A
+  rule holds at most one watcher, so the live trigger-handle count is bounded
+  by the program's rule count. **A chain's length is bounded by fibers and
+  memory, not by the profile's concurrent-handle cap**: a chain longer than
+  `maxHandles` runs to its last link, and the cap continues to bound only
+  concurrent device work.
+- Handle starvation is loud, never silent. A dispatch that re-executes without
+  a free handle for `HANDLE_BACKPRESSURE_FAULT_ROUNDS` consecutive rounds
+  faults `StackOverflow` through the ordinary fault path, so it reaches the
+  host fault callback, marks the cluster abandoned, and cascades the skip down
+  the chain like any other fault.
 - The watcher slots, like the firing record, are runtime-internal: not
   serialized, not traced.
 - The VM contract documents the gate variants, the trigger host action, and
@@ -372,8 +468,8 @@ service + editor affordance + assistant bridge.
   in the document model, and have no consumer; the sibling forms cover the
   branching and sequencing patterns.
 - **A latching `then` expression** ("then, once shaken, ...") that waits for
-  its expression after the completion. Nesting a `when` rule under the
-  `then` expresses it; a dedicated form waits for authoring demand.
+  its expression after the completion. The flag-variable pattern expresses
+  it (see Firing); a dedicated form waits for authoring demand.
 - **A repeating form** (fire every think after completion until the subject
   re-fires).
 - **`otherwise` delivering its subject's WHEN value.** The subject did not

@@ -12,6 +12,7 @@ import {
   mkOperatorTileId,
   mkSensorTileId,
   mkVariableTileId,
+  RuleTriggerMode,
   TilePlacement,
 } from "@wendoo/core/brain";
 import { __test__appendTile, __test__createBrainServices } from "@wendoo/core/brain/__test__";
@@ -24,7 +25,7 @@ import {
   segmentDisplayText,
   sentenceText,
   tileSentenceWord,
-  whenTriggerWord,
+  triggerModeWord,
 } from "@wendoo/core/brain/language-service";
 import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@wendoo/core/brain/model";
 import {
@@ -151,10 +152,12 @@ function makeRule(whenTiles: readonly IBrainTileDef[], doTiles: readonly IBrainT
   return rule;
 }
 
-/** One rule of a page fixture: the tiles of each side, plus any child rules. */
+/** One rule of a page fixture: the tiles of each side, its mode, plus any child rules. */
 interface RuleSpec {
   readonly when?: readonly IBrainTileDef[];
   readonly do?: readonly IBrainTileDef[];
+  /** The rule's trigger mode; omitted leaves it in the `when` mode. */
+  readonly trigger?: RuleTriggerMode;
   readonly children?: readonly RuleSpec[];
 }
 
@@ -181,6 +184,9 @@ function appendRuleSpecs(page: BrainPageDef, specs: readonly RuleSpec[], depth: 
     }
     for (let i = 0; i < depth; i++) {
       assert.ok(rule.indent(), `rule indents to depth ${depth}`);
+    }
+    if (spec.trigger !== undefined) {
+      (rule as BrainRuleDef).setTrigger(spec.trigger);
     }
     appendRuleSpecs(page, spec.children ?? [], depth + 1);
   }
@@ -1129,7 +1135,11 @@ function testLocaleCatalog(): LocaleCatalog {
         "When I do {negation} {form} {object}": "ZORP NAY {negation} {form} {object}",
         "When I am {negation} {form} {object}": "ZORP MI NAY {negation} {form} {object}",
         "When {negation} {form} {object}": "ZORP EVENTZ NAY {negation} {form} {object}",
+        "Otherwise, when {condition}": "ELZ KA {condition}",
+        "Then, when {condition}": "THENZ KA {condition}",
         Always: "ALWAZ",
+        Otherwise: "ELZ",
+        Then: "THENZ",
       },
       "sentence-bare": {
         "{frame, select, verb {anything} other {}}": "{frame, select, verb {ANYTHINGZ} other {}}",
@@ -1148,6 +1158,10 @@ function testLocaleCatalog(): LocaleCatalog {
         "{parent}, and {consequence}": "{parent} ++ANDZ {consequence}",
         "{parent}, when {condition}": "{parent} ++WHENZ {condition}",
         "{parent}, {consequence}": "{parent} ++SOZ {consequence}",
+        "{parent}, otherwise when {condition}": "{parent} ++ELZIFZ {condition}",
+        "{parent}, otherwise {consequence}": "{parent} ++ELZ {consequence}",
+        "{parent}, then when {condition}": "{parent} ++THENZIFZ {condition}",
+        "{parent}, then {consequence}": "{parent} ++THENZ {consequence}",
         "{condition}, {action}": "{condition} >> {action}",
         "{sentence} {rest}": "{sentence} // {rest}",
         "I {form} {object}": "MI {form} {object}",
@@ -1306,19 +1320,101 @@ describe("the trigger word accessor", () => {
   test("it reads the word the empty WHEN projects as the rule's trigger", () => {
     const rule = makeRule([], [makeActuator("walk", { label: "walk" })]);
 
-    assert.ok(projectedText(rule).startsWith(whenTriggerWord(localizer)));
+    assert.ok(projectedText(rule).startsWith(triggerModeWord(RuleTriggerMode.When, localizer)));
   });
 
   test("it reads through the catalog the localizer carries", () => {
     const translated = createLocalizer(testLocaleCatalog());
 
-    assert.equal(whenTriggerWord(translated), "ALWAZ");
+    assert.equal(triggerModeWord(RuleTriggerMode.When, translated), "ALWAZ");
     assert.ok(projectedText(makeRule([], [makeActuator("walk", { label: "walk" })]), translated).startsWith("ALWAZ"));
   });
 
   test("a rule empty on both sides projects no segments even though the trigger word reads", () => {
-    assert.notEqual(whenTriggerWord(localizer), "");
+    assert.notEqual(triggerModeWord(RuleTriggerMode.When, localizer), "");
     assert.deepEqual(project(makeRule([], [])), []);
+  });
+
+  test("each mode reads its own trigger word", () => {
+    const words = [RuleTriggerMode.When, RuleTriggerMode.Otherwise, RuleTriggerMode.Then].map((mode) =>
+      triggerModeWord(mode, localizer)
+    );
+
+    assert.equal(new Set(words).size, words.length);
+    for (const word of words) {
+      assert.notEqual(word, "");
+    }
+  });
+});
+
+// -- trigger modes ------------------------------------------------------------
+
+/** The rule standing second on a page of two, carrying `trigger`. */
+function makeModeRule(
+  trigger: RuleTriggerMode,
+  whenTiles: readonly IBrainTileDef[],
+  doTiles: readonly IBrainTileDef[]
+): IBrainRuleDef {
+  const page = makePage([
+    { when: [makeSensor("hungry", { label: "hungry" })], do: [makeActuator("wander", { label: "wander" })] },
+    { when: whenTiles, do: doTiles, trigger },
+  ]);
+  return page.children().get(1);
+}
+
+describe("a rule's trigger mode", () => {
+  test("an otherwise rule with an empty condition reads its connective alone", () => {
+    const rule = makeModeRule(RuleTriggerMode.Otherwise, [], [makeActuator("wander", { label: "wander" })]);
+
+    assert.equal(projectedText(rule), "Otherwise, wander.");
+  });
+
+  test("an otherwise rule with a condition keeps the ordinary when connective", () => {
+    const rule = makeModeRule(
+      RuleTriggerMode.Otherwise,
+      [makeObjectSensor("see", { label: "see" }), makeLiteral(CoreTypeIds.String, "food", "food")],
+      [makeActuator("eat", { label: "eat" })]
+    );
+
+    assert.equal(projectedText(rule), 'Otherwise, when I see "food", eat.');
+  });
+
+  test("a then rule with an empty condition reads its connective alone", () => {
+    const rule = makeModeRule(RuleTriggerMode.Then, [], [makeActuator("beep", { label: "beep" })]);
+
+    assert.equal(projectedText(rule), "Then, beep.");
+  });
+
+  test("a then rule with a condition keeps the ordinary when connective", () => {
+    const rule = makeModeRule(
+      RuleTriggerMode.Then,
+      [makePresenceGatedSensor("shaken", { label: "shaken", language: { frame: "event" } })],
+      [makeActuator("scroll", { label: "scroll" }), makeLiteral(CoreTypeIds.String, "bye", "bye")]
+    );
+
+    assert.equal(projectedText(rule), 'Then, when shaken, scroll "bye".');
+  });
+
+  test("neither inter-rule mode reads the always-word on an empty condition", () => {
+    const always = triggerModeWord(RuleTriggerMode.When, localizer);
+
+    for (const mode of [RuleTriggerMode.Otherwise, RuleTriggerMode.Then]) {
+      const rule = makeModeRule(mode, [], [makeActuator("wander", { label: "wander" })]);
+      assert.ok(!projectedText(rule).includes(always), projectedText(rule));
+    }
+  });
+
+  test("the mode's connective and its condition localize through the sentence contexts", () => {
+    const translated = createLocalizer(testLocaleCatalog());
+    const bare = makeModeRule(RuleTriggerMode.Otherwise, [], [makeActuator("wander", { label: "wander" })]);
+    const conditioned = makeModeRule(
+      RuleTriggerMode.Then,
+      [makeObjectSensor("see", { label: "see" })],
+      [makeActuator("eat", { label: "eat" })]
+    );
+
+    assert.equal(projectedText(bare, translated), "ELZ ;; wander!");
+    assert.equal(projectedText(conditioned, translated), "THENZ KA MI ZEE ANYTHINGZ ;; eat!");
   });
 });
 
@@ -1901,6 +1997,72 @@ describe("page paragraph sequences", () => {
     const page = makePage([{ when: [seeSensor()] }, { when: [hungrySensor()] }, { when: [hearSensor()] }]);
 
     assert.equal(paragraphAsText(page), "When I see anything, When I am hungry, When I hear,");
+  });
+});
+
+// -- trigger modes in a paragraph ---------------------------------------------
+
+describe("page paragraph trigger modes", () => {
+  test("a top-level mode rule reads its own sentence from its connective", () => {
+    const page = makePage([
+      { when: [seeSensor()], do: [eatAction()] },
+      { do: [walkAction()], trigger: RuleTriggerMode.Otherwise },
+      { do: [restAction()], trigger: RuleTriggerMode.Then },
+    ]);
+
+    assert.equal(paragraphAsText(page), "When I see anything, eat. Otherwise, walk. Then, rest.");
+  });
+
+  test("a mode child is joined by its own connective, whatever the clause before it holds", () => {
+    const page = makePage([
+      {
+        when: [seeSensor()],
+        do: [walkAction()],
+        children: [
+          { when: [hungrySensor()], do: [eatAction()] },
+          { do: [restAction()], trigger: RuleTriggerMode.Otherwise },
+          { when: [hearSensor()], do: [walkAction()], trigger: RuleTriggerMode.Then },
+        ],
+      },
+    ]);
+
+    assert.equal(
+      paragraphAsText(page),
+      "When I see anything, walk, and if I am hungry, eat, otherwise rest, then when I hear, walk."
+    );
+  });
+
+  test("a mode child of a parent holding no action keeps its own connective", () => {
+    const page = makePage([
+      {
+        when: [seeSensor()],
+        children: [
+          { when: [hungrySensor()], do: [eatAction()] },
+          { do: [restAction()], trigger: RuleTriggerMode.Then },
+        ],
+      },
+    ]);
+
+    assert.equal(paragraphAsText(page), "When I see anything, when I am hungry, eat, then rest.");
+  });
+
+  test("the mode connectives of a paragraph localize through the connective context", () => {
+    const translated = createLocalizer(testLocaleCatalog());
+    const page = makePage([
+      {
+        when: [seeSensor()],
+        do: [walkAction()],
+        children: [
+          { do: [eatAction()], trigger: RuleTriggerMode.Otherwise },
+          { when: [hungrySensor()], do: [restAction()], trigger: RuleTriggerMode.Then },
+        ],
+      },
+    ]);
+
+    assert.equal(
+      paragraphAsText(page, translated),
+      "ZORP ZEE ANYTHINGZ ZAP ;; walk ++ELZ eat ++THENZIFZ MI ESTA hungry >> rest!"
+    );
   });
 });
 

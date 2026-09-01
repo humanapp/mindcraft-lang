@@ -4,6 +4,7 @@ import { CircleAlert, ClockFading } from "lucide-react";
 import { type ButtonHTMLAttributes, forwardRef, useLayoutEffect, useState } from "react";
 import { staticAssetUrl } from "../asset-url";
 import { adjustColor, readableInk } from "../lib/color";
+import { BrainBadge } from "./BrainBadge";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { kRuleChromeLayer, kRuleContentLayer } from "./editor-layers";
 import { kPageGridSelectionAttribute } from "./page-grid-selection";
@@ -139,32 +140,24 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
         className={`relative self-center transition-transform duration-100 ${isPageGridSelected ? "brain-tile-selected" : "hover:scale-105"}`}
       >
         {isAsyncAction && (
-          <span
-            className={`group/clock absolute -top-1.5 -left-1.5 ${kRuleChromeLayer} flex items-center justify-center rounded-full w-6 h-6 shadow-md border pointer-events-auto bg-brain-timed border-brain-timed-ink text-brain-timed-ink`}
-            role="img"
-            aria-label="May take time to complete"
+          <BrainBadge
+            className={`absolute -top-1.5 -left-1.5 ${kRuleChromeLayer} flex items-center justify-center rounded-full w-6 h-6 shadow-md border pointer-events-auto bg-brain-timed border-brain-timed-ink text-brain-timed-ink`}
+            message="May take time to complete"
           >
             <ClockFading className="w-4 h-4" />
-            <span className="absolute bottom-full left-0 mb-1 hidden group-hover/clock:block whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white shadow-lg pointer-events-none">
-              May take time to complete
-            </span>
-          </span>
+          </BrainBadge>
         )}
         {badge && (
-          <span
-            className={`group/badge absolute -top-1.5 -right-1.5 ${kRuleChromeLayer} flex items-center justify-center rounded-full w-6 h-6 shadow-md border pointer-events-auto ${
+          <BrainBadge
+            className={`absolute -top-1.5 -right-1.5 ${kRuleChromeLayer} flex items-center justify-center rounded-full w-6 h-6 shadow-md border pointer-events-auto ${
               badge.type === "error"
                 ? "bg-destructive border-destructive text-destructive-foreground"
                 : "bg-brain-warn border-brain-warn-edge text-brain-warn-ink"
             }`}
-            role="img"
-            aria-label={badge.message}
+            message={badge.message}
           >
             <CircleAlert className="w-4 h-4" />
-            <span className="absolute bottom-full right-0 mb-1 hidden group-hover/badge:block whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white shadow-lg pointer-events-none">
-              {badge.message}
-            </span>
-          </span>
+          </BrainBadge>
         )}
         <button
           ref={ref}

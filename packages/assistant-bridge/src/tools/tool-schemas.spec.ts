@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { RuleTriggerMode } from "@wendoo/core/brain";
+import type { RuleTriggerName } from "./tool-schemas.js";
 import { maxBatchCommands, maxPlacedTiles, toolDefinitions, toolInputSchemas } from "./tool-schemas.js";
+
+/** `true` only while the modes the tool schema takes are exactly core's own. */
+type TriggerNamesMatchCore = [RuleTriggerName] extends [RuleTriggerMode]
+  ? [RuleTriggerMode] extends [RuleTriggerName]
+    ? true
+    : false
+  : false;
 
 describe("the bridge tool surface", () => {
   test("offers the six tools of the authoring slice", () => {
@@ -103,6 +112,47 @@ describe("tool input validation", () => {
     }
   });
 
+  test("takes exactly the trigger modes core defines, and advertises them", () => {
+    const matchesCore: TriggerNamesMatchCore = true;
+    const properties = (
+      toolDefinitions.find((tool) => tool.name === "propose_edit")?.inputSchema as {
+        properties?: Record<string, { enum?: string[] }>;
+      }
+    ).properties;
+
+    assert.equal(matchesCore, true);
+    assert.deepEqual(properties?.trigger?.enum, Object.values(RuleTriggerMode));
+  });
+
+  test("accepts a rule made in a trigger mode, and a rule switched to one", () => {
+    for (const input of [
+      { op: "addRule", pageIndex: 0, trigger: "otherwise" },
+      { op: "addChildRule", parentRuleId: "0/0", trigger: "then" },
+      { op: "setRuleTrigger", ruleId: "0/0", trigger: "when" },
+    ]) {
+      const parsed = toolInputSchemas.propose_edit.safeParse(input);
+
+      assert.equal(parsed.success, true, JSON.stringify(input));
+    }
+  });
+
+  test("accepts a rule made without naming a trigger mode, which takes the default", () => {
+    const parsed = toolInputSchemas.propose_edit.safeParse({ op: "addRule", pageIndex: 0 });
+
+    assert.equal(parsed.success, true);
+  });
+
+  test("rejects a trigger mode the modes do not name, and a switch naming none", () => {
+    for (const input of [
+      { op: "addRule", pageIndex: 0, trigger: "always" },
+      { op: "setRuleTrigger", ruleId: "0/0" },
+    ]) {
+      const parsed = toolInputSchemas.propose_edit.safeParse(input);
+
+      assert.equal(parsed.success, false, JSON.stringify(input));
+    }
+  });
+
   test("rejects a run entry that names no tile", () => {
     const parsed = toolInputSchemas.propose_edit.safeParse({
       op: "placeTiles",
@@ -132,6 +182,7 @@ describe("tool input validation", () => {
     assert.deepEqual(properties?.op?.enum, [
       "addRule",
       "addChildRule",
+      "setRuleTrigger",
       "placeTile",
       "placeTiles",
       "replaceTile",

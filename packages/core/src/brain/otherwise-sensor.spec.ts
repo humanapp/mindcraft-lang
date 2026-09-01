@@ -257,6 +257,18 @@ function compileDiagCodes(brainDef: BrainDef): number[] {
   return codes;
 }
 
+/** True when `brainDef` compiles to a program despite its diagnostics. */
+function compileBrainProgram(brainDef: BrainDef): boolean {
+  const result = compileBrain(
+    brainDef,
+    catalogsFor(brainDef),
+    services.shared.conversions,
+    services.runtime.actions,
+    services.runtime.types
+  );
+  return result.program !== undefined;
+}
+
 describe("otherwise sensor -- the complement of the preceding sibling", () => {
   test("a subject that fires keeps the otherwise rule quiet", () => {
     const { brainDef, page } = newBrain();
@@ -560,6 +572,28 @@ describe("otherwise sensor -- a subject whose WHEN outruns its instruction budge
   });
 });
 
+/** WHEN-side diag codes from the typecheck result `rule.typecheck()` stored on the rule. */
+function whenDiagCodes(rule: BrainRuleDef): number[] {
+  const result = rule.when().typecheckResult();
+  assert.ok(result, "the WHEN tileset must retain its typecheck result");
+  const codes: number[] = [];
+  result.whenParseResult.diags.forEach((diag) => {
+    codes.push(diag.code as number);
+  });
+  return codes;
+}
+
+/** DO-side diag codes from the typecheck result `rule.typecheck()` stored on the rule. */
+function doDiagCodes(rule: BrainRuleDef): number[] {
+  const result = rule.do().typecheckResult();
+  assert.ok(result, "the DO tileset must retain its typecheck result");
+  const codes: number[] = [];
+  result.doParseResult.diags.forEach((diag) => {
+    codes.push(diag.code as number);
+  });
+  return codes;
+}
+
 describe("otherwise sensor -- compile-time validation", () => {
   test("otherwise declares the preceding-sibling requirement the validation keys on", () => {
     assert.equal(otherwiseTile.capabilities().get(CoreCapabilityBits.RequiresPrecedingSiblingRule), 1);
@@ -588,12 +622,25 @@ describe("otherwise sensor -- compile-time validation", () => {
     assert.ok(compileDiagCodes(brainDef).includes(ParseDiagCode.NoPrecedingSiblingRule));
   });
 
-  test("otherwise in a rule with a preceding sibling is accepted", () => {
+  test("otherwise in a rule with a preceding sibling compiles under the deprecation warning", () => {
     const { brainDef, page } = newBrain();
     fillRule(page.children().get(0)! as BrainRuleDef, [boolLiteral(true)], []);
     fillRule(page.appendNewRule() as BrainRuleDef, [otherwiseTile], [makeMarker().tile]);
 
-    assert.deepEqual(compileDiagCodes(brainDef), []);
+    assert.deepEqual(compileDiagCodes(brainDef), [ParseDiagCode.DeprecatedOtherwiseTile]);
+    assert.ok(compileBrainProgram(brainDef), "a deprecation warning does not block the build");
+  });
+
+  test("the per-rule typecheck reports the deprecation on the WHEN side the tile stands on", () => {
+    const { page } = newBrain();
+    fillRule(page.children().get(0)! as BrainRuleDef, [boolLiteral(true)], []);
+    const rule = page.appendNewRule() as BrainRuleDef;
+    fillRule(rule, [otherwiseTile], [makeMarker().tile]);
+
+    rule.typecheck();
+
+    assert.deepEqual(whenDiagCodes(rule), [ParseDiagCode.DeprecatedOtherwiseTile]);
+    assert.deepEqual(doDiagCodes(rule), [], "the DO side carries no deprecation of its own");
   });
 
   test("otherwise on the DO side is rejected", () => {
@@ -651,6 +698,10 @@ describe("otherwise sensor -- registration", () => {
 
   test("the tile is inline and WHEN-side only", () => {
     assert.equal(otherwiseTile.placement, TilePlacement.WhenSide | TilePlacement.Inline);
+  });
+
+  test("the tile is deprecated, so no picker offers it", () => {
+    assert.equal(otherwiseTile.deprecated, true);
   });
 
   test("the sensor produces a boolean", () => {

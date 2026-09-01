@@ -115,10 +115,25 @@
   /* Badge on an action that may take time to complete. */
   --color-brain-timed: oklch(92.9% 0.013 255.508);
   --color-brain-timed-ink: oklch(44.6% 0.043 257.281);
-  /* WHEN and DO capsules. */
+  /* WHEN and DO capsules -- dark fill, white letters -- and the trigger-mode
+     switch's fill, edge and ink per mode. The two marked modes are solid bright
+     chips under dark letters in the app's own band, at one fill lightness and
+     separating by hue; `when` separates from both by lightness.
+     The hues this app leaves free: violet is the WHEN tile side and blue the DO
+     side, the primary, the accent and the focus ring, so the whole violet-blue
+     arc is spoken for; amber is the unsaved dot and the warning family, red the
+     destructive role and the missing tile, green the success role. `otherwise`
+     takes magenta and `then` takes teal, 155 degrees apart. Each ink reaches
+     7:1 on its own fill. */
   --color-brain-capsule: oklch(20.8% 0.042 265.755);
   --color-brain-capsule-edge: oklch(55.4% 0.046 257.417);
   --color-brain-capsule-ink: #fff;
+  --color-brain-capsule-otherwise: oklch(22% 0.19 350);
+  --color-brain-capsule-otherwise-edge: oklch(62% 0.19 350);
+  --color-brain-capsule-otherwise-ink: #fff;
+  --color-brain-capsule-then: oklch(34% 0.13 195);
+  --color-brain-capsule-then-edge: oklch(64% 0.13 195);
+  --color-brain-capsule-then-ink: #fff;
   /* Rule-row round pills: the rule handle, the add-tile buttons, rule numbers. */
   --color-brain-pill: oklch(96.8% 0.007 247.896);
   --color-brain-pill-hover: oklch(92.9% 0.013 255.508);

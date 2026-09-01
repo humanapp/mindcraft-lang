@@ -61,6 +61,12 @@ describe("proposal policy table", () => {
     }
   });
 
+  test("rejects the codes a trigger mode and the deprecated tile report", () => {
+    assert.equal(proposalVerdict(ParseDiagCode.OtherwiseTriggerNoPrecedingSiblingRule), "reject");
+    assert.equal(proposalVerdict(ParseDiagCode.ThenTriggerNoPrecedingSiblingRule), "reject");
+    assert.equal(proposalVerdict(ParseDiagCode.DeprecatedOtherwiseTile), "reject");
+  });
+
   test("rejects the codes a dropped expression and a type mismatch report", () => {
     assert.equal(proposalVerdict(ParseDiagCode.UnexpectedExpressionAfterExpression), "reject");
     assert.equal(proposalVerdict(CompilationDiagCode.UncompilableExpressionDropped), "reject");
@@ -165,6 +171,21 @@ const refusedCases: readonly RefusedCase[] = [
     ],
     code: TypeDiagCode.DataTypeMismatch,
     params: { expectedTypeIds: ["number:<number>"], actualTypeIds: ["nil:<nil>"], ruleId: kRule },
+  },
+  {
+    name: "a trigger mode the rule's position does not admit",
+    diagnostics: [
+      { code: ParseDiagCode.OtherwiseTriggerNoPrecedingSiblingRule },
+      { code: ParseDiagCode.OtherwiseTriggerNoPrecedingSiblingRule, params: { ruleId: kRule } },
+    ],
+    code: ParseDiagCode.OtherwiseTriggerNoPrecedingSiblingRule,
+    params: { ruleId: kRule },
+  },
+  {
+    name: "the deprecated `otherwise` tile the mode replaced",
+    diagnostics: [{ code: ParseDiagCode.DeprecatedOtherwiseTile, params: { tileId: "tile.sensor->otherwise" } }],
+    code: ParseDiagCode.DeprecatedOtherwiseTile,
+    params: { tileId: "tile.sensor->otherwise", ruleId: kRule },
   },
 ];
 

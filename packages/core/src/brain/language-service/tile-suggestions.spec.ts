@@ -20,6 +20,7 @@ import {
   mkControlFlowTileId,
   mkOperatorTileId,
   RuleSide,
+  RuleTriggerMode,
   type SlotExpr,
   TilePlacement,
 } from "@wendoo/core/brain";
@@ -36,6 +37,7 @@ import type {
   VariableExpr,
 } from "@wendoo/core/brain/compiler";
 import {
+  availableTriggerModes,
   buildInsertionContext,
   collectRuleHierarchyCapabilities,
   collectRuleHierarchyOutputKeys,
@@ -4276,6 +4278,61 @@ describe("WHEN-result consumption", () => {
       CoreTypeIds.Buffer,
       "child sees the parent's WHEN-result type"
     );
+  });
+
+  test("getRuleWhenResultType types an empty WHEN under a trigger mode as its Boolean arming read", () => {
+    const parent = firstRule();
+    __test__appendTile(parent.when(), bufferProducerDef);
+    parent.appendNewRule();
+    const child = parent.appendNewRule();
+    child.setTrigger(RuleTriggerMode.Then);
+    assert.equal(child.when().tiles().size(), 0, "child WHEN is empty");
+    assert.equal(
+      getRuleWhenResultType(child, services.edit.operatorOverloads, services.shared.conversions),
+      CoreTypeIds.Boolean,
+      "the mode's arming read is the rule's own captured WHEN result"
+    );
+  });
+});
+
+// ---- Trigger modes available at a position ----
+
+describe("availableTriggerModes", () => {
+  function pageWithRules(count: number): BrainRuleDef[] {
+    const brainDef = new BrainDef(services);
+    const pageResult = brainDef.appendNewPage();
+    assert.ok(pageResult.success);
+    const page = pageResult.value!.page;
+    while (page.children().size() < count) page.appendNewRule();
+    const rules: BrainRuleDef[] = [];
+    for (let i = 0; i < count; i++) rules.push(page.children().get(i)! as BrainRuleDef);
+    return rules;
+  }
+
+  test("the first rule at a level takes the when mode alone", () => {
+    const [first] = pageWithRules(2);
+    assert.deepEqual(availableTriggerModes(first).toArray(), [RuleTriggerMode.When]);
+  });
+
+  test("a rule with a preceding sibling takes all three modes", () => {
+    const [, second] = pageWithRules(2);
+    assert.deepEqual(availableTriggerModes(second).toArray(), [
+      RuleTriggerMode.When,
+      RuleTriggerMode.Otherwise,
+      RuleTriggerMode.Then,
+    ]);
+  });
+
+  test("the first child rule at its own level takes the when mode alone", () => {
+    const [root] = pageWithRules(2);
+    const firstChild = root.appendNewRule();
+    const secondChild = root.appendNewRule();
+    assert.deepEqual(availableTriggerModes(firstChild).toArray(), [RuleTriggerMode.When]);
+    assert.equal(availableTriggerModes(secondChild).size(), 3);
+  });
+
+  test("no rule takes the when mode alone", () => {
+    assert.deepEqual(availableTriggerModes(undefined).toArray(), [RuleTriggerMode.When]);
   });
 });
 

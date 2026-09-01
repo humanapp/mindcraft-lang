@@ -282,7 +282,35 @@ export interface Fiber {
    * child, and hook fibers, so its presence marks a child-rule fiber.
    */
   rootRuleFuncId?: number;
+  /**
+   * Function id of the rule this fiber runs: its own rule for a root- or
+   * child-rule fiber, the calling rule for an async-action child fiber, and
+   * `undefined` for a fiber outside any rule. Set at spawn and retained through
+   * the fiber's terminal transition, after its frames are gone.
+   */
+  ruleFuncId?: number;
+  /**
+   * Program counter of the async dispatch this fiber last parked on for want of
+   * a free async handle, paired with {@link handleBackpressureRounds}. Absent
+   * until the fiber first backpressures.
+   */
+  handleBackpressurePc?: number;
+  /**
+   * Consecutive rounds this fiber has re-executed the dispatch at
+   * {@link handleBackpressurePc} without a free handle. Reset to zero by a
+   * dispatch that allocates, and by a backpressure at a different pc. Reaching
+   * {@link HANDLE_BACKPRESSURE_FAULT_ROUNDS} faults the fiber
+   * `ErrorCode.StackOverflow`.
+   */
+  handleBackpressureRounds?: number;
 }
+
+/**
+ * Consecutive rounds one fiber may re-execute the same async dispatch without a
+ * free async handle before the runtime faults it `ErrorCode.StackOverflow`.
+ * A dispatch that allocates clears the count.
+ */
+export const HANDLE_BACKPRESSURE_FAULT_ROUNDS = 8192;
 
 ///////////////////////////
 // Async Handle Management
@@ -309,6 +337,12 @@ export interface Handle {
    * Absent on a handle created by any other path.
    */
   actionKey?: ActionKey;
+  /**
+   * Whether this handle counts against the table's `maxHandles` cap. True for
+   * a handle backing a device or host operation; false for a handle whose live
+   * count the runtime already bounds by construction.
+   */
+  capped: boolean;
 }
 
 /** Events emitted by a {@link HandleTable}. */
@@ -323,26 +357,36 @@ export type HandleTableEvents = {
 export class HandleTable {
   private nextId = 1;
   private handles = new Dict<HandleId, Handle>();
+  private cappedCount = 0;
   private eventEmitter = new EventEmitter<HandleTableEvents>();
   public readonly events = this.eventEmitter.consumer();
 
   constructor(public readonly maxHandles: number) {}
 
   /**
-   * True when a {@link createPending} would succeed right now: the live-handle
-   * count is below {@link maxHandles}. Non-mutating; an async dispatch checks it
-   * to decide whether to allocate or to park and retry next round.
+   * True when a {@link createPending} of a capped handle would succeed right
+   * now: the live capped-handle count is below {@link maxHandles}. Uncapped
+   * handles are excluded from the count and always allocate. Non-mutating; an
+   * async dispatch checks it to decide whether to allocate or to park and retry
+   * next round.
    */
   hasCapacity(): boolean {
-    return this.handles.size() < this.maxHandles;
+    return this.cappedCount < this.maxHandles;
+  }
+
+  /** Count of live handles that count against {@link maxHandles}. */
+  cappedSize(): number {
+    return this.cappedCount;
   }
 
   /**
    * Allocate a pending handle. Pass `actionKey` when the handle backs an
-   * asynchronous host-action call, so its settle can name the action.
+   * asynchronous host-action call, so its settle can name the action. Pass
+   * `capped` false to keep the handle out of the {@link maxHandles} accounting;
+   * a capped allocation past the cap throws an overflow.
    */
-  createPending(actionKey?: ActionKey): HandleId {
-    if (this.handles.size() >= this.maxHandles) {
+  createPending(actionKey?: ActionKey, capped = true): HandleId {
+    if (capped && this.cappedCount >= this.maxHandles) {
       throwOverflow(`Handle limit exceeded: ${this.maxHandles}`);
     }
 
@@ -353,7 +397,11 @@ export class HandleTable {
       waiters: new UniqueSet<number>(),
       createdAt: Time.nowMs(),
       actionKey,
+      capped,
     });
+    if (capped) {
+      this.cappedCount++;
+    }
     return id;
   }
 
@@ -402,17 +450,26 @@ export class HandleTable {
   }
 
   delete(id: HandleId): void {
+    const h = this.handles.get(id);
+    if (!h) return;
+    if (h.capped) {
+      this.cappedCount--;
+    }
     this.handles.delete(id);
   }
 
   clear(): void {
     this.handles.clear();
+    this.cappedCount = 0;
   }
 
   gc(): number {
     let removed = 0;
     for (const [id, h] of this.handles.entries().toArray()) {
       if (h.state !== HandleState.PENDING && h.waiters.size() === 0) {
+        if (h.capped) {
+          this.cappedCount--;
+        }
         this.handles.delete(id);
         removed++;
       }
@@ -586,6 +643,13 @@ export interface IFiberScheduler extends Scheduler {
    * re-fire while any of its descendant child rules is still in flight.
    */
   hasLiveDescendantOfRoot(rootRuleFuncId: number): boolean;
+
+  /**
+   * Returns true when any live (runnable or waiting) fiber belongs to
+   * `ruleFuncId`'s cluster: a fiber whose own rule is `ruleFuncId` or descends
+   * from it through the program's rule-ancestor chain.
+   */
+  hasLiveRuleSubtree(ruleFuncId: number): boolean;
 
   /**
    * Execute one scheduler tick: every fiber runnable at tick entry gets

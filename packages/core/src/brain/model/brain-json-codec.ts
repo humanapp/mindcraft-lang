@@ -356,6 +356,7 @@ class BrainJsonEncoder {
     };
     if (ruleJson.ruleId !== undefined) result.ruleId = ruleJson.ruleId;
     if (ruleJson.comment !== undefined) result.comment = ruleJson.comment;
+    if (ruleJson.trigger !== undefined) result.trigger = ruleJson.trigger;
     return result;
   }
 }
@@ -604,6 +605,7 @@ class BrainJsonDecoder {
     };
     if (rule.ruleId !== undefined) result.ruleId = rule.ruleId;
     if (rule.comment !== undefined) result.comment = rule.comment;
+    if (rule.trigger !== undefined) result.trigger = rule.trigger;
     return result;
   }
 }

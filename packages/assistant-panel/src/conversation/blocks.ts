@@ -7,6 +7,7 @@ import type {
   NarrationRole,
 } from "@wendoo/assistant-relay";
 import { NarrationRole as RoleCode } from "@wendoo/assistant-relay";
+import { RuleTriggerMode } from "@wendoo/core/brain";
 import { callIdentity } from "./call-identity";
 import type { EditStoryRow } from "./edit-story";
 import { editCommands, editStoryRow } from "./edit-story";
@@ -37,6 +38,8 @@ export interface ReceiptRule {
   readonly ruleId: string;
   /** Rules it is nested under; `0` for a rule standing on the page itself. */
   readonly depth: number;
+  /** What arms the rule, `when` for a rule no payload gave a mode. */
+  readonly trigger: RuleTriggerMode;
   readonly when: readonly ProjectTile[];
   readonly do: readonly ProjectTile[];
 }
@@ -465,6 +468,7 @@ export function receiptRules(
   return [...rules.values()].map((rule) => ({
     ruleId: rule.ruleId,
     depth: ruleDepth(rule.ruleId, parentOf),
+    trigger: rule.trigger ?? RuleTriggerMode.When,
     when: rule.when,
     do: rule.do,
   }));

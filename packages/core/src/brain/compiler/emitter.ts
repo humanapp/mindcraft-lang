@@ -284,6 +284,28 @@ export class BytecodeEmitter implements IBytecodeEmitter {
   }
 
   /**
+   * Mark the end of a WHEN boundary that fires on a truthy WHEN result and
+   * records the chain-aware firing outcome.
+   *
+   * @param skipLabel - Label to jump to if WHEN evaluated to false (typically after DO section)
+   */
+  whenEndChain(skipLabel: number): void {
+    this.emit({ op: Op.WHEN_END_CHAIN, a: 0 }); // placeholder for relative offset
+    this.addFixup(skipLabel, "a");
+  }
+
+  /**
+   * Mark the end of a WHEN boundary that fires on a present (non-nil) WHEN
+   * result and records the chain-aware firing outcome.
+   *
+   * @param skipLabel - Label to jump to when the WHEN result is nil (typically after the DO section)
+   */
+  whenEndPresentChain(skipLabel: number): void {
+    this.emit({ op: Op.WHEN_END_PRESENT_CHAIN, a: 0 }); // placeholder for relative offset
+    this.addFixup(skipLabel, "a");
+  }
+
+  /**
    * Mark the start of a DO boundary.
    */
   doStart(): void {

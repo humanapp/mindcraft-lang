@@ -23,8 +23,10 @@ export {
   collectProvidedOutputKeys,
   parseBrainTiles,
   validateCapabilityRequirements,
+  validateDeprecatedOtherwiseTile,
   validateOutputProviders,
   validatePrecedingSiblingConsumers,
+  validateTriggerMode,
   validateWhenResultConsumers,
   whenResultConsumerEligible,
 } from "./parser";
@@ -57,7 +59,7 @@ import type { IConversionRegistry, IOperatorOverloads, ITypeRegistry, TypeId } f
 import type { Instr } from "../../runtime/bytecode";
 import type { Value } from "../../runtime/value";
 import { BitSet, type ReadonlyBitSet } from "../../util/bitset";
-import { type IBrainTileDef, type ITileCatalog, RuleSide } from "../interfaces";
+import { type IBrainTileDef, type ITileCatalog, RuleSide, RuleTriggerMode } from "../interfaces";
 import { whenExprResultType } from "../language-service/tile-suggestions";
 import { computeExpectedTypes } from "./expected-types";
 import { mapExprs } from "./expr-mapper";
@@ -67,9 +69,11 @@ import {
   collectProvidedOutputKeys,
   parseBrainTiles,
   validateCapabilityRequirements,
+  validateDeprecatedOtherwiseTile,
   validateOutputProviders,
   validatePrecedingSiblingConsumers,
   validateTilePlacement,
+  validateTriggerMode,
   validateWhenResultConsumers,
 } from "./parser";
 import type { Expr, ParseDiag, ParseResult, TypeEnv, TypeInfo, TypeInfoDiag } from "./types";
@@ -129,6 +133,14 @@ function appendParseDiags(result: ParseResult, extra: ReadonlyList<ParseDiag>): 
  * {@link CoreCapabilityBits.RequiresPrecedingSiblingRule} gets a
  * {@link ParseDiagCode.NoPrecedingSiblingRule} diagnostic.
  * It defaults to `true`, which reports nothing.
+ * `trigger` is the rule's trigger mode; `otherwise` and `then` need a preceding
+ * sibling, so either one combined with `hasPrecedingSiblingRule: false` gets a
+ * {@link ParseDiagCode.OtherwiseTriggerNoPrecedingSiblingRule} or
+ * {@link ParseDiagCode.ThenTriggerNoPrecedingSiblingRule} diagnostic. It
+ * defaults to `when`, which reports nothing.
+ * Each occurrence of the deprecated `otherwise` sensor tile on the WHEN side
+ * gets a {@link ParseDiagCode.DeprecatedOtherwiseTile} diagnostic at "warning"
+ * severity.
  * `localizer` is the locale every diagnostic names a tile in.
  */
 export function parseRule(
@@ -142,7 +154,8 @@ export function parseRule(
   inheritedCapabilities?: ReadonlyBitSet,
   inheritedWhenResultType?: TypeId,
   operatorOverloads?: IOperatorOverloads,
-  hasPrecedingSiblingRule: boolean = true
+  hasPrecedingSiblingRule: boolean = true,
+  trigger: RuleTriggerMode = RuleTriggerMode.When
 ): TypecheckResult {
   // Output and capability providers are visible across the whole rule (both
   // sides) and its ancestors; placement is validated per side.
@@ -171,19 +184,26 @@ export function parseRule(
 
   // Each side also carries the placement, output-provider,
   // capability-requirement, WHEN-result, and preceding-sibling diagnostics for
-  // its own tiles.
+  // its own tiles; the WHEN side additionally carries the trigger-mode and
+  // deprecated-tile diagnostics.
   const whenParseResult = appendParseDiags(
     appendParseDiags(
       appendParseDiags(
         appendParseDiags(
-          appendParseDiags(whenParsed, validateTilePlacement(whenSrc, RuleSide.When, localizer)),
-          validateOutputProviders(whenSrc, providedOutputKeys, localizer)
+          appendParseDiags(
+            appendParseDiags(
+              appendParseDiags(whenParsed, validateTilePlacement(whenSrc, RuleSide.When, localizer)),
+              validateOutputProviders(whenSrc, providedOutputKeys, localizer)
+            ),
+            validateCapabilityRequirements(whenSrc, availableCapabilities, catalogs, localizer)
+          ),
+          validateWhenResultConsumers(whenSrc, whenSideWhenResult, conversions, typeRegistry, localizer)
         ),
-        validateCapabilityRequirements(whenSrc, availableCapabilities, catalogs, localizer)
+        validatePrecedingSiblingConsumers(whenSrc, hasPrecedingSiblingRule, localizer)
       ),
-      validateWhenResultConsumers(whenSrc, whenSideWhenResult, conversions, typeRegistry, localizer)
+      validateTriggerMode(trigger, hasPrecedingSiblingRule)
     ),
-    validatePrecedingSiblingConsumers(whenSrc, hasPrecedingSiblingRule, localizer)
+    validateDeprecatedOtherwiseTile(whenSrc)
   );
   const doParseResult = appendParseDiags(
     appendParseDiags(

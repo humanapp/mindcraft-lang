@@ -19,6 +19,7 @@ import {
   mkParameterTileId,
   mkSensorTileId,
   mkVariableTileId,
+  RuleTriggerMode,
 } from "@wendoo/core/brain";
 import { __test__appendTile } from "@wendoo/core/brain/__test__";
 import {
@@ -27,7 +28,7 @@ import {
   projectRuleSentence,
   segmentDisplayText,
   sentenceText,
-  whenTriggerWord,
+  triggerModeWord,
 } from "@wendoo/core/brain/language-service";
 import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@wendoo/core/brain/model";
 import { BrainTileLiteralDef, BrainTileVariableDef } from "@wendoo/core/brain/tiles";
@@ -92,10 +93,12 @@ function reading(whenTiles: readonly IBrainTileDef[], doTiles: readonly IBrainTi
   return sentenceText(projectRuleSentence(rule(whenTiles, doTiles), localizer), localizer);
 }
 
-/** One rule of a page fixture: the tiles of each side, plus any child rules. */
+/** One rule of a page fixture: the tiles of each side, its mode, plus any child rules. */
 interface RuleSpec {
   readonly when?: readonly IBrainTileDef[];
   readonly do?: readonly IBrainTileDef[];
+  /** The rule's trigger mode; omitted leaves it in the `when` mode. */
+  readonly trigger?: RuleTriggerMode;
   readonly children?: readonly RuleSpec[];
 }
 
@@ -110,6 +113,9 @@ function appendRuleSpecs(page: BrainPageDef, specs: readonly RuleSpec[], depth: 
     }
     for (let i = 0; i < depth; i++) {
       assert.ok(ruleDef.indent(), `rule indents to depth ${depth}`);
+    }
+    if (spec.trigger !== undefined) {
+      ruleDef.setTrigger(spec.trigger);
     }
     appendRuleSpecs(page, spec.children ?? [], depth + 1);
   }
@@ -137,7 +143,9 @@ function composing(
 ): string {
   const settled = projectRuleSentence(rule(whenTiles, doTiles), localizer).toArray();
   const composed = composeSentenceReading(settled);
-  const segments = pivoted ? [...composed, ...composePivotReading(composed, whenTriggerWord(localizer))] : composed;
+  const segments = pivoted
+    ? [...composed, ...composePivotReading(composed, triggerModeWord(RuleTriggerMode.When, localizer))]
+    : composed;
   return segments.map((segment) => segmentDisplayText(segment, localizer)).join("");
 }
 
@@ -369,6 +377,68 @@ describe("ecosim paragraph readings", () => {
 
     assert.equal(breadth, "When I see anything, move, and if I bump anything, eat, and if I see a carnivore, turn.");
     assert.equal(depth, breadth);
+  });
+});
+
+// -- trigger modes ------------------------------------------------------------
+
+describe("ecosim trigger mode readings", () => {
+  const see = () => sensor(EcosimHostActions.See.key);
+  const bump = () => sensor(EcosimHostActions.Bump.key);
+  const move = () => actuator(EcosimHostActions.Move.key);
+  const eat = () => actuator(EcosimHostActions.Eat.key);
+  const turn = () => actuator(EcosimHostActions.Turn.key);
+  const plant = () => modifier(TileIds.Modifier.ActorKindPlant);
+  const wander = () => modifier(TileIds.Modifier.MovementWander);
+
+  test("an otherwise rule reads its connective, alone and before a condition", () => {
+    assert.equal(
+      paragraph([
+        { when: [see(), plant()], do: [eat()] },
+        { do: [move(), wander()], trigger: RuleTriggerMode.Otherwise },
+      ]),
+      "When I see a plant, eat. Otherwise, move wandering."
+    );
+    assert.equal(
+      paragraph([
+        { when: [see(), plant()], do: [eat()] },
+        { when: [bump()], do: [turn()], trigger: RuleTriggerMode.Otherwise },
+      ]),
+      "When I see a plant, eat. Otherwise, when I bump anything, turn."
+    );
+  });
+
+  test("a then rule reads its connective, alone and before a condition", () => {
+    assert.equal(
+      paragraph([
+        { when: [see(), plant()], do: [move()] },
+        { do: [eat()], trigger: RuleTriggerMode.Then },
+      ]),
+      "When I see a plant, move. Then, eat."
+    );
+    assert.equal(
+      paragraph([
+        { when: [see(), plant()], do: [move()] },
+        { when: [bump()], do: [eat()], trigger: RuleTriggerMode.Then },
+      ]),
+      "When I see a plant, move. Then, when I bump anything, eat."
+    );
+  });
+
+  test("a mode child continues its parent's sentence through its own connective", () => {
+    assert.equal(
+      paragraph([
+        {
+          when: [see(), plant()],
+          do: [move()],
+          children: [
+            { do: [eat()], trigger: RuleTriggerMode.Then },
+            { do: [turn()], trigger: RuleTriggerMode.Otherwise },
+          ],
+        },
+      ]),
+      "When I see a plant, move, then eat, otherwise turn."
+    );
   });
 });
 

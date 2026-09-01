@@ -1,9 +1,10 @@
 import { Dict } from "../platform/dict";
 import type { ReadonlyList } from "../platform/list";
+import type { UniqueSet } from "../platform/uniqueset";
 import type { PageMetadata } from "./host-bindings";
 import type { Program } from "./program";
-import type { IProgramServices, IRuleFiringServices, IRuleVariableServices } from "./services";
-import { NIL_VALUE, type Value } from "./value";
+import type { IProgramServices, IRuleCompletionServices, IRuleFiringServices, IRuleVariableServices } from "./services";
+import { type HandleId, NIL_VALUE, type Value } from "./value";
 
 /**
  * Per-rule variable storage keyed by rule funcId, then by variable name.
@@ -49,6 +50,58 @@ export function createRuleFiringServices(states: RuleFiringStates): IRuleFiringS
     set(ruleFuncId: number | undefined, state: RuleFiringState): void {
       if (ruleFuncId === undefined) return;
       states.set(ruleFuncId, state);
+    },
+  };
+}
+
+/**
+ * Pending rule-trigger handles keyed by the rule funcId each one watches. A rule
+ * holds at most one.
+ */
+export type RuleWatcherSlots = Dict<number, HandleId>;
+
+/**
+ * The rule funcIds whose current firing lost a fiber to a fault or a
+ * cancellation, anywhere in the rule's cluster. A rule leaves the set when it
+ * begins a fresh firing.
+ */
+export type AbandonedRuleFirings = UniqueSet<number>;
+
+/**
+ * Build the {@link IRuleCompletionServices} accessor over `slots`, `abandoned`,
+ * and the cluster-liveness query `hasLiveSubtree`.
+ *
+ * @param slots - Watcher-slot store, allocated with the brain instance.
+ * @param abandoned - Abandoned-firing store, allocated with the brain instance.
+ * @param hasLiveSubtree - Answers whether any fiber in a rule's cluster is live
+ *   (runnable or waiting); supplied by the fiber scheduler.
+ */
+export function createRuleCompletionServices(
+  slots: RuleWatcherSlots,
+  abandoned: AbandonedRuleFirings,
+  hasLiveSubtree: (ruleFuncId: number) => boolean
+): IRuleCompletionServices {
+  return {
+    hasLiveSubtree(ruleFuncId: number): boolean {
+      return hasLiveSubtree(ruleFuncId);
+    },
+    getWatcher(ruleFuncId: number): HandleId | undefined {
+      return slots.get(ruleFuncId);
+    },
+    setWatcher(ruleFuncId: number, handleId: HandleId): void {
+      slots.set(ruleFuncId, handleId);
+    },
+    clearWatcher(ruleFuncId: number): void {
+      slots.delete(ruleFuncId);
+    },
+    isAbandoned(ruleFuncId: number): boolean {
+      return abandoned.has(ruleFuncId);
+    },
+    markAbandoned(ruleFuncId: number): void {
+      abandoned.add(ruleFuncId);
+    },
+    clearAbandoned(ruleFuncId: number): void {
+      abandoned.delete(ruleFuncId);
     },
   };
 }

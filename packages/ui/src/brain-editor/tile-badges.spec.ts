@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { IBrainActionTileDef, IBrainTileDef } from "@wendoo/core/brain";
+import { List } from "@wendoo/core";
+import type { IBrainActionTileDef, IBrainTileDef, ParseDiag, ParseResult } from "@wendoo/core/brain";
+import { ParseDiagCode } from "@wendoo/core/brain/compiler";
 import { BrainTileActuatorDef, BrainTileParameterDef } from "@wendoo/core/brain/tiles";
 import { bag, CoreTypeIds, mkCallDef } from "@wendoo/core/runtime";
-import { applyBrokenTileBadges, BROKEN_TILE_BADGE_MESSAGE, type TileBadge } from "./tile-badges";
+import { applyBrokenTileBadges, BROKEN_TILE_BADGE_MESSAGE, computeTriggerBadge, type TileBadge } from "./tile-badges";
 
 /** An action (actuator) tile keyed by `id`; carries an `action` descriptor. */
 function actionTile(id: string): BrainTileActuatorDef {
@@ -70,5 +72,42 @@ describe("applyBrokenTileBadges", () => {
 
     assert.equal(badges.has(0), false, "the parameter tile is skipped");
     assert.equal(badges.get(1)?.type, "error", "the action tile still gets its badge");
+  });
+});
+
+/** A parse result carrying `codes` as its diagnostics and no expressions. */
+function parseResultWith(codes: readonly number[]): ParseResult {
+  const diags = List.from<ParseDiag>(codes.map((code) => ({ code, message: "", span: { from: 0, to: 0 } })));
+  return { exprs: List.empty(), diags } as unknown as ParseResult;
+}
+
+describe("computeTriggerBadge", () => {
+  test("a parse result holding no trigger diagnostic badges nothing", () => {
+    assert.equal(computeTriggerBadge(parseResultWith([])), undefined);
+    assert.equal(computeTriggerBadge(parseResultWith([ParseDiagCode.NoPrecedingSiblingRule])), undefined);
+  });
+
+  test("each trigger diagnostic yields an error badge summarising it", () => {
+    const codes = [
+      ParseDiagCode.OtherwiseTriggerNoPrecedingSiblingRule,
+      ParseDiagCode.ThenTriggerNoPrecedingSiblingRule,
+    ];
+    const badges = codes.map((code) => computeTriggerBadge(parseResultWith([code])));
+
+    for (const badge of badges) {
+      assert.ok(badge, "the trigger diagnostic yields a badge");
+      assert.equal(badge.type, "error");
+      assert.ok(badge.message.length > 0);
+    }
+    assert.notEqual(badges[0]?.message, badges[1]?.message);
+  });
+
+  test("the badge is found among diagnostics the side raises for other reasons", () => {
+    const badge = computeTriggerBadge(
+      parseResultWith([ParseDiagCode.NoPrecedingSiblingRule, ParseDiagCode.ThenTriggerNoPrecedingSiblingRule])
+    );
+
+    assert.ok(badge);
+    assert.equal(badge.type, "error");
   });
 });

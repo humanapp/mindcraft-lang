@@ -11,6 +11,9 @@ Fires when the rule just above did not.
 
 ---
 
+A new rule gets this from its **ELSE** trigger mode; the tile is kept for
+documents written before the mode existed, and the picker no longer offers it.
+
 Put `tile:tile.sensor->otherwise` on the **WHEN** side to make a rule the other
 half of the rule above it. The two take turns: on every frame the rule above
 checks its condition and does not fire, this rule does instead.

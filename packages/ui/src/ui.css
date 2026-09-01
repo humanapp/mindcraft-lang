@@ -105,10 +105,31 @@
      edge and its glyph. */
   --color-brain-timed: oklch(92.9% 0.013 255.508);
   --color-brain-timed-ink: oklch(44.6% 0.043 257.281);
-  /* The WHEN and DO capsules standing at the head of each side of a rule. */
+  /* The WHEN and DO capsules standing at the head of each side of a rule.
+     --color-brain-capsule, --color-brain-capsule-edge and
+     --color-brain-capsule-ink fill, rim and letter the DO capsule, and the
+     trigger-mode switch while it stands at the `when` mode: a dark fill under
+     white letters. The -otherwise and -then triples paint it at its two other
+     modes as solid bright chips under dark letters, the treatment a placed tile
+     wears -- a saturated fill, an edge of the same hue well darkened, and near
+     black letters.
+     Rules a theme must hold to:
+     - The two marked modes hold one fill lightness and separate from each other
+       by hue, 120 degrees apart here, which is what carries them apart where a
+       red-green deficiency leaves only the blue-yellow axis. `when` separates
+       from both by lightness alone, so it survives every deficiency.
+     - Neither marked mode takes the amber-through-ochre band, which semantic
+       amber holds for the unsaved dot on the handle beside them.
+     - Each mode's ink must reach 7:1 on its own fill. */
   --color-brain-capsule: oklch(20.8% 0.042 265.755);
   --color-brain-capsule-edge: oklch(55.4% 0.046 257.417);
   --color-brain-capsule-ink: #fff;
+  --color-brain-capsule-otherwise: oklch(47% 0.18 111);
+  --color-brain-capsule-otherwise-edge: oklch(97% 0.18 111);
+  --color-brain-capsule-otherwise-ink: #fff;
+  --color-brain-capsule-then: oklch(42% 0.16 315);
+  --color-brain-capsule-then-edge: oklch(72% 0.16 315);
+  --color-brain-capsule-then-ink: #fff;
   /* The rule row's round pills: the rule handle and each side's add-tile
      button, and the rule number a documentation illustration carries. */
   --color-brain-pill: oklch(96.8% 0.007 247.896);
@@ -233,6 +254,8 @@
 
    The one cell the brain page's selection rests on carries
    data-page-grid-selection, valued by the shape its treatment is painted in.
+   Every shape takes the accent outline below; `chip`, `circle` and `line` add
+   to it. `capsule` takes the outline alone, so it needs no rule of its own.
    .brain-page-frame carries an edge of the same accent while the rules hold the
    keyboard.
    ========================================================================== */

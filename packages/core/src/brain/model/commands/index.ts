@@ -1,3 +1,10 @@
+export {
+  RenameBrainCommand,
+  RenamePageCommand,
+  RenameVariableCommand,
+  SetRuleCommentCommand,
+  SetRuleTriggerCommand,
+} from "./AttributeCommands";
 export type { BrainCommand } from "./BrainCommand";
 export { BrainCommandHistory, BrainEditOrigin } from "./BrainCommand";
 export { ReplaceBrainCommand } from "./BrainCommands";
@@ -6,7 +13,6 @@ export {
   RemovePageCommand,
   ReplaceLastPageCommand,
 } from "./PageCommands";
-export { RenameBrainCommand, RenamePageCommand, RenameVariableCommand, SetRuleCommentCommand } from "./RenameCommands";
 export type { RuleLocation, RulePlacement } from "./RuleCommands";
 export {
   AddRuleCommand,

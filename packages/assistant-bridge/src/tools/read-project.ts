@@ -1,6 +1,6 @@
 import type { ReadonlyList } from "@wendoo/core";
 import type { IBrainTileDef } from "@wendoo/core/brain";
-import { RuleSide } from "@wendoo/core/brain";
+import { RuleSide, RuleTriggerMode } from "@wendoo/core/brain";
 import { tileSentenceWord } from "@wendoo/core/brain/language-service";
 import type { BrainPageDef, BrainRuleDef } from "@wendoo/core/brain/model";
 import type { Localizer } from "@wendoo/core/localization";
@@ -23,6 +23,12 @@ export interface ProjectRule {
   readonly ruleId: string;
   /** The author's note on the rule, absent when it has none. */
   readonly comment?: string;
+  /**
+   * What arms the rule, absent for a rule in the default `when` mode. An
+   * `otherwise` rule fires on the thinks no earlier rule of its flat
+   * otherwise-run fired; a `then` rule runs once the rule above it completes.
+   */
+  readonly trigger?: RuleTriggerMode;
   readonly when: readonly ProjectTile[];
   readonly do: readonly ProjectTile[];
   readonly children: readonly ProjectRule[];
@@ -75,9 +81,11 @@ export function readRule(rule: BrainRuleDef, localizer: Localizer): ProjectRule 
     children.push(readRule(childRules.get(i) as BrainRuleDef, localizer));
   }
   const comment = rule.comment();
+  const trigger = rule.trigger();
   return {
     ruleId: rule.ruleId(),
     ...(comment ? { comment } : {}),
+    ...(trigger === RuleTriggerMode.When ? {} : { trigger }),
     when: tileRefs(rule.side(RuleSide.When).tiles(), localizer),
     do: tileRefs(rule.side(RuleSide.Do).tiles(), localizer),
     children,

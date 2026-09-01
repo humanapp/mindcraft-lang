@@ -1,6 +1,7 @@
 import type { ReadonlyList } from "@wendoo/core";
 import { task, type thread } from "@wendoo/core";
 import type { IBrainTileDef } from "@wendoo/core/brain";
+import { availableTriggerModes } from "@wendoo/core/brain/language-service";
 import type { BrainCommand, BrainCommandHistory, BrainPageDef, BrainRuleDef } from "@wendoo/core/brain/model";
 import {
   AddRuleCommand,
@@ -8,10 +9,12 @@ import {
   MoveRuleDownCommand,
   MoveRuleUpCommand,
   OutdentRuleCommand,
+  SetRuleTriggerCommand,
 } from "@wendoo/core/brain/model";
 import { Plus } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { keyboardIsUnheld, kStripPopupAttribute } from "./BrainCandidateStrip";
+import { useLocalizer } from "./BrainEditorContext";
 import { BrainRuleEditor, kAddButtonClasses } from "./BrainRuleEditor";
 import { kOfferingLayer, kRuleContentLayer } from "./editor-layers";
 import { useRuleDrag } from "./hooks/useRuleDrag";
@@ -37,6 +40,7 @@ import { useRulePickup } from "./RulePickupContext";
 import { RuleSelectionProvider } from "./RuleSelectionContext";
 import { releaseHeldRule } from "./rule-pickup-release";
 import { type RevisionRuleNode, ruleRevisions } from "./rule-revision";
+import { nextTriggerMode, triggerModeAnnouncement, triggerSwitchState } from "./trigger-mode";
 
 /**
  * One ask to bring a rule into view. Each ask is its own object, so asking for
@@ -99,6 +103,7 @@ function tileIdsOf(tiles: ReadonlyList<IBrainTileDef>): string[] {
  */
 function revisionNodes(rules: BrainRuleDef[]): RevisionRuleNode[] {
   return rules.map((ruleDef) => ({
+    trigger: ruleDef.trigger(),
     whenTileIds: tileIdsOf(ruleDef.when().tiles()),
     doTileIds: tileIdsOf(ruleDef.do().tiles()),
     children: revisionNodes(ruleDef.children().toArray() as BrainRuleDef[]),
@@ -187,6 +192,7 @@ function restingPlace(ruleDef: BrainRuleDef, direction: RuleMoveDirection, pageD
 
 /** Renders the rules of a single brain page as a flattened, indented list of {@link BrainRuleEditor} rows. */
 export function BrainPageEditor({ pageDef, commandHistory, zoom = 1, revealRule }: BrainPageEditorProps) {
+  const localizer = useLocalizer();
   // Bumped by every change the page can see, which re-reads the rules the page
   // holds and the revision each of them stands at. The count itself is read for
   // nothing; a rule recomputes from its own revision, not from this.
@@ -366,11 +372,12 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1, revealRule 
   };
 
   // The rule the page holds picked up, whose moves gather into one history
-  // entry, and the line a screen reader is told about each step a rule takes,
-  // whether it was picked up or stepped where it stands.
+  // entry, and the line a screen reader is told: each step a rule takes,
+  // whether it was picked up or stepped where it stands, and each mode a
+  // trigger switch settles on.
   const rulePickup = useRulePickup();
   const pickup = rulePickup.pickup;
-  const [moveAnnouncement, setMoveAnnouncement] = useState("");
+  const [announcement, setAnnouncement] = useState("");
 
   const setPickup = rulePickup.setPickup;
   const flattenedRulesRef = useRef(flattenedRules);
@@ -392,7 +399,7 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1, revealRule 
       commandHistory.beginBatch("Move rule");
       setPickup({ ruleId, directions: currentMoveDirections(ruleDef) });
       const place = siblingPlace(ruleDef, pageDef);
-      setMoveAnnouncement(`Grabbed rule, position ${place.position} of ${place.count}`);
+      setAnnouncement(`Grabbed rule, position ${place.position} of ${place.count}`);
     },
     [commandHistory, ruleById, setPickup, pageDef]
   );
@@ -433,10 +440,29 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1, revealRule 
       commandHistory.executeCommand(ruleMoveCommand(ruleDef, direction));
       if (heldRuleIdRef.current === ruleId) setPickup({ ruleId, directions: currentMoveDirections(ruleDef) });
       steppedRuleIdRef.current = ruleId;
-      setMoveAnnouncement(restingPlace(ruleDef, direction, pageDef));
+      setAnnouncement(restingPlace(ruleDef, direction, pageDef));
       setStepCount((count) => count + 1);
     },
     [commandHistory, ruleById, setPickup, pageDef]
+  );
+
+  /**
+   * Takes `ruleId`'s trigger mode one step forward around the modes its position
+   * admits and reads the new mode out. A rule carrying a mode its position
+   * rejects steps to an admitted one; a rule whose own mode is the sole admitted
+   * one is left alone, as is one the page no longer holds.
+   */
+  const cycleTrigger = useCallback(
+    (ruleId: string) => {
+      const ruleDef = ruleById(ruleId);
+      if (ruleDef === undefined) return;
+      const available = availableTriggerModes(ruleDef);
+      if (triggerSwitchState(ruleDef.trigger(), available) === "fixed") return;
+      const mode = nextTriggerMode(ruleDef.trigger(), available);
+      commandHistory.executeCommand(new SetRuleTriggerCommand(ruleDef, mode));
+      setAnnouncement(triggerModeAnnouncement(mode, localizer));
+    },
+    [commandHistory, ruleById, localizer]
   );
 
   /** Sets the held rule down, closing its batch into one history entry. */
@@ -444,7 +470,7 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1, revealRule 
     if (pickup === null) return;
     commandHistory.endBatch();
     setPickup(null);
-    setMoveAnnouncement("Dropped");
+    setAnnouncement("Dropped");
   };
 
   /** Gives the held rule back to where it was picked up from, leaving no history entry. */
@@ -452,7 +478,7 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1, revealRule 
     if (pickup === null) return;
     commandHistory.abortBatch();
     setPickup(null);
-    setMoveAnnouncement("Cancelled");
+    setAnnouncement("Cancelled");
   };
 
   // A press is never part of the grab, so any press sets the held rule down
@@ -538,9 +564,10 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1, revealRule 
       composeRule: setRuleToCompose,
       grabRule,
       moveRule,
+      cycleTrigger,
       offeringRail,
     }),
-    [registerRule, ruleToCompose, grabRule, moveRule, offeringRail]
+    [registerRule, ruleToCompose, grabRule, moveRule, cycleTrigger, offeringRail]
   );
 
   // The pick-up as it stands at the last render, which the cleanup running
@@ -620,7 +647,7 @@ export function BrainPageEditor({ pageDef, commandHistory, zoom = 1, revealRule 
               </div>
             </div>
             <output aria-live="polite" className="sr-only">
-              {moveAnnouncement}
+              {announcement}
             </output>
           </div>
         </div>

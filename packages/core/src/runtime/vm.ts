@@ -14,7 +14,7 @@ import { HandleOutcome } from "./events";
 import type { Program, ProgramStructField } from "./program";
 import { resolveProgramTypeId } from "./program";
 import { RuleFiringState } from "./rule-services";
-import type { RuntimeLangServices } from "./services";
+import type { BrainInstanceServices, RuntimeLangServices } from "./services";
 import type { ITypeRegistry } from "./type-defs";
 import { NativeType, type StructTypeDef, type TypeId } from "./type-defs";
 import type { AsyncHandle, ErrorValue, HandleId, StructValue, Value } from "./value";
@@ -42,6 +42,7 @@ import {
   type Fiber,
   FiberState,
   type Frame,
+  HANDLE_BACKPRESSURE_FAULT_ROUNDS,
   type Handler,
   HandleState,
   HandleTable,
@@ -352,6 +353,11 @@ export class VM implements IVM {
     }
     const locals = this.allocLocals(fn, effectiveArgs);
     const ruleFuncId = this.resolveDirectRuleFuncId(executionContext, funcId);
+    if (ruleFuncId !== undefined) {
+      // Entering a rule at its own entry point starts that rule's next firing,
+      // so any abandonment mark left by the previous one stops applying here.
+      executionContext.services.brain.ruleCompletion.clearAbandoned(ruleFuncId);
+    }
 
     const now = Time.nowMs();
     const fiber: Fiber = {
@@ -372,6 +378,7 @@ export class VM implements IVM {
       createdAt: now,
       lastRunAt: now,
       executionContext,
+      ruleFuncId,
     };
 
     return fiber;
@@ -511,6 +518,10 @@ export class VM implements IVM {
           return this.execWhenEnd(fiber, ins, frame);
         case Op.WHEN_END_PRESENT:
           return this.execWhenEndPresent(fiber, ins, frame);
+        case Op.WHEN_END_CHAIN:
+          return this.execWhenEndChain(fiber, ins, frame);
+        case Op.WHEN_END_PRESENT_CHAIN:
+          return this.execWhenEndPresentChain(fiber, ins, frame);
         case Op.DO_START:
           return this.execDoStart(fiber, ins, frame);
         case Op.DO_END:
@@ -1043,8 +1054,9 @@ export class VM implements IVM {
     // popped, no handle allocated, no action started, pc unchanged), so the retry
     // is an exact re-execution once an in-flight async settles a slot.
     if (!this.handles.hasCapacity()) {
-      return { status: VmStatus.YIELDED };
+      return this.backpressureOnHandles(fiber, frame);
     }
+    this.clearHandleBackpressure(fiber);
 
     const args = List.empty<Value>();
     for (let i = 0; i < argc; i++) {
@@ -1137,8 +1149,9 @@ export class VM implements IVM {
     // popped, no child fiber spawned, no handle allocated, pc unchanged), so the
     // retry is an exact re-execution once an in-flight async settles a slot.
     if (!this.handles.hasCapacity()) {
-      return { status: VmStatus.YIELDED };
+      return this.backpressureOnHandles(fiber, frame);
     }
+    this.clearHandleBackpressure(fiber);
 
     const args = this.snapshotStackArgs(fiber, argc, "ACTION_CALL_ASYNC");
     for (let i = 0; i < argc; i++) {
@@ -1185,6 +1198,28 @@ export class VM implements IVM {
    * the resolved action is not host-backed, or its sync/async-ness does not
    * match the opcode that issued the call.
    */
+  /**
+   * Records that the dispatch at `frame.pc` found no free async handle and
+   * returns the fiber's yield result. Faults `ErrorCode.StackOverflow` once the
+   * same dispatch has backpressured {@link HANDLE_BACKPRESSURE_FAULT_ROUNDS}
+   * consecutive rounds.
+   */
+  private backpressureOnHandles(fiber: Fiber, frame: Frame): VmRunResult {
+    const rounds = fiber.handleBackpressurePc === frame.pc ? (fiber.handleBackpressureRounds ?? 0) + 1 : 1;
+    fiber.handleBackpressurePc = frame.pc;
+    fiber.handleBackpressureRounds = rounds;
+    if (rounds >= HANDLE_BACKPRESSURE_FAULT_ROUNDS) {
+      throwOverflow(`Async handle starvation: no free handle for ${HANDLE_BACKPRESSURE_FAULT_ROUNDS} rounds`);
+    }
+    return { status: VmStatus.YIELDED };
+  }
+
+  /** Clears the backpressure run recorded by {@link backpressureOnHandles}. */
+  private clearHandleBackpressure(fiber: Fiber): void {
+    fiber.handleBackpressurePc = undefined;
+    fiber.handleBackpressureRounds = 0;
+  }
+
   private resolveHostAction(actionId: number, wantAsync: boolean, opName: string): HostActionBinding {
     const action = this.runtime.actions.getById(actionId);
     if (!action) {
@@ -1255,10 +1290,13 @@ export class VM implements IVM {
     // advancing the pc, so the fiber re-enters the run queue and re-executes this
     // same dispatch next round. The check precedes every side effect (no args
     // popped, no handle allocated, no action started, pc unchanged), so the retry
-    // is an exact re-execution once an in-flight async settles a slot.
-    if (!this.handles.hasCapacity()) {
-      return { status: VmStatus.YIELDED };
+    // is an exact re-execution once an in-flight async settles a slot. An action
+    // declaring `uncappedHandles` skips the check and allocates outside the cap.
+    const capped = action.uncappedHandles !== true;
+    if (capped && !this.handles.hasCapacity()) {
+      return this.backpressureOnHandles(fiber, frame);
     }
+    this.clearHandleBackpressure(fiber);
 
     const args = List.empty<Value>();
     for (let i = 0; i < argc; i++) {
@@ -1268,7 +1306,7 @@ export class VM implements IVM {
       fiber.vstack.pop();
     }
 
-    const hid = this.handles.createPending(action.descriptor.key);
+    const hid = this.handles.createPending(action.descriptor.key, capped);
     this.push(fiber, V.handle(hid));
 
     this.bindExecutionContext(fiber, frame, callSiteId);
@@ -1395,58 +1433,72 @@ export class VM implements IVM {
     return undefined;
   }
 
-  private execWhenEnd(fiber: Fiber, ins: Instr, frame: Frame): undefined {
-    // WHEN always pushes exactly one value - pop it and check truthiness
+  /**
+   * Body shared by the four WHEN gates. Pops the WHEN result, captures it into
+   * the rule's reserved `__whenResult` variable (every rule captures, whatever
+   * the gate decides), computes the fired outcome, writes the firing record, and
+   * advances the PC by one on a fire or by the signed `a` offset on a skip,
+   * which lands past the DO section and any nested boundaries.
+   *
+   * @param presenceGated - Gate on the WHEN result being present (non-nil), so a
+   *   present falsy value fires. Otherwise the gate is on truthiness.
+   * @param chained - Write the chain-aware firing record of an `otherwise` rule.
+   *   Otherwise the record is the rule's own outcome.
+   */
+  private execWhenGate(fiber: Fiber, ins: Instr, frame: Frame, presenceGated: boolean, chained: boolean): undefined {
     const whenResult = this.pop(fiber);
 
-    // Capture the WHEN result into the rule's reserved __whenResult variable.
-    // Every rule captures, regardless of the truthiness gate below.
+    const brain = fiber.executionContext.services.brain;
     const ruleFuncId = this.resolveFrameRuleFuncId(fiber.executionContext, frame);
-    fiber.executionContext.services.brain.ruleVars.setByName(ruleFuncId, "__whenResult", whenResult);
+    brain.ruleVars.setByName(ruleFuncId, "__whenResult", whenResult);
 
-    const fired = isTruthy(whenResult);
-    fiber.executionContext.services.brain.ruleFiring.set(
+    const fired = presenceGated ? whenResult.t !== NativeType.Nil : isTruthy(whenResult);
+    brain.ruleFiring.set(
       ruleFuncId,
-      fired ? RuleFiringState.DID_FIRE : RuleFiringState.DID_NOT_FIRE
+      chained
+        ? this.chainedFiringState(brain, ruleFuncId, fired)
+        : fired
+          ? RuleFiringState.DID_FIRE
+          : RuleFiringState.DID_NOT_FIRE
     );
     this.events?.onRuleWhenGate?.({ ruleFuncId, result: whenResult, fired });
 
-    if (!fired) {
-      // WHEN evaluated to falsy - skip DO section and children
-      const offset = ins.a ?? 0;
-      frame.pc += offset; // Jump to end label
-    } else {
-      // WHEN evaluated to truthy - continue to DO section
-      frame.pc++;
-    }
+    frame.pc += fired ? 1 : (ins.a ?? 0);
     return undefined;
   }
 
+  /**
+   * The firing record a chain gate writes: `DidFire` when the rule fired, and on
+   * a rule that did not fire the record of its subject -- the rule directly
+   * above it at its own nesting level. A rule with no subject records its own
+   * outcome.
+   */
+  private chainedFiringState(
+    brain: BrainInstanceServices,
+    ruleFuncId: number | undefined,
+    fired: boolean
+  ): RuleFiringState {
+    if (fired) return RuleFiringState.DID_FIRE;
+    const subjectFuncId =
+      ruleFuncId === undefined ? undefined : brain.program.getPrecedingSiblingRuleFuncId(ruleFuncId);
+    if (subjectFuncId === undefined) return RuleFiringState.DID_NOT_FIRE;
+    return brain.ruleFiring.get(subjectFuncId);
+  }
+
+  private execWhenEnd(fiber: Fiber, ins: Instr, frame: Frame): undefined {
+    return this.execWhenGate(fiber, ins, frame, false, false);
+  }
+
   private execWhenEndPresent(fiber: Fiber, ins: Instr, frame: Frame): undefined {
-    // WHEN always pushes exactly one value - pop it and check presence (non-nil).
-    const whenResult = this.pop(fiber);
+    return this.execWhenGate(fiber, ins, frame, true, false);
+  }
 
-    // Capture the WHEN result into the rule's reserved __whenResult variable,
-    // identically to execWhenEnd. Every rule captures, regardless of the gate.
-    const ruleFuncId = this.resolveFrameRuleFuncId(fiber.executionContext, frame);
-    fiber.executionContext.services.brain.ruleVars.setByName(ruleFuncId, "__whenResult", whenResult);
+  private execWhenEndChain(fiber: Fiber, ins: Instr, frame: Frame): undefined {
+    return this.execWhenGate(fiber, ins, frame, false, true);
+  }
 
-    const fired = whenResult.t !== NativeType.Nil;
-    fiber.executionContext.services.brain.ruleFiring.set(
-      ruleFuncId,
-      fired ? RuleFiringState.DID_FIRE : RuleFiringState.DID_NOT_FIRE
-    );
-    this.events?.onRuleWhenGate?.({ ruleFuncId, result: whenResult, fired });
-
-    if (!fired) {
-      // No value this think (absent) - skip DO section and children.
-      const offset = ins.a ?? 0;
-      frame.pc += offset; // Jump to end label
-    } else {
-      // A value is present (including a falsy 0 / "" / false) - run DO.
-      frame.pc++;
-    }
-    return undefined;
+  private execWhenEndPresentChain(fiber: Fiber, ins: Instr, frame: Frame): undefined {
+    return this.execWhenGate(fiber, ins, frame, true, true);
   }
 
   private execDoStart(fiber: Fiber, ins: Instr, frame: Frame): undefined {
@@ -2094,6 +2146,7 @@ export class VM implements IVM {
     childContext.currentCallSiteId = callSiteId;
     childContext.currentRuleFuncId = ruleFuncId;
     childFrame.ruleFuncId = ruleFuncId;
+    childFiber.ruleFuncId = ruleFuncId;
     childFrame.actionBinding = {
       actionSlot,
       actionKey: action.descriptor.key,
@@ -2423,6 +2476,54 @@ export class VM implements IVM {
       throw new Error(`Invalid state transition: ${fiber.state} -> ${newState}`);
     }
     fiber.state = newState;
+
+    if (newState === FiberState.DONE || newState === FiberState.FAULT || newState === FiberState.CANCELLED) {
+      this.settleRuleWatchers(fiber, newState);
+    }
+  }
+
+  /**
+   * The settle walk, run at every fiber terminal transition. Takes the
+   * finishing fiber's rule and walks it and its ancestors. A fiber that faulted
+   * or was cancelled marks every rule on that walk -- the whole set of clusters
+   * it belonged to -- as an abandoned firing. Then, for each rule whose cluster
+   * has emptied, resolves the pending trigger handle in that rule's watcher slot
+   * and clears the slot: `true` on a `DidFire` record with no abandonment mark,
+   * `false` otherwise.
+   *
+   * Call only once `fiber.state` is terminal.
+   */
+  private settleRuleWatchers(fiber: Fiber, cause: FiberState): void {
+    const brain = fiber.executionContext.services.brain;
+    const abandoning = cause !== FiberState.DONE;
+
+    let ruleFuncId = fiber.ruleFuncId;
+    while (ruleFuncId !== undefined) {
+      if (abandoning) {
+        brain.ruleCompletion.markAbandoned(ruleFuncId);
+      }
+      const handleId = brain.ruleCompletion.getWatcher(ruleFuncId);
+      if (handleId !== undefined && !brain.ruleCompletion.hasLiveSubtree(ruleFuncId)) {
+        const fired =
+          !brain.ruleCompletion.isAbandoned(ruleFuncId) &&
+          brain.ruleFiring.get(ruleFuncId) === RuleFiringState.DID_FIRE;
+        brain.ruleCompletion.clearWatcher(ruleFuncId);
+        if (this.handles.get(handleId)?.state === HandleState.PENDING) {
+          this.handles.resolve(handleId, fired ? TRUE_VALUE : FALSE_VALUE);
+        }
+      }
+      ruleFuncId = this.ruleParentFuncId(ruleFuncId);
+    }
+  }
+
+  /**
+   * The parent rule of `ruleFuncId` in the loaded program's rule-ancestor table.
+   * Returns `undefined` for a root rule and for a funcId the table does not
+   * declare.
+   */
+  ruleParentFuncId(ruleFuncId: number): number | undefined {
+    const ancestors = this.prog.ruleAncestors;
+    return ancestors !== undefined ? ancestors.get(ruleFuncId) : undefined;
   }
 
   private faultFiber(fiber: Fiber, err: ErrorValue, scheduler: Scheduler): void {
@@ -2597,6 +2698,26 @@ export class FiberScheduler implements IFiberScheduler {
         (fiber.state === FiberState.RUNNABLE || fiber.state === FiberState.WAITING)
       ) {
         return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * True when any live (runnable or waiting) fiber belongs to `ruleFuncId`'s
+   * cluster: its own fiber, or a fiber whose rule reaches `ruleFuncId` by
+   * walking the program's rule-ancestor chain. Child-rule fibers held in the
+   * current tick's spawn drain are runnable and count.
+   */
+  hasLiveRuleSubtree(ruleFuncId: number): boolean {
+    for (const [, fiber] of this.fibers.entries().toArray()) {
+      if (fiber.state !== FiberState.RUNNABLE && fiber.state !== FiberState.WAITING) {
+        continue;
+      }
+      let cur = fiber.ruleFuncId;
+      while (cur !== undefined) {
+        if (cur === ruleFuncId) return true;
+        cur = this.vm.ruleParentFuncId(cur);
       }
     }
     return false;

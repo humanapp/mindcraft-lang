@@ -15,6 +15,7 @@ import {
   type ITileCatalog,
   isPageTileId,
   mkPageTileId,
+  type RuleTriggerMode,
 } from "../interfaces";
 import type { BrainServices } from "../services";
 import { type CatalogTileJson, TileCatalog } from "../tiles/catalog";
@@ -90,6 +91,7 @@ function convertPlainRule_(plain: unknown): RuleJson {
     do: string[];
     children: unknown[];
     comment?: string;
+    trigger?: RuleTriggerMode;
   };
   const plainChildren = List.from(r.children);
   const children = new List<RuleJson>();
@@ -102,6 +104,9 @@ function convertPlainRule_(plain: unknown): RuleJson {
   }
   if (r.comment !== undefined) {
     json.comment = r.comment;
+  }
+  if (r.trigger !== undefined) {
+    json.trigger = r.trigger;
   }
   return json;
 }

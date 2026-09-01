@@ -188,6 +188,7 @@ export enum CoreFuncId {
   ConvEnumToString = 104,
   ConvEnumToNumber = 105,
   SensorOtherwise = 106,
+  SensorRuleTrigger = 107,
 }
 
 /**
@@ -221,4 +222,5 @@ export const CoreHostActions = {
   CurrentPage: { key: "current-page", actionId: 6, fnId: CoreFuncId.SensorCurrentPage },
   PreviousPage: { key: "previous-page", actionId: 7, fnId: CoreFuncId.SensorPreviousPage },
   Otherwise: { key: "otherwise", actionId: 8, fnId: CoreFuncId.SensorOtherwise },
+  RuleTrigger: { key: "rule-trigger", actionId: 9, fnId: CoreFuncId.SensorRuleTrigger },
 } as const satisfies Record<string, HostActionIds>;

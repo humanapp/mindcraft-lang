@@ -19,7 +19,13 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import { List } from "@wendoo/core";
 import type { BrainServices, IBrainTileDef } from "@wendoo/core/brain";
-import { CoreControlFlowId, mkControlFlowTileId, mkOperatorTileId, RuleSide } from "@wendoo/core/brain";
+import {
+  CoreControlFlowId,
+  mkControlFlowTileId,
+  mkOperatorTileId,
+  RuleSide,
+  RuleTriggerMode,
+} from "@wendoo/core/brain";
 import { __test__createBrainServices } from "@wendoo/core/brain/__test__";
 import {
   flattenRuleTiles,
@@ -27,7 +33,7 @@ import {
   type SentenceSegment,
   type SentenceTileRef,
   type SentenceWordSegment,
-  whenTriggerWord,
+  triggerModeWord,
 } from "@wendoo/core/brain/language-service";
 import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@wendoo/core/brain/model";
 import { BrainTileActuatorDef, BrainTileModifierDef, BrainTileSensorDef } from "@wendoo/core/brain/tiles";
@@ -442,7 +448,7 @@ describe("the period key", () => {
 
 describe("the pivot reading", () => {
   test("a WHEN side that reads no words of its own reads the trigger word before the comma", () => {
-    const trigger = whenTriggerWord(localizer);
+    const trigger = triggerModeWord(RuleTriggerMode.When, localizer);
 
     assert.deepEqual(composePivotReading([], trigger), [
       { kind: "glue", text: trigger },
@@ -453,12 +459,14 @@ describe("the pivot reading", () => {
   test("a WHEN side that reads its own words takes the comma alone", () => {
     const reading = composeSentenceReading(projectionOf([makeObjectSensor("composer-pivot-bump")], []));
 
-    assert.deepEqual(composePivotReading(reading, whenTriggerWord(localizer)), [{ kind: "glue", text: "," }]);
+    assert.deepEqual(composePivotReading(reading, triggerModeWord(RuleTriggerMode.When, localizer)), [
+      { kind: "glue", text: "," },
+    ]);
   });
 
   test("no trigger word stands in the pivot of a WHEN side that reads its own words", () => {
     const reading = composeSentenceReading(projectionOf([makeObjectSensor("composer-pivot-bump-2")], []));
-    const trigger = whenTriggerWord(localizer);
+    const trigger = triggerModeWord(RuleTriggerMode.When, localizer);
 
     for (const segment of composePivotReading(reading, trigger)) {
       assert.notEqual(segment.text, trigger);

@@ -10,9 +10,16 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
 import { List } from "@wendoo/core";
-import { type BrainServices, mkPageTileId, mkVariableTileId } from "@wendoo/core/brain";
+import { type BrainServices, mkPageTileId, mkVariableTileId, RuleTriggerMode } from "@wendoo/core/brain";
 import { __test__createBrainServices } from "@wendoo/core/brain/__test__";
-import { BrainDef, type BrainJson, BrainRuleDef, type PageJson, type RuleJson } from "@wendoo/core/brain/model";
+import {
+  BrainDef,
+  type BrainJson,
+  BrainRuleDef,
+  brainJsonFromPlain,
+  type PageJson,
+  type RuleJson,
+} from "@wendoo/core/brain/model";
 import { BrainTileLiteralDef, BrainTileVariableDef, type CatalogTileJson } from "@wendoo/core/brain/tiles";
 import { CoreTypeIds } from "@wendoo/core/runtime";
 
@@ -22,75 +29,18 @@ before(() => {
   services = __test__createBrainServices();
 });
 
-// -- Plain-object conversion helpers -----------------------------------------
-// These convert JSON.parse output (native arrays) into the List-based types
-// used by the serialization API.
-
-interface PlainRuleJson {
-  version: number;
-  when: string[];
-  do: string[];
-  children: PlainRuleJson[];
-  comment?: string;
-}
-
-interface PlainPageJson {
-  version: number;
-  pageId: string;
-  name: string;
-  rules: PlainRuleJson[];
-}
-
-interface PlainBrainJson {
-  version: number;
-  name: string;
-  catalog: CatalogTileJson[];
-  pages: PlainPageJson[];
-}
-
-function convertPlainRule(plain: PlainRuleJson): RuleJson {
-  const plainChildren = List.from(plain.children);
-  const children = new List<RuleJson>();
-  for (let i = 0; i < plainChildren.size(); i++) {
-    children.push(convertPlainRule(plainChildren.get(i)));
-  }
-  const json: RuleJson = {
-    version: plain.version,
-    when: List.from(plain.when),
-    do: List.from(plain.do),
-    children,
-  };
-  if (plain.comment !== undefined) {
-    json.comment = plain.comment;
-  }
-  return json;
-}
-
-function convertPlainPage(plain: PlainPageJson): PageJson {
-  const plainRules = List.from(plain.rules);
-  const rules = new List<RuleJson>();
-  for (let i = 0; i < plainRules.size(); i++) {
-    rules.push(convertPlainRule(plainRules.get(i)));
-  }
-  return { version: plain.version, pageId: plain.pageId, name: plain.name, rules };
-}
-
-function ruleJsonFromPlain(plain: unknown): RuleJson {
-  return convertPlainRule(plain as PlainRuleJson);
-}
-
-function brainJsonFromPlain(plain: unknown): BrainJson {
-  const obj = plain as PlainBrainJson;
-  const catalog = List.from(obj.catalog);
-  const plainPages = List.from(obj.pages);
-  const pages = new List<PageJson>();
-  for (let i = 0; i < plainPages.size(); i++) {
-    pages.push(convertPlainPage(plainPages.get(i)));
-  }
-  return { version: obj.version, name: obj.name, catalog, pages };
-}
-
 // -- Helpers --
+
+/** Convert one plain rule object -- `JSON.parse` output, with native arrays -- into a `RuleJson`. */
+function ruleJsonFromPlain(plain: unknown): RuleJson {
+  const brainJson = brainJsonFromPlain({
+    version: 1,
+    name: "Rule Conversion",
+    catalog: [],
+    pages: [{ version: 1, pageId: "rule-conversion-page", name: "Page 1", rules: [plain] }],
+  });
+  return brainJson.pages.get(0).rules.get(0);
+}
 
 function mkLiteral(n: number) {
   return new BrainTileLiteralDef(CoreTypeIds.Number, n, {}, services);
@@ -100,6 +50,31 @@ function mkBoolLiteral(b: boolean) {
 }
 function mkStringLiteral(s: string) {
   return new BrainTileLiteralDef(CoreTypeIds.String, s, {}, services);
+}
+
+/** A rule of a saved document, as `JSON.parse` returns it. */
+interface PlainRuleJson {
+  children: PlainRuleJson[];
+}
+
+/** A saved document, as `JSON.parse` returns it. */
+interface PlainBrainJson {
+  pages: { rules: PlainRuleJson[] }[];
+}
+
+/** Every plain rule object of `plain`, at any depth, in document order. */
+function allPlainRules(plain: PlainBrainJson): PlainRuleJson[] {
+  const out: PlainRuleJson[] = [];
+  const visit = (rules: PlainRuleJson[]): void => {
+    for (const rule of rules) {
+      out.push(rule);
+      visit(rule.children);
+    }
+  };
+  for (const page of plain.pages) {
+    visit(page.rules);
+  }
+  return out;
 }
 
 describe("brain-json", () => {
@@ -550,6 +525,51 @@ describe("brain-json", () => {
     const restored = BrainDef.fromJson(parsed, services);
     const restoredRule = restored.pages().get(0)!.children().get(0)!;
     assert.equal(restoredRule.comment(), "Stringify comment");
+  });
+
+  // -- Trigger mode field -----------------------------------------------------
+
+  test("a rule given no trigger reads as when and saves the field absent", () => {
+    const brain = BrainDef.emptyBrainDef(services, "Trigger Default Brain");
+    const rule = brain.pages().get(0)!.children().get(0)! as BrainRuleDef;
+    rule.appendNewRule();
+    assert.equal(rule.trigger(), RuleTriggerMode.When);
+
+    const plain = JSON.parse(JSON.stringify(brain.toJson())) as PlainBrainJson;
+    const saved = allPlainRules(plain);
+    assert.equal(saved.length, 2);
+    for (const savedRule of saved) {
+      assert.equal("trigger" in savedRule, false, "a when rule must save no trigger field");
+    }
+  });
+
+  test("a document saved before rules carried a trigger loads in when and saves back unchanged", () => {
+    const brain = BrainDef.emptyBrainDef(services, "Trigger Legacy Brain");
+    (brain.pages().get(0)!.children().get(0)! as BrainRuleDef).appendNewRule();
+    const priorToField = JSON.parse(JSON.stringify(brain.toJson()));
+
+    const restored = BrainDef.fromJson(brainJsonFromPlain(priorToField), services);
+    const restoredRule = restored.pages().get(0)!.children().get(0)!;
+    assert.equal(restoredRule.trigger(), RuleTriggerMode.When);
+    assert.equal(restoredRule.children().get(0)!.trigger(), RuleTriggerMode.When);
+    assert.deepEqual(JSON.parse(JSON.stringify(restored.toJson())), priorToField);
+  });
+
+  test("every trigger mode round-trips through JSON, on a rule and on a child rule", () => {
+    const modes = [RuleTriggerMode.When, RuleTriggerMode.Otherwise, RuleTriggerMode.Then];
+    for (const mode of modes) {
+      const brain = BrainDef.emptyBrainDef(services, "Trigger Round Trip Brain");
+      const rule = brain.pages().get(0)!.children().get(0)! as BrainRuleDef;
+      const child = rule.appendNewRule();
+      rule.setTrigger(mode);
+      child.setTrigger(mode);
+
+      const plain = JSON.parse(JSON.stringify(brain.toJson()));
+      const restored = BrainDef.fromJson(brainJsonFromPlain(plain), services);
+      const restoredRule = restored.pages().get(0)!.children().get(0)!;
+      assert.equal(restoredRule.trigger(), mode);
+      assert.equal(restoredRule.children().get(0)!.trigger(), mode);
+    }
   });
 
   test("purgeUnusedTiles removes orphaned page tiles from deleted pages", () => {

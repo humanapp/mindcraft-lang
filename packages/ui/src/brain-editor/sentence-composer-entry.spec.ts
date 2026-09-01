@@ -18,9 +18,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import type { BrainServices, IBrainTileDef } from "@wendoo/core/brain";
-import { RuleSide } from "@wendoo/core/brain";
+import { RuleSide, RuleTriggerMode } from "@wendoo/core/brain";
 import { __test__createBrainServices } from "@wendoo/core/brain/__test__";
-import { whenTriggerWord } from "@wendoo/core/brain/language-service";
+import { triggerModeWord } from "@wendoo/core/brain/language-service";
 import {
   BrainCommandHistory,
   BrainDef,
@@ -544,7 +544,7 @@ describe("the pivot comma", () => {
 
 describe("the trigger word at the pivot", () => {
   /** The word the projection reads a rule with no condition as, under the fallback localizer the card uses. */
-  const trigger = whenTriggerWord(createDefaultLocalizer());
+  const trigger = triggerModeWord(RuleTriggerMode.When, createDefaultLocalizer());
 
   test("a pivot from an empty WHEN side reads it before the comma", () => {
     const { ruleDef } = makeBrain([], []);

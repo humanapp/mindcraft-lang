@@ -13,8 +13,9 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import { List, type ReadonlyList } from "@wendoo/core";
 import type { BrainServices, ITileCatalog } from "@wendoo/core/brain";
-import { RuleSide } from "@wendoo/core/brain";
+import { RuleSide, RuleTriggerMode } from "@wendoo/core/brain";
 import { __test__createBrainServices } from "@wendoo/core/brain/__test__";
+import { availableTriggerModes } from "@wendoo/core/brain/language-service";
 import { BrainDef, type BrainPageDef, type BrainRuleDef } from "@wendoo/core/brain/model";
 import { caretRun, composerEntryCaret } from "./caret-run";
 import {
@@ -33,6 +34,7 @@ import {
 } from "./page-grid-model";
 import { makeActuator, makeSensor } from "./test-only-rule-fixtures";
 import { sideOffersAppendedTile } from "./tile-offering";
+import { triggerSwitchState } from "./trigger-mode";
 
 let services: BrainServices;
 let catalogs: ReadonlyList<ITileCatalog>;
@@ -62,6 +64,7 @@ function describeRule(ruleDef: BrainRuleDef): RuleCellDescriptor {
     doTileCount: ruleDef.do().tiles().size(),
     whenAppendable: sideOffersAppendedTile({ ruleDef, side: RuleSide.When, catalogs, services }),
     doAppendable: sideOffersAppendedTile({ ruleDef, side: RuleSide.Do, catalogs, services }),
+    triggerSwitchable: triggerSwitchState(ruleDef.trigger(), availableTriggerModes(ruleDef)) !== "fixed",
     hasSentence: true,
   };
 }
@@ -99,17 +102,18 @@ function step(
 }
 
 describe("the cells a page stands", () => {
-  test("a rule reads its handle, then each side's tiles and add-tile control, then its sentence", () => {
+  test("a rule reads its handle and trigger switch, then each side's tiles and add-tile control, then its sentence", () => {
     const { bare, rows } = makeMixedPage();
     assert.deepEqual(rows[4], [
       { kind: "handle", ruleId: bare.ruleId() },
+      { kind: "trigger", ruleId: bare.ruleId() },
       { kind: "append", ruleId: bare.ruleId(), side: RuleSide.When },
       { kind: "append", ruleId: bare.ruleId(), side: RuleSide.Do },
     ]);
     assert.deepEqual(rows[5], [{ kind: "sentence", ruleId: bare.ruleId() }]);
   });
 
-  test("a side the oracle offers nothing at stands no cell", () => {
+  test("a side the oracle offers nothing at stands no cell, and neither does a capsule with no choice of mode", () => {
     const { both, rows } = makeMixedPage();
     assert.deepEqual(rows[0], [
       { kind: "handle", ruleId: both.ruleId() },
@@ -118,10 +122,21 @@ describe("the cells a page stands", () => {
     ]);
   });
 
+  test("a capsule whose mode its position rejects stands a cell, as one offering another mode does", () => {
+    const { rules } = makePage(2);
+    rules[1].setTrigger(RuleTriggerMode.Then);
+    assert.ok(rules[1].indent(), "the second rule indents under the first");
+    const rows = pageGridRows(rules.map(describeRule));
+
+    assert.equal(triggerSwitchState(rules[1].trigger(), availableTriggerModes(rules[1])), "invalid");
+    assert.deepEqual(rows[2][1], { kind: "trigger", ruleId: rules[1].ruleId() });
+  });
+
   test("the two sides answer independently", () => {
     const { whenOnly, rows } = makeMixedPage();
     assert.deepEqual(rows[2], [
       { kind: "handle", ruleId: whenOnly.ruleId() },
+      { kind: "trigger", ruleId: whenOnly.ruleId() },
       { kind: "tile", ruleId: whenOnly.ruleId(), side: RuleSide.When, tileIndex: 0 },
       { kind: "append", ruleId: whenOnly.ruleId(), side: RuleSide.Do },
     ]);
@@ -165,11 +180,25 @@ describe("the row the page's add-rule control stands", () => {
 
 describe("stepping across the page", () => {
   test("right and left walk the row the cursor stands in", () => {
+    const { whenOnly, rows } = makeMixedPage();
+    const handle = cursorAt(rows, { kind: "handle", ruleId: whenOnly.ruleId() });
+    const trigger = step(rows, handle, "ArrowRight") as PageGridCursor;
+    assert.deepEqual(trigger.cell, { kind: "trigger", ruleId: whenOnly.ruleId() });
+    const whenTile = step(rows, trigger, "ArrowRight");
+    assert.deepEqual(whenTile?.cell, { kind: "tile", ruleId: whenOnly.ruleId(), side: RuleSide.When, tileIndex: 0 });
+    assert.deepEqual(step(rows, whenTile as PageGridCursor, "ArrowLeft")?.cell, trigger.cell);
+    assert.deepEqual(step(rows, trigger, "ArrowLeft")?.cell, handle.cell);
+  });
+
+  test("right steps a capsule with no choice of mode over, reaching the WHEN tiles from the handle", () => {
     const { both, rows } = makeMixedPage();
     const handle = cursorAt(rows, { kind: "handle", ruleId: both.ruleId() });
-    const whenTile = step(rows, handle, "ArrowRight");
-    assert.deepEqual(whenTile?.cell, { kind: "tile", ruleId: both.ruleId(), side: RuleSide.When, tileIndex: 0 });
-    assert.deepEqual(step(rows, whenTile as PageGridCursor, "ArrowLeft")?.cell, handle.cell);
+    assert.deepEqual(step(rows, handle, "ArrowRight")?.cell, {
+      kind: "tile",
+      ruleId: both.ruleId(),
+      side: RuleSide.When,
+      tileIndex: 0,
+    });
   });
 
   test("right steps over the side whose add-tile control stands no cell", () => {
@@ -247,7 +276,7 @@ describe("the column vertical movement holds", () => {
     assert.deepEqual(sentence.cell, { kind: "sentence", ruleId: both.ruleId() });
     assert.equal(sentence.desiredColumn, 2);
     const returned = step(rows, sentence, "ArrowDown") as PageGridCursor;
-    assert.deepEqual(returned.cell, { kind: "append", ruleId: whenOnly.ruleId(), side: RuleSide.Do });
+    assert.deepEqual(returned.cell, { kind: "tile", ruleId: whenOnly.ruleId(), side: RuleSide.When, tileIndex: 0 });
     assert.equal(returned.desiredColumn, 2);
   });
 
@@ -450,12 +479,35 @@ describe("who the arrow keys belong to", () => {
     for (const cell of [
       { kind: "sentence", ruleId: rules[2].ruleId() },
       { kind: "append", ruleId: rules[2].ruleId(), side: RuleSide.When },
+      { kind: "trigger", ruleId: rules[2].ruleId() },
     ] satisfies PageGridCell[]) {
       assert.deepEqual(decidePageKey(rows, cursorAt(rows, cell), onCell("ArrowUp", true), undefined), {
         kind: "move-rule",
         ruleId: rules[2].ruleId(),
         direction: "up",
       });
+    }
+  });
+
+  test("every arrow on a trigger capsule moves the selection and nothing else", () => {
+    const { rules, rows } = handleCursor();
+    const capsule = cursorAt(rows, { kind: "trigger", ruleId: rules[1].ruleId() });
+
+    for (const key of ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]) {
+      assert.equal(decidePageKey(rows, capsule, onCell(key), undefined).kind, "select");
+    }
+  });
+
+  test("every arrow on a capsule whose mode its position rejects moves the selection too", () => {
+    const { rules } = makePage(3);
+    rules[1].setTrigger(RuleTriggerMode.Then);
+    assert.ok(rules[1].indent(), "the second rule indents under the first");
+    const rows = pageGridRows(rules.map(describeRule));
+    const capsule = cursorAt(rows, { kind: "trigger", ruleId: rules[1].ruleId() });
+
+    assert.equal(triggerSwitchState(rules[1].trigger(), availableTriggerModes(rules[1])), "invalid");
+    for (const key of ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]) {
+      assert.equal(decidePageKey(rows, capsule, onCell(key), undefined).kind, "select");
     }
   });
 

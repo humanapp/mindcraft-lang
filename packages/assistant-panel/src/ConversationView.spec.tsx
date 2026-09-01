@@ -102,6 +102,18 @@ function nestedUnder(page: NamedPage, parentRuleId: string, ruleId: string): Con
   };
 }
 
+/** An edit switching `ruleId` to `trigger` on `page`, leaving the rule holding no tiles. */
+function switchedTo(page: NamedPage, ruleId: string, trigger: string): ConversationToolCall {
+  return {
+    name: "propose_edit",
+    input: { op: "setRuleTrigger", ruleId, trigger },
+    outcome: {
+      kind: "ok",
+      payload: { ok: true, historyDepth: 1, onPage: page, rule: { ruleId, trigger, when: [], do: [], children: [] } },
+    },
+  };
+}
+
 /** An edit the editor refused, under the diagnostic that refused it and the tile it named. */
 function refusedFor(tileId: string): ConversationToolCall {
   return {
@@ -461,6 +473,63 @@ describe("the edits a turn landed", () => {
     assert.deepEqual(valuesOf(markup, "data-assistant-rule-depth"), ["0", "1"]);
     assert.deepEqual(valuesOf(markup, "data-assistant-tile"), [escaped(moveTile.tileId), escaped(seeTile.tileId)]);
     assert.equal(countOf(markup, /data-assistant-side="do"/), 2);
+  });
+
+  test("reads the trigger mode off each rule, defaulting a rule the payload gave none", () => {
+    const markup = render({
+      record: record([
+        {
+          kind: "assistant",
+          steps: [
+            { kind: "toolCall", call: placedOn(wandering, "rule-1", [moveTile]) },
+            { kind: "toolCall", call: switchedTo(wandering, "rule-2", "otherwise") },
+            { kind: "toolCall", call: switchedTo(wandering, "rule-3", "then") },
+          ],
+        },
+      ]),
+    });
+
+    assert.deepEqual(valuesOf(markup, "data-assistant-rule-trigger"), ["when", "otherwise", "then"]);
+  });
+
+  test("stands the mode capsule of a rule armed by its mode alone, where a when rule with no tiles draws none", () => {
+    const bare = render({
+      record: record([
+        { kind: "assistant", steps: [{ kind: "toolCall", call: switchedTo(wandering, "rule-1", "then") }] },
+      ]),
+    });
+    const whenRule = render({
+      record: record([
+        {
+          kind: "assistant",
+          steps: [
+            { kind: "toolCall", call: placedOn(wandering, "rule-1", [moveTile]) },
+            { kind: "toolCall", call: nestedUnder(wandering, "rule-1", "rule-2") },
+          ],
+        },
+      ]),
+    });
+
+    assert.equal(countOf(bare, /data-assistant-side="when"/), 1, "a bare THEN stands as its capsule");
+    assert.equal(countOf(whenRule, /data-assistant-side="when"/), 0, "an empty WHEN band draws nothing");
+  });
+
+  test("gives a rule armed by its mode alone a reading, where a bare when rule has none", () => {
+    const readingOf = (markup: string) => /data-assistant-rule="[^"]*"[^>]*aria-label="([^"]*)"/.exec(markup)?.[1];
+
+    const bare = render({
+      record: record([
+        { kind: "assistant", steps: [{ kind: "toolCall", call: switchedTo(wandering, "rule-1", "then") }] },
+      ]),
+    });
+    const whenRule = render({
+      record: record([
+        { kind: "assistant", steps: [{ kind: "toolCall", call: switchedTo(wandering, "rule-1", "when") }] },
+      ]),
+    });
+
+    assert.ok((readingOf(bare)?.length ?? 0) > 0, bare);
+    assert.equal(readingOf(whenRule), "");
   });
 
   test("opens to one row per editor command, under the op the command named", () => {

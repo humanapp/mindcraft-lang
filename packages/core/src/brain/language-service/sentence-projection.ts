@@ -16,6 +16,7 @@ import {
   LiteralDisplayFormats,
   mkOperatorTileId,
   RuleSide,
+  RuleTriggerMode,
   type TileSentenceFrame,
 } from "../interfaces";
 import type { BrainTileAccessorDef } from "../tiles/accessors";
@@ -172,6 +173,10 @@ const kNegatedVerbTemplate = "When I do {negation} {form} {object}";
 const kNegatedStateTemplate = "When I am {negation} {form} {object}";
 const kNegatedEventTemplate = "When {negation} {form} {object}";
 const kAlwaysWord = "Always";
+const kOtherwiseWord = "Otherwise";
+const kThenWord = "Then";
+const kOtherwiseConditionTemplate = "Otherwise, when {condition}";
+const kThenConditionTemplate = "Then, when {condition}";
 const kBareDefaultTemplate = "{frame, select, verb {anything} other {}}";
 const kTextValueTemplate = '"{value}"';
 const kWordGlueTemplate = "{a} {b}";
@@ -183,6 +188,10 @@ const kChildConditionTemplate = "{parent}, and if {condition}";
 const kChildConsequenceTemplate = "{parent}, and {consequence}";
 const kIncompleteConditionTemplate = "{parent}, when {condition}";
 const kIncompleteConsequenceTemplate = "{parent}, {consequence}";
+const kChildOtherwiseConditionTemplate = "{parent}, otherwise when {condition}";
+const kChildOtherwiseConsequenceTemplate = "{parent}, otherwise {consequence}";
+const kChildThenConditionTemplate = "{parent}, then when {condition}";
+const kChildThenConsequenceTemplate = "{parent}, then {consequence}";
 const kChildClauseTemplate = "{condition}, {action}";
 const kSentenceGlueTemplate = "{sentence} {rest}";
 const kChildVerbTemplate = "I {form} {object}";
@@ -669,13 +678,75 @@ function projectWhenClause(localizer: Localizer, tiles: ReadonlyList<IBrainTileD
   return renderPhrase(localizer, frameTemplate(tileFrame(head)), kWhenContext, slots);
 }
 
+function childFrameTemplate(frame: TileSentenceFrame): string {
+  if (frame === "state") {
+    return kChildStateTemplate;
+  }
+  if (frame === "event") {
+    return kChildEventTemplate;
+  }
+  if (frame === "adverb") {
+    return kChildAdverbTemplate;
+  }
+  return kChildVerbTemplate;
+}
+
+/** The subordinate template of `frame` carrying a negation word inside the clause. */
+function childNegatedFrameTemplate(frame: TileSentenceFrame): string {
+  if (frame === "state") {
+    return kChildNegatedStateTemplate;
+  }
+  if (frame === "event") {
+    return kChildNegatedEventTemplate;
+  }
+  return kChildNegatedVerbTemplate;
+}
+
 /**
- * The word a rule with no condition reads as in the locale `localizer` renders:
- * the trigger {@link projectRuleSentence} gives a rule whose WHEN side holds no
- * tiles. Call it wherever a surface has to read a rule's trigger word.
+ * Render a WHEN side as a subordinate clause: the negated frame of the sensor a
+ * negation heads, the condition alone for a subjectless side, and otherwise the
+ * head tile's frame applied to the tiles that follow it. The result carries no
+ * trigger word.
  */
-export function whenTriggerWord(localizer: Localizer): string {
+function projectChildWhenClause(localizer: Localizer, tiles: ReadonlyList<IBrainTileDef>): List<SentenceSegment> {
+  const head = tiles.get(0);
+  const slots = new List<SentenceSlot>();
+  const sensed = negatedSensor(tiles);
+  if (sensed !== undefined) {
+    return renderPhrase(
+      localizer,
+      childNegatedFrameTemplate(tileFrame(sensed)),
+      kConnectiveContext,
+      negatedFrameSlots(localizer, tiles, sensed)
+    );
+  }
+  if (isSubjectlessWhenSide(tiles)) {
+    slots.push(slot("condition", joinWords(localizer, tiles, 0, 0)));
+    return renderPhrase(localizer, kChildSubjectlessTemplate, kConnectiveContext, slots);
+  }
+  slots.push(slot("form", wordPhrase(localizer, head, 0)));
+  slots.push(slot("object", tiles.size() > 1 ? joinWords(localizer, tiles, 1, 0) : barePhrase(localizer, head, 0)));
+  return renderPhrase(localizer, childFrameTemplate(tileFrame(head)), kConnectiveContext, slots);
+}
+
+/**
+ * The word a rule of `trigger` with no condition reads as in the locale
+ * `localizer` renders: the always-word for the `when` mode, and the mode's own
+ * connective for the other two.
+ */
+export function triggerModeWord(trigger: RuleTriggerMode, localizer: Localizer): string {
+  if (trigger === RuleTriggerMode.Otherwise) {
+    return localizer.tr(kOtherwiseWord, undefined, kWhenContext);
+  }
+  if (trigger === RuleTriggerMode.Then) {
+    return localizer.tr(kThenWord, undefined, kWhenContext);
+  }
   return localizer.tr(kAlwaysWord, undefined, kWhenContext);
+}
+
+/** The clause template joining `trigger`'s connective to a condition that follows it. */
+function modeConditionTemplate(trigger: RuleTriggerMode): string {
+  return trigger === RuleTriggerMode.Otherwise ? kOtherwiseConditionTemplate : kThenConditionTemplate;
 }
 
 /**
@@ -695,20 +766,29 @@ function terminalTemplate(unfinished: boolean): string {
 }
 
 /**
- * The clause of `rule` with no sentence-final punctuation: its trigger -- the
- * WHEN side's reading, or the always-word when that side is empty -- followed by
- * its action when its DO side has tiles.
+ * The clause of `rule` with no sentence-final punctuation: its trigger followed
+ * by its action when its DO side has tiles.
+ *
+ * The trigger reads by the rule's mode. A `when` rule reads its WHEN side, or
+ * the always-word when that side is empty. An `otherwise` or `then` rule reads
+ * its mode's connective, alone when its WHEN side is empty and followed by that
+ * side as a subordinate clause otherwise.
  */
 function projectRuleClause(localizer: Localizer, rule: IBrainRuleDef): List<SentenceSegment> {
   const whenTiles = rule.when().tiles();
   const doTiles = rule.do().tiles();
+  const mode = rule.trigger();
 
   let trigger: List<SentenceSegment>;
   if (whenTiles.isEmpty()) {
     trigger = new List<SentenceSegment>();
-    trigger.push(glueSegment(whenTriggerWord(localizer)));
-  } else {
+    trigger.push(glueSegment(triggerModeWord(mode, localizer)));
+  } else if (mode === RuleTriggerMode.When) {
     trigger = projectWhenClause(localizer, whenTiles);
+  } else {
+    const modeSlots = new List<SentenceSlot>();
+    modeSlots.push(slot("condition", projectChildWhenClause(localizer, whenTiles)));
+    trigger = renderPhrase(localizer, modeConditionTemplate(mode), kWhenContext, modeSlots);
   }
   if (doTiles.isEmpty()) {
     return trigger;
@@ -866,57 +946,6 @@ function composeEntries(
   return mergeGlueEntries(out.asReadonly());
 }
 
-function childFrameTemplate(frame: TileSentenceFrame): string {
-  if (frame === "state") {
-    return kChildStateTemplate;
-  }
-  if (frame === "event") {
-    return kChildEventTemplate;
-  }
-  if (frame === "adverb") {
-    return kChildAdverbTemplate;
-  }
-  return kChildVerbTemplate;
-}
-
-/** The subordinate template of `frame` carrying a negation word inside the clause. */
-function childNegatedFrameTemplate(frame: TileSentenceFrame): string {
-  if (frame === "state") {
-    return kChildNegatedStateTemplate;
-  }
-  if (frame === "event") {
-    return kChildNegatedEventTemplate;
-  }
-  return kChildNegatedVerbTemplate;
-}
-
-/**
- * Render the WHEN side of a child rule as a subordinate clause: the negated frame
- * of the sensor a negation heads, the condition alone for a subjectless side, and
- * otherwise the head tile's frame applied to the tiles that follow it. The result
- * carries no trigger word.
- */
-function projectChildWhenClause(localizer: Localizer, tiles: ReadonlyList<IBrainTileDef>): List<SentenceSegment> {
-  const head = tiles.get(0);
-  const slots = new List<SentenceSlot>();
-  const sensed = negatedSensor(tiles);
-  if (sensed !== undefined) {
-    return renderPhrase(
-      localizer,
-      childNegatedFrameTemplate(tileFrame(sensed)),
-      kConnectiveContext,
-      negatedFrameSlots(localizer, tiles, sensed)
-    );
-  }
-  if (isSubjectlessWhenSide(tiles)) {
-    slots.push(slot("condition", joinWords(localizer, tiles, 0, 0)));
-    return renderPhrase(localizer, kChildSubjectlessTemplate, kConnectiveContext, slots);
-  }
-  slots.push(slot("form", wordPhrase(localizer, head, 0)));
-  slots.push(slot("object", tiles.size() > 1 ? joinWords(localizer, tiles, 1, 0) : barePhrase(localizer, head, 0)));
-  return renderPhrase(localizer, childFrameTemplate(tileFrame(head)), kConnectiveContext, slots);
-}
-
 /**
  * The continuation clause of a child `rule`, which must have tiles on at least
  * one side: its action alone when its WHEN side is empty, its subordinate
@@ -951,12 +980,21 @@ interface SentenceBuild {
 }
 
 /**
- * The connective joining a child clause onto the sentence, chosen by whether
- * the clause it continues left that sentence unfinished: an unfinished sentence
- * takes the continuation its own clause completes, and a finished one takes the
- * conjunction that adds to it.
+ * The connective joining a child clause of mode `trigger` onto the sentence.
+ *
+ * An `otherwise` or `then` child takes its own mode's connective, which stands
+ * whatever the clause before it holds. A `when` child takes a connective chosen
+ * by whether the clause it continues left the sentence unfinished: an unfinished
+ * sentence takes the continuation its own clause completes, and a finished one
+ * takes the conjunction that adds to it.
  */
-function childConnectiveTemplate(unfinished: boolean, childHasCondition: boolean): string {
+function childConnectiveTemplate(trigger: RuleTriggerMode, unfinished: boolean, childHasCondition: boolean): string {
+  if (trigger === RuleTriggerMode.Otherwise) {
+    return childHasCondition ? kChildOtherwiseConditionTemplate : kChildOtherwiseConsequenceTemplate;
+  }
+  if (trigger === RuleTriggerMode.Then) {
+    return childHasCondition ? kChildThenConditionTemplate : kChildThenConsequenceTemplate;
+  }
   if (childHasCondition) {
     return unfinished ? kIncompleteConditionTemplate : kChildConditionTemplate;
   }
@@ -987,7 +1025,7 @@ function attachChildRules(
     const slots = new List<ParagraphSlot>();
     slots.push(paragraphSlot("parent", out.entries.asReadonly()));
     slots.push(paragraphSlot(childHasCondition ? "condition" : "consequence", childEntries.asReadonly()));
-    const source = childConnectiveTemplate(out.unfinished, childHasCondition);
+    const source = childConnectiveTemplate(child.trigger(), out.unfinished, childHasCondition);
     const entries = composeEntries(localizer, source, kConnectiveContext, slots.asReadonly());
 
     out = attachChildRules(localizer, { entries, unfinished: isUnfinishedClause(child) }, child.children());
@@ -1035,6 +1073,8 @@ function collectSentences(
  * if <condition>, <action>" continuation, recursively for deeper nesting. Where
  * the clause it continues holds no action of its own, the child completes that
  * clause instead of adding to it, reading as ", when <condition>, <action>". A
+ * child carrying an `otherwise` or `then` mode is joined by that mode's own
+ * connective instead, reading as ", otherwise ..." or ", then ...". A
  * sentence whose last clause still holds no action ends on the incomplete
  * terminal. A rule with no tiles -- the trailing empty rule among them --
  * contributes nothing, and its children take its place. A page with no rules

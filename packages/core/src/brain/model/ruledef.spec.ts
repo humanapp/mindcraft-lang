@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
 import { List } from "@wendoo/core";
-import { type BrainServices, CoreCapabilityBits, mkVariableTileId } from "@wendoo/core/brain";
+import { type BrainServices, CoreCapabilityBits, mkVariableTileId, RuleTriggerMode } from "@wendoo/core/brain";
 import { __test__appendTile, __test__createBrainServices } from "@wendoo/core/brain/__test__";
 import { ParseDiagCode, type TypecheckResult } from "@wendoo/core/brain/compiler";
 import type { BrainJson, RuleJson } from "@wendoo/core/brain/model";
@@ -754,6 +754,61 @@ describe("BrainRuleDef", () => {
       const loadedCodes = storedDoDiagCodes(loadedRule);
       assert.ok(loadedCodes, "the loaded rule must store a typecheck result after the load typecheck");
       assert.deepEqual(loadedCodes, liveCodes, "loaded diagnostics must match the live diagnostics");
+    });
+
+    /** How many times `work` makes `rule` store a freshly derived typecheck result. */
+    function countStoredResults(rule: BrainRuleDef, work: () => void): number {
+      let stored = 0;
+      const unsub = rule
+        .when()
+        .events()
+        .on("tileSet_typechecked", () => {
+          stored++;
+        });
+      work();
+      unsub();
+      return stored;
+    }
+
+    test("a trigger change invalidates the stored result the way losing the rule above does", () => {
+      const brain = BrainDef.emptyBrainDef(services, "tc-trigger-invalidation-brain");
+      const page = brain.pages().get(0);
+      const second = page.appendNewRule() as BrainRuleDef;
+      brain.typecheck();
+
+      assert.equal(
+        countStoredResults(second, () => {
+          second.typecheck();
+        }),
+        0,
+        "a rule that has not changed reuses its stored result"
+      );
+
+      assert.equal(
+        countStoredResults(second, () => {
+          page.removeRuleAtIndex(0);
+          second.typecheck();
+        }),
+        1,
+        "losing the rule above re-derives the stored result"
+      );
+
+      assert.equal(
+        countStoredResults(second, () => {
+          second.setTrigger(RuleTriggerMode.Then);
+          second.typecheck();
+        }),
+        1,
+        "a trigger change re-derives the stored result"
+      );
+
+      assert.equal(
+        countStoredResults(second, () => {
+          second.typecheck();
+        }),
+        0,
+        "the re-derived result stands until the next change"
+      );
     });
   });
 });

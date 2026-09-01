@@ -84,6 +84,8 @@ function commandText(op: string, words: readonly string[], outcome: EditOutcome)
       return "took a rule out";
     case "deletePage":
       return "took a page out";
+    case "setRuleTrigger":
+      return "changed what starts the rule";
     default:
       return "changed the rules";
   }

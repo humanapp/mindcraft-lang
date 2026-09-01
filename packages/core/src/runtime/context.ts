@@ -43,6 +43,14 @@ export interface HostActionBinding {
   onPageExited?: (ctx: ExecutionContext) => void;
   execSync?: (ctx: ExecutionContext, args: ReadonlyList<Value>) => Value;
   execAsync?: (ctx: ExecutionContext, args: ReadonlyList<Value>, handle: AsyncHandle) => void;
+  /**
+   * When true, `HOST_ACTION_CALL_ASYNC` allocates this action's handles outside
+   * the runtime's `maxHandles` accounting: the dispatch skips the capacity
+   * check and the handle is not counted while live. Set it only on an action
+   * whose live pending handles the runtime bounds by construction. Absent or
+   * false means the ordinary capped allocation.
+   */
+  uncappedHandles?: boolean;
 }
 
 /**

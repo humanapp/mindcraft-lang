@@ -15,9 +15,10 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import { List, type ReadonlyList } from "@wendoo/core";
-import type { BrainServices, IBrainTileDef, ITileCatalog } from "@wendoo/core/brain";
+import type { BrainServices, ITileCatalog } from "@wendoo/core/brain";
 import { RuleSide } from "@wendoo/core/brain";
 import { __test__createBrainServices } from "@wendoo/core/brain/__test__";
+import { availableTriggerModes } from "@wendoo/core/brain/language-service";
 import { BrainCommandHistory, type BrainPageDef, type BrainRuleDef } from "@wendoo/core/brain/model";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -36,6 +37,7 @@ import { kPageGridSelectionAttribute, ruleSelectionCell } from "./page-grid-sele
 import { RuleSelectionProvider } from "./RuleSelectionContext";
 import { makeActuator, makeBrain, makeSensor } from "./test-only-rule-fixtures";
 import { sideOffersAppendedTile } from "./tile-offering";
+import { triggerSwitchState } from "./trigger-mode";
 
 let services: BrainServices;
 let catalogs: ReadonlyList<ITileCatalog>;
@@ -92,6 +94,7 @@ function renderRuleCard(ruleDef: BrainRuleDef, currentCell?: PageGridCell): stri
               composeRule: () => {},
               grabRule: () => {},
               moveRule: () => {},
+              cycleTrigger: () => {},
               offeringRail: null,
             },
           },
@@ -120,6 +123,7 @@ function modelCells(ruleDef: BrainRuleDef, hasSentence: boolean): PageGridCell[]
     doTileCount: ruleDef.do().tiles().size(),
     whenAppendable: sideOffersAppendedTile({ ruleDef, side: RuleSide.When, catalogs, services }),
     doAppendable: sideOffersAppendedTile({ ruleDef, side: RuleSide.Do, catalogs, services }),
+    triggerSwitchable: triggerSwitchState(ruleDef.trigger(), availableTriggerModes(ruleDef)) !== "fixed",
     hasSentence,
   };
   // The page stands the last row, not the rule.
@@ -131,11 +135,16 @@ function modelCellKeys(ruleDef: BrainRuleDef, hasSentence: boolean): string[] {
   return modelCells(ruleDef, hasSentence).map(pageGridCellKey);
 }
 
-/** A rule holding one tile on each side, typechecked so the oracle has an answer for both. */
+/**
+ * A rule holding one tile on each side, typechecked so the oracle has an answer
+ * for both. It stands second on its page, so its position admits more than one
+ * trigger mode and its capsule stands the rule's trigger cell.
+ */
 function makePopulatedRule(name: string): BrainRuleDef {
-  const whenTiles: IBrainTileDef[] = [makeSensor(services, `${name}-see`)];
-  const doTiles: IBrainTileDef[] = [makeActuator(services, `${name}-move`)];
-  const { ruleDef } = makeBrain(services, whenTiles, doTiles);
+  const { pageDef } = makeBrain(services, [], []);
+  const ruleDef = pageDef.appendNewRule();
+  ruleDef.when().appendTile(makeSensor(services, `${name}-see`));
+  ruleDef.do().appendTile(makeActuator(services, `${name}-move`));
   ruleDef.typecheck();
   return ruleDef;
 }
@@ -267,6 +276,7 @@ describe("the selection's mark", () => {
   /** The shape each kind of cell names its selection in. */
   const shapeOfKind: Record<PageGridCell["kind"], string> = {
     handle: "circle",
+    trigger: "capsule",
     tile: "chip",
     append: "circle",
     sentence: "line",

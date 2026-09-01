@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
 import { List } from "@wendoo/core";
-import { type BrainServices, mkOutputTileId, mkVariableTileId } from "@wendoo/core/brain";
+import { type BrainServices, mkOutputTileId, mkVariableTileId, RuleTriggerMode } from "@wendoo/core/brain";
 import { __test__appendTile, __test__createBrainServices } from "@wendoo/core/brain/__test__";
 import {
   BrainDef,
@@ -141,6 +141,14 @@ function roundTrip(brainDef: BrainDef, loadNamespace: string): BrainDef {
 }
 
 describe("persisted brain JSON codec", () => {
+  test("a rule's trigger mode survives the persisted round trip", () => {
+    const brainDef = brainWith([platformSensor("platform.scan")]);
+    brainDef.pages().get(0)!.children().get(0)!.setTrigger(RuleTriggerMode.Otherwise);
+
+    const loaded = roundTrip(brainDef, NS);
+    assert.equal(loaded.pages().get(0)!.children().get(0)!.trigger(), RuleTriggerMode.Otherwise);
+  });
+
   test("own action tile ids serialize structured with the namespace absent", () => {
     const brainDef = brainWith([userSensor(NS, "abc123"), userActuator(NS, "abc123")]);
     const persisted = encodePersistedBrainJson(brainDef, NS);

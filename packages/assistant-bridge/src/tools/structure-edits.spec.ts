@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { mkPageTileId } from "@wendoo/core/brain";
+import { ParseDiagCode } from "@wendoo/core/brain/compiler";
 import { kMaxBrainPageCount } from "@wendoo/core/brain/model";
+import { CoreHostActions, mkSensorTileId } from "@wendoo/core/runtime";
 import { createTargetAdapter } from "../testing/index.js";
-import type { BatchAccepted, ProposalAccepted, ProposalUnresolved } from "./propose-edit.js";
+import type { BatchAccepted, ProposalAccepted, ProposalRejected, ProposalUnresolved } from "./propose-edit.js";
 import { proposeEdit, proposeEditBatch } from "./propose-edit.js";
 import { readProject } from "./read-project.js";
 import type { AuthoringWorkspace, LandedEdit } from "./workspace.js";
@@ -600,5 +602,135 @@ describe("an accepted edit says which page it landed on", () => {
       result.results.map((outcome) => outcome.onPage?.pageId),
       [second, first, first]
     );
+  });
+});
+
+describe("the trigger mode a rule is made with and switched to", () => {
+  test("makes a sibling in the mode the edit asked for, and read_project reports it", () => {
+    const ws = workspace();
+
+    const result = proposeEdit(ws, { op: "addRule", pageIndex: 0, trigger: "otherwise" }) as ProposalAccepted;
+
+    assert.equal(result.ok, true, JSON.stringify(result));
+    assert.equal(result.rule?.trigger, "otherwise");
+    assert.equal(readProject(ws).pages[0]!.rules[1]!.trigger, "otherwise");
+  });
+
+  test("leaves the default mode off the report, so only a switched rule carries one", () => {
+    const ws = workspace();
+
+    const result = proposeEdit(ws, { op: "addRule", pageIndex: 0 }) as ProposalAccepted;
+
+    assert.equal(result.rule?.trigger, undefined);
+    assert.ok(!("trigger" in readProject(ws).pages[0]!.rules[0]!), "the opening rule reports no mode");
+  });
+
+  test("makes a child in the mode the edit asked for, once the parent has a child to follow", () => {
+    const ws = workspace();
+    const parentRuleId = firstRuleId(ws);
+    const first = proposeEdit(ws, { op: "addChildRule", parentRuleId }) as ProposalAccepted;
+    assert.equal(first.ok, true, JSON.stringify(first));
+
+    const result = proposeEdit(ws, { op: "addChildRule", parentRuleId, trigger: "then" }) as ProposalAccepted;
+
+    assert.equal(result.ok, true, JSON.stringify(result));
+    assert.equal(result.rule?.trigger, "then");
+    assert.equal(readProject(ws).pages[0]!.rules[0]!.children[1]!.trigger, "then");
+  });
+
+  test("switches a rule already standing, and switches it back", () => {
+    const ws = workspace();
+    const added = proposeEdit(ws, { op: "addRule", pageIndex: 0 }) as ProposalAccepted;
+    const ruleId = added.rule!.ruleId;
+
+    const switched = proposeEdit(ws, { op: "setRuleTrigger", ruleId, trigger: "then" }) as ProposalAccepted;
+    const back = proposeEdit(ws, { op: "setRuleTrigger", ruleId, trigger: "when" }) as ProposalAccepted;
+
+    assert.equal(switched.rule?.trigger, "then");
+    assert.equal(back.rule?.trigger, undefined);
+  });
+
+  test("one undo takes a switch back", () => {
+    const ws = workspace();
+    const added = proposeEdit(ws, { op: "addRule", pageIndex: 0 }) as ProposalAccepted;
+    const ruleId = added.rule!.ruleId;
+    const depthBefore = ws.history.undoDepth();
+
+    const result = proposeEdit(ws, { op: "setRuleTrigger", ruleId, trigger: "otherwise" }) as ProposalAccepted;
+    ws.history.undo();
+
+    assert.equal(result.historyDepth, depthBefore + 1);
+    assert.equal(readProject(ws).pages[0]!.rules[1]!.trigger, undefined);
+  });
+
+  test("one undo takes back a rule made in a mode, mode and all", () => {
+    const ws = workspace();
+    const depthBefore = ws.history.undoDepth();
+
+    const result = proposeEdit(ws, { op: "addRule", pageIndex: 0, trigger: "then" }) as ProposalAccepted;
+    assert.equal(result.historyDepth, depthBefore + 1, "the mode does not cost a second history entry");
+    ws.history.undo();
+
+    assert.equal(readProject(ws).pages[0]!.rules.length, 1);
+  });
+
+  for (const refusedCase of [
+    { trigger: "otherwise", code: ParseDiagCode.OtherwiseTriggerNoPrecedingSiblingRule },
+    { trigger: "then", code: ParseDiagCode.ThenTriggerNoPrecedingSiblingRule },
+  ] as const) {
+    test(`refuses ${refusedCase.trigger} on the first rule at its level, leaving the mode as it was`, () => {
+      const ws = workspace();
+      const ruleId = firstRuleId(ws);
+
+      const result = proposeEdit(ws, { op: "setRuleTrigger", ruleId, trigger: refusedCase.trigger });
+
+      assert.equal(result.ok, false, JSON.stringify(result));
+      assert.equal((result as ProposalRejected).code, refusedCase.code);
+      assert.equal(readProject(ws).pages[0]!.rules[0]!.trigger, undefined);
+    });
+
+    test(`refuses a first child made in the ${refusedCase.trigger} mode, leaving no rule behind`, () => {
+      const ws = workspace();
+      const parentRuleId = firstRuleId(ws);
+
+      const result = proposeEdit(ws, { op: "addChildRule", parentRuleId, trigger: refusedCase.trigger });
+
+      assert.equal(result.ok, false, JSON.stringify(result));
+      assert.equal((result as ProposalRejected).code, refusedCase.code);
+      assert.deepEqual(readProject(ws).pages[0]!.rules[0]!.children, []);
+    });
+  }
+
+  test("refuses the deprecated `otherwise` tile, so the mode is the only way to branch", () => {
+    const ws = workspace();
+    const added = proposeEdit(ws, { op: "addRule", pageIndex: 0 }) as ProposalAccepted;
+
+    const result = proposeEdit(ws, {
+      op: "placeTile",
+      ruleId: added.rule!.ruleId,
+      side: "when",
+      tileId: mkSensorTileId(CoreHostActions.Otherwise.key),
+    });
+
+    assert.equal(result.ok, false, JSON.stringify(result));
+    assert.equal((result as ProposalRejected).code, ParseDiagCode.DeprecatedOtherwiseTile);
+    assert.deepEqual(readProject(ws).pages[0]!.rules[1]!.when, []);
+  });
+
+  test("a batch carrying a mode its position does not admit leaves the document as it stood", async () => {
+    const ws = workspace();
+    const before = readProject(ws);
+
+    const result = await proposeEditBatch(ws, {
+      op: "batch",
+      commands: [
+        { op: "addRule", pageIndex: 0, trigger: "then" },
+        { op: "addChildRule", parentRuleId: firstRuleId(ws), trigger: "otherwise" },
+      ],
+    });
+
+    assert.equal(result.ok, false, JSON.stringify(result));
+    assert.equal((result as ProposalRejected).code, ParseDiagCode.OtherwiseTriggerNoPrecedingSiblingRule);
+    assert.deepEqual(readProject(ws), before);
   });
 });

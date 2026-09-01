@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { isPageTileId } from "@wendoo/core/brain";
+import { CoreHostActions, mkSensorTileId } from "@wendoo/core/runtime";
 import { CatalogScope } from "../catalog/scope.js";
 import { createTargetAdapter, ruleIdAt } from "../testing/index.js";
 import { proposeEdit } from "./propose-edit.js";
@@ -10,6 +11,9 @@ import { createAuthoringWorkspace } from "./workspace.js";
 
 /** A sensor the fake target installs. */
 const installedSensor = "tile.sensor->sensor.fake.signal";
+
+/** Tile id of the core `otherwise` sensor. */
+const otherwiseSensor = mkSensorTileId(CoreHostActions.Otherwise.key);
 
 /** A workspace over the fake target, one empty rule ready on its first page. */
 function workspace(): AuthoringWorkspace {
@@ -92,5 +96,25 @@ describe("the scopes read_catalog groups tiles under", () => {
 
     assert.deepEqual(view.groups, []);
     assert.ok(view.total > 0);
+  });
+});
+
+describe("the tiles the catalog tells the model not to author with", () => {
+  test("marks the superseded `otherwise` sensor deprecated, and still lists it", () => {
+    const listed = catalogTiles(readCatalog(workspace(), {}));
+
+    const otherwise = listed.find((tile) => tile.tileId === otherwiseSensor);
+
+    assert.ok(otherwise, `the catalog lists ${otherwiseSensor}`);
+    assert.equal(otherwise.deprecated, true);
+    assert.notEqual(otherwise.hidden, true, "a deprecated tile is read, not hidden");
+  });
+
+  test("marks no tile deprecated that the language still authors with", () => {
+    const listed = catalogTiles(readCatalog(workspace(), {}));
+
+    const signal = listed.find((tile) => tile.tileId === installedSensor);
+
+    assert.equal(signal?.deprecated, undefined);
   });
 });

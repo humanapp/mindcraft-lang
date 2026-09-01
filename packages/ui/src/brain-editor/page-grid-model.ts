@@ -11,13 +11,14 @@ export const kPageGridCellAttribute = "data-page-grid-cell";
 
 /**
  * One place the page's selection can rest. A rule stands two rows: its
- * structural row -- the handle, the tiles of each side, and the add-tile control
- * each side offers -- and its sentence row, which holds a single cell for the
- * whole line. The page itself stands one further row, holding the control that
- * adds a rule at the end.
+ * structural row -- the handle, the trigger-mode switch, the tiles of each side,
+ * and the add-tile control each side offers -- and its sentence row, which holds
+ * a single cell for the whole line. The page itself stands one further row,
+ * holding the control that adds a rule at the end.
  */
 export type PageGridCell =
   | { readonly kind: "handle"; readonly ruleId: string }
+  | { readonly kind: "trigger"; readonly ruleId: string }
   | { readonly kind: "tile"; readonly ruleId: string; readonly side: RuleSide; readonly tileIndex: number }
   | { readonly kind: "append"; readonly ruleId: string; readonly side: RuleSide }
   | { readonly kind: "sentence"; readonly ruleId: string }
@@ -42,6 +43,12 @@ export interface RuleCellDescriptor {
   readonly whenAppendable: boolean;
   /** True when the DO side stands an add-tile control the selection can rest on. */
   readonly doAppendable: boolean;
+  /**
+   * True when the rule's trigger capsule is a switch the selection can rest on,
+   * which is a capsule offering a real choice of mode. False on a capsule with
+   * no choice, which stands as a static marker and no cell.
+   */
+  readonly triggerSwitchable: boolean;
   /** True when the rule renders a sentence line, which is its second row's one cell. */
   readonly hasSentence: boolean;
 }
@@ -175,6 +182,8 @@ export function pageGridCellKey(cell: PageGridCell): string {
   switch (cell.kind) {
     case "handle":
       return `${cell.ruleId}:handle`;
+    case "trigger":
+      return `${cell.ruleId}:trigger`;
     case "tile":
       return `${cell.ruleId}:tile:${cell.side}:${cell.tileIndex}`;
     case "append":
@@ -202,10 +211,11 @@ const kRowSides = [RuleSide.When, RuleSide.Do] as const;
 
 /**
  * The page's rows, in reading order: for each rule in `descriptors`, its
- * structural row -- the handle, the WHEN tiles, the WHEN add-tile control, the
- * DO tiles, the DO add-tile control -- followed by its sentence row where it
- * reads one. An add-tile control the side does not offer stands no cell, and a
- * rule reading no sentence contributes a structural row only.
+ * structural row -- the handle, the trigger-mode switch, the WHEN tiles, the
+ * WHEN add-tile control, the DO tiles, the DO add-tile control -- followed by
+ * its sentence row where it reads one. An add-tile control the side does not
+ * offer stands no cell, a trigger capsule offering no choice of mode stands no
+ * cell, and a rule reading no sentence contributes a structural row only.
  *
  * The last row is always the page's add-rule control, so a page holding no
  * rules still stands one cell.
@@ -215,6 +225,7 @@ export function pageGridRows(descriptors: readonly RuleCellDescriptor[]): PageGr
   for (const descriptor of descriptors) {
     const ruleId = descriptor.ruleId;
     const structural: PageGridCell[] = [{ kind: "handle", ruleId }];
+    if (descriptor.triggerSwitchable) structural.push({ kind: "trigger", ruleId });
     for (const side of kRowSides) {
       const isWhen = side === RuleSide.When;
       const count = isWhen ? descriptor.whenTileCount : descriptor.doTileCount;
@@ -382,7 +393,7 @@ const consumedPageKey: PageKeyResult = { kind: "consume" };
  * other key reaches a held rule.
  *
  * With no rule held the plain arrows move the selection, as
- * {@link decidePageGridKey} decides.
+ * {@link decidePageGridKey} decides, on every cell the page stands.
  *
  * A modified arrow pressed on the page's add-rule control, which belongs to no
  * rule, is consumed: the horizontal pair is the browser's back and forward
@@ -434,8 +445,8 @@ function pageGridVerb(press: PageGridKeyPress): PageGridVerb | undefined {
 
 /**
  * What `cell` stands for, or undefined for a cell standing for nothing an
- * operation can act on, which the sentence line and the page's add-rule control
- * both are.
+ * operation can act on, which the trigger-mode switch, the sentence line and the
+ * page's add-rule control all are.
  */
 function pageGridSubject(cell: PageGridCell): PageGridSubject | undefined {
   switch (cell.kind) {
@@ -445,6 +456,7 @@ function pageGridSubject(cell: PageGridCell): PageGridSubject | undefined {
       return { kind: "tile", ruleId: cell.ruleId, side: cell.side, tileIndex: cell.tileIndex };
     case "append":
       return { kind: "side-end", ruleId: cell.ruleId, side: cell.side };
+    case "trigger":
     case "sentence":
     case "append-rule":
       return undefined;

@@ -4,7 +4,7 @@ import { List, type ReadonlyList } from "../../platform/list";
 import { StringUtils as SU } from "../../platform/string";
 import { task, type thread } from "../../platform/task";
 import { UniqueSet } from "../../platform/uniqueset";
-import type { IConversionRegistry, IRngServices } from "../../runtime";
+import { CoreHostActions, CoreOpId, type IConversionRegistry, type IRngServices, mkSensorTileId } from "../../runtime";
 import { EventEmitter, type EventEmitterConsumer } from "../../util";
 import { BitSet } from "../../util/bitset";
 import { collectProvidedCapabilities, collectProvidedOutputKeys, parseRule } from "../compiler";
@@ -15,14 +15,19 @@ import {
   type IBrainRuleDef,
   type IBrainTileSet,
   type ITileCatalog,
+  mkOperatorTileId,
   RuleSide,
+  RuleTriggerMode,
 } from "../interfaces";
 import { getRuleWhenResultType } from "../language-service/tile-suggestions";
 import { mintDocumentId } from "./document-id";
 import type { BrainPageDef } from "./pagedef";
 import { BrainTileSet } from "./tileset";
 
-/** Serialized form of an {@link IBrainRuleDef}: `when`/`do` tile-id lists, child rules, and optional comment. */
+/**
+ * Serialized form of an {@link IBrainRuleDef}: `when`/`do` tile-id lists, child
+ * rules, and the optional comment and trigger mode.
+ */
 export interface RuleJson {
   version: number;
 
@@ -33,6 +38,12 @@ export interface RuleJson {
   do: ReadonlyList<string>;
   children: ReadonlyList<RuleJson>;
   comment?: string;
+
+  /**
+   * Trigger mode the rule carries. Optional; an absent mode reads as
+   * {@link RuleTriggerMode.When}, and a `when` rule serializes it absent.
+   */
+  trigger?: RuleTriggerMode;
 }
 
 // Maximum allowed depth for rules in the tree
@@ -48,6 +59,44 @@ export const kMaxBrainRuleCommentLength = 500; // never reduce this value!
 // JSON serialization version.
 const kVersion = 1;
 
+/**
+ * Rewrite a serialized rule that carries the deprecated `otherwise` sensor tile
+ * in a migratable placement into the equivalent `otherwise` trigger mode.
+ *
+ * Two WHEN shapes migrate, both on a rule whose stored mode is `when`:
+ * a WHEN side that is exactly the `otherwise` tile becomes the `otherwise` mode
+ * with an empty WHEN, and a WHEN side of `otherwise`, `AND`, and at least one
+ * further tile becomes the `otherwise` mode with those further tiles as its
+ * WHEN. Every other placement is returned unchanged, keeping its tiles and its
+ * tile semantics.
+ *
+ * Applying this to an already-migrated rule returns it unchanged.
+ *
+ * @param json - The serialized rule to inspect.
+ * @returns The migrated rule, or `json` itself when nothing migrates.
+ */
+export function migrateOtherwiseTileToTrigger(json: RuleJson): RuleJson {
+  const trigger = json.trigger ?? RuleTriggerMode.When;
+  if (trigger !== RuleTriggerMode.When) {
+    return json;
+  }
+  const when = json.when;
+  if (when.size() === 0 || when.get(0) !== mkSensorTileId(CoreHostActions.Otherwise.key)) {
+    return json;
+  }
+  if (when.size() === 1) {
+    return { ...json, when: List.empty<string>(), trigger: RuleTriggerMode.Otherwise };
+  }
+  if (when.size() < 3 || when.get(1) !== mkOperatorTileId(CoreOpId.And)) {
+    return json;
+  }
+  const rest = new List<string>();
+  for (let i = 2; i < when.size(); i++) {
+    rest.push(when.get(i));
+  }
+  return { ...json, when: rest, trigger: RuleTriggerMode.Otherwise };
+}
+
 /** Concrete {@link IBrainRuleDef}: a single rule with `when` and `do` tile-sets and child rules. */
 export class BrainRuleDef implements IBrainRuleDef {
   private readonly rng_: IRngServices;
@@ -59,6 +108,7 @@ export class BrainRuleDef implements IBrainRuleDef {
   private when_: BrainTileSet;
   private do_: BrainTileSet;
   private comment_?: string;
+  private trigger_: RuleTriggerMode = RuleTriggerMode.When;
   private readonly tileSetSubscriptions_ = new Dict<BrainTileSet, () => void>();
   private readonly childRuleSubscriptions_ = new Dict<BrainRuleDef, () => void>();
   private dirtyChangedDebounceThread_?: thread;
@@ -68,6 +118,12 @@ export class BrainRuleDef implements IBrainRuleDef {
    * without touching the rule's own tiles invalidates the stored result.
    */
   private typecheckedWithPrecedingSibling_?: boolean;
+  /**
+   * The trigger mode the rule carried when the stored typecheck result was
+   * produced. A mode change without an edit to the rule's own tiles
+   * invalidates the stored result.
+   */
+  private typecheckedWithTrigger_?: RuleTriggerMode;
 
   /**
    * @param rng - The environment's random stream (`services.app.rng`), which
@@ -168,6 +224,27 @@ export class BrainRuleDef implements IBrainRuleDef {
     this.comment_ = comment || undefined;
   }
 
+  /**
+   * The trigger mode this rule carries. A rule that has never been given one,
+   * and one loaded from a document saved before rules carried a mode, reads
+   * {@link RuleTriggerMode.When}.
+   */
+  trigger(): RuleTriggerMode {
+    return this.trigger_;
+  }
+
+  /**
+   * Give this rule `trigger` as the mode arming it, marking the rule dirty so
+   * it is recompiled and the document reads as changed.
+   */
+  setTrigger(trigger: RuleTriggerMode): void {
+    if (this.trigger_ === trigger) {
+      return;
+    }
+    this.trigger_ = trigger;
+    this.markDirty();
+  }
+
   isDirty(): boolean {
     if (this.when_.isDirty() || this.do_.isDirty()) {
       return true;
@@ -204,14 +281,16 @@ export class BrainRuleDef implements IBrainRuleDef {
   typecheck(): void {
     // Compile this rule if either side is dirty, has never been typechecked
     // (e.g. a freshly deserialized rule), or now stands in a different place
-    // among its siblings than the stored result was produced for.
+    // among its siblings, or carries a different trigger mode, than the stored
+    // result was produced for.
     const hasPrecedingSibling = this.myIndex_() > 0;
     if (
       this.when_.isDirty() ||
       this.do_.isDirty() ||
       !this.when_.typecheckResult() ||
       !this.do_.typecheckResult() ||
-      this.typecheckedWithPrecedingSibling_ !== hasPrecedingSibling
+      this.typecheckedWithPrecedingSibling_ !== hasPrecedingSibling ||
+      this.typecheckedWithTrigger_ !== this.trigger_
     ) {
       const catalogs = this.gatherCatalogs();
       const whenTiles = this.when_.tiles();
@@ -250,11 +329,13 @@ export class BrainRuleDef implements IBrainRuleDef {
           inheritedCapabilities,
           inheritedWhenResultType,
           operatorOverloads,
-          hasPrecedingSibling
+          hasPrecedingSibling,
+          this.trigger_
         );
         this.when_.setTypecheckResult(typecheckResult);
         this.do_.setTypecheckResult(typecheckResult);
         this.typecheckedWithPrecedingSibling_ = hasPrecedingSibling;
+        this.typecheckedWithTrigger_ = this.trigger_;
       }
     }
 
@@ -699,6 +780,9 @@ export class BrainRuleDef implements IBrainRuleDef {
     if (this.comment_ !== undefined) {
       json.comment = this.comment_;
     }
+    if (this.trigger_ !== RuleTriggerMode.When) {
+      json.trigger = this.trigger_;
+    }
     return json;
   }
 
@@ -710,13 +794,15 @@ export class BrainRuleDef implements IBrainRuleDef {
     return rule;
   }
 
-  deserializeJson(json: RuleJson, catalogs: List<ITileCatalog>): void {
-    if (json.version !== kVersion) {
-      throw new Error(`BrainRuleDef.deserializeJson: unsupported version ${json.version}`);
+  deserializeJson(serialized: RuleJson, catalogs: List<ITileCatalog>): void {
+    if (serialized.version !== kVersion) {
+      throw new Error(`BrainRuleDef.deserializeJson: unsupported version ${serialized.version}`);
     }
+    const json = migrateOtherwiseTileToTrigger(serialized);
     this.when_.deserializeJson(json.when, catalogs);
     this.do_.deserializeJson(json.do, catalogs);
     this.comment_ = json.comment || undefined;
+    this.trigger_ = json.trigger || RuleTriggerMode.When;
 
     // Recursively deserialize child rules
     for (let i = 0; i < json.children.size(); i++) {

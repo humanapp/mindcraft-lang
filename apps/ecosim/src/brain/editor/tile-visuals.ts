@@ -69,7 +69,6 @@ export const tileVisuals = new Map<string, Partial<TileVisual>>([
   // Actuators
   [mkActuatorTileId(CoreHostActions.SwitchPage.key), { iconUrl: `${ICON_BASE}/switch_page.svg` }],
   [mkActuatorTileId(CoreHostActions.RestartPage.key), { iconUrl: `${ICON_BASE}/restart-page.svg` }],
-  [mkActuatorTileId(CoreHostActions.Yield.key), { label: "yield", iconUrl: `${ICON_BASE}/yield.svg` }],
   // Field Accessors
   [mkAccessorTileId(EcosimTypeIds.Vector2, "x"), { iconUrl: `${ICON_BASE}/vector2_x.svg` }],
   [mkAccessorTileId(EcosimTypeIds.Vector2, "y"), { iconUrl: `${ICON_BASE}/vector2_y.svg` }],

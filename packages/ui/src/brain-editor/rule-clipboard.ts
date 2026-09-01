@@ -6,6 +6,7 @@ import {
   type ITileCatalog,
   isPageTileId,
   mkPageTileId,
+  type RuleTriggerMode,
 } from "@wendoo/core/brain";
 import { type BrainDef, BrainRuleDef, type RuleJson } from "@wendoo/core/brain/model";
 import { BrainTileMissingDef, type CatalogTileJson, TileCatalog } from "@wendoo/core/brain/tiles";
@@ -253,6 +254,8 @@ interface PlainRuleJson {
   catalog?: CatalogTileJson[];
   when?: string[];
   do?: string[];
+  comment?: string;
+  trigger?: RuleTriggerMode;
   children?: PlainRuleJson[];
 }
 
@@ -261,6 +264,8 @@ function convertPlainRule(plain: PlainRuleJson): RuleJson {
     version: plain.version ?? 1,
     when: List.from(plain.when ?? []),
     do: List.from(plain.do ?? []),
+    comment: plain.comment,
+    trigger: plain.trigger,
     children: List.from((plain.children ?? []).map(convertPlainRule)),
   };
 }

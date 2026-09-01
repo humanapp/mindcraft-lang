@@ -66,6 +66,8 @@ const parseDiagMessages: Record<number, string> = {
   [ParseDiagCode.ExpectedClosingParen]: "Missing closing parenthesis",
   [ParseDiagCode.UnexpectedControlFlowInExpression]: "Unexpected control flow",
   [ParseDiagCode.NoPrecedingSiblingRule]: "Needs a rule above it",
+  [ParseDiagCode.OtherwiseTriggerNoPrecedingSiblingRule]: "Needs a rule above it to complement",
+  [ParseDiagCode.ThenTriggerNoPrecedingSiblingRule]: "Needs a rule above it to follow",
   [ParseDiagCode.UnknownOperator]: "Unknown operator",
   [ParseDiagCode.InvalidAssignmentTarget]: "Invalid assignment target",
   [ParseDiagCode.ReadOnlyFieldAssignment]: "Cannot assign to read-only field",
@@ -82,6 +84,28 @@ const typeDiagMessages: Record<number, string> = {
 
 function diagMessage(code: number): string {
   return parseDiagMessages[code] ?? typeDiagMessages[code] ?? "Parse error";
+}
+
+/** The diagnostics a rule's trigger mode raises where its position rejects that mode. */
+const triggerDiagCodes: readonly number[] = [
+  ParseDiagCode.OtherwiseTriggerNoPrecedingSiblingRule,
+  ParseDiagCode.ThenTriggerNoPrecedingSiblingRule,
+];
+
+/**
+ * The badge a rule's trigger-mode switch carries, read from the WHEN-side parse
+ * result the rule typechecked to: an error badge summarising the trigger-mode
+ * diagnostic that result holds, and undefined where it holds none.
+ */
+export function computeTriggerBadge(parseResult: ParseResult): TileBadge | undefined {
+  const diags = parseResult.diags;
+  for (let i = 0; i < diags.size(); i++) {
+    const code = diags.get(i).code;
+    if (triggerDiagCodes.includes(code)) {
+      return { type: "error", message: diagMessage(code) };
+    }
+  }
+  return undefined;
 }
 
 /**

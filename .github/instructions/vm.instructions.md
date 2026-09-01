@@ -44,7 +44,7 @@ All files below are under `packages/core/src/runtime/` unless noted otherwise.
 
 The full opcode reference -- numeric assignments, operand layout,
 stack effects, fault conditions, and per-group prose -- lives in
-[docs/specs/core/vm-contract.md](../../docs/specs/core/vm-contract.md)
+[docs/specs/contracts/vm-contract.md](../../docs/specs/contracts/vm-contract.md)
 under "Opcode reference". The TS expression of the same numeric
 assignments is the `Op` enum in
 `packages/core/src/runtime/bytecode.ts`. When changing an opcode in
