@@ -82,6 +82,24 @@ function InlineTileLink({ tileId, tileDef }: { tileId: string; tileDef: IBrainTi
 }
 
 // ---------------------------------------------------------------------------
+// Fence inspection
+// ---------------------------------------------------------------------------
+
+/** The `code` element a `<pre>` wraps, or undefined when it wraps anything else. */
+function fencedCodeElement(node: Element | undefined): Element | undefined {
+  const child = node?.children.find((c): c is Element => c.type === "element");
+  return child?.tagName === "code" ? child : undefined;
+}
+
+/** The language a fenced code element's `language-*` class names, empty for a fence with no info string. */
+function fenceLanguage(node: Element | undefined): string {
+  const className = node?.properties?.className;
+  const names = Array.isArray(className) ? className.map(String) : [];
+  const named = names.find((name) => name.startsWith("language-"));
+  return named ? named.slice("language-".length) : "";
+}
+
+// ---------------------------------------------------------------------------
 // Stable components map -- defined at module level so the object reference
 // never changes between renders. react-markdown uses component references
 // to determine whether to remount subtrees; inline definitions would create
@@ -89,9 +107,13 @@ function InlineTileLink({ tileId, tileDef }: { tileId: string; tileDef: IBrainTi
 // ---------------------------------------------------------------------------
 
 const MD_COMPONENTS: Components = {
-  // Strip the <pre> wrapper so BrainCodeBlock controls its own container.
-  pre({ children: preChildren }) {
-    return <>{preChildren}</>;
+  // A brain fence draws its own container, so the <pre> around it is dropped;
+  // every other fence keeps a real block wrapper.
+  pre({ children: preChildren, node }) {
+    if (fenceLanguage(fencedCodeElement(node)) === "brain") {
+      return <>{preChildren}</>;
+    }
+    return <pre className="bg-muted border border-border rounded p-3 my-2 overflow-x-auto">{preChildren}</pre>;
   },
 
   code({ className, children, node }) {

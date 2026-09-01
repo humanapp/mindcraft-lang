@@ -20,21 +20,199 @@ level is a WHEN too.
 
 ## ELSE: This Rule, or Else That One
 
-Give a rule ELSE and it takes the frames the rule above it did not fire on.
+Give a rule ELSE and it takes the frames the rule above it did not fire on. An ELSE
+rule with an empty WHEN side is the plain "the rest of the time" branch:
 
-| Trigger | WHEN side | DO side |
-| ------- | -------------- | ------- |
-| WHEN    | I see food     | eat     |
-| ELSE    | (empty)        | wander  |
+```brain
+{
+  "ruleJsons": [
+    {
+      "version": 1,
+      "when": [
+        "tile.var->cnT8rYb2Ks41LmQv",
+        "tile.op->gt",
+        "tile.literal->number:<number>->3"
+      ],
+      "do": [
+        "tile.var->sTa7hJm4Wq62Rzpd",
+        "tile.op->assign",
+        "tile.literal->number:<number>->1"
+      ],
+      "children": [],
+      "comment": "Fires on the frames the count is over three."
+    },
+    {
+      "version": 1,
+      "trigger": "otherwise",
+      "when": [],
+      "do": [
+        "tile.var->sTa7hJm4Wq62Rzpd",
+        "tile.op->assign",
+        "tile.literal->number:<number>->0"
+      ],
+      "children": [],
+      "comment": "Takes every frame the rule above did not."
+    }
+  ],
+  "catalog": [
+    {
+      "version": 1,
+      "kind": "variable",
+      "tileId": "tile.var->cnT8rYb2Ks41LmQv",
+      "varName": "count",
+      "varType": "number:<number>",
+      "uniqueId": "cnT8rYb2Ks41LmQv"
+    },
+    {
+      "version": 1,
+      "kind": "variable",
+      "tileId": "tile.var->sTa7hJm4Wq62Rzpd",
+      "varName": "state",
+      "varType": "number:<number>",
+      "uniqueId": "sTa7hJm4Wq62Rzpd"
+    },
+    {
+      "version": 2,
+      "kind": "literal",
+      "tileId": "tile.literal->number:<number>->0",
+      "valueType": "number:<number>",
+      "value": 0,
+      "valueLabel": "0",
+      "displayFormat": "default"
+    },
+    {
+      "version": 2,
+      "kind": "literal",
+      "tileId": "tile.literal->number:<number>->1",
+      "valueType": "number:<number>",
+      "value": 1,
+      "valueLabel": "1",
+      "displayFormat": "default"
+    },
+    {
+      "version": 2,
+      "kind": "literal",
+      "tileId": "tile.literal->number:<number>->3",
+      "valueType": "number:<number>",
+      "value": 3,
+      "valueLabel": "3",
+      "displayFormat": "default"
+    }
+  ]
+}
+```
 
-An ELSE rule with an empty WHEN side is the plain "the rest of the time" branch.
-Put tiles on it and it becomes "or else, if ...":
+Put tiles on the ELSE rule's WHEN side and it becomes "or else, if ...":
 
-| Trigger | WHEN side        | DO side  |
-| ------- | ---------------- | -------- |
-| WHEN    | I see food       | eat      |
-| ELSE    | I see a predator | run away |
-| ELSE    | (empty)          | wander   |
+```brain
+{
+  "ruleJsons": [
+    {
+      "version": 1,
+      "when": [
+        "tile.var->cnT8rYb2Ks41LmQv",
+        "tile.op->gt",
+        "tile.literal->number:<number>->6"
+      ],
+      "do": [
+        "tile.var->sTa7hJm4Wq62Rzpd",
+        "tile.op->assign",
+        "tile.literal->number:<number>->2"
+      ],
+      "children": []
+    },
+    {
+      "version": 1,
+      "trigger": "otherwise",
+      "when": [
+        "tile.var->cnT8rYb2Ks41LmQv",
+        "tile.op->gt",
+        "tile.literal->number:<number>->3"
+      ],
+      "do": [
+        "tile.var->sTa7hJm4Wq62Rzpd",
+        "tile.op->assign",
+        "tile.literal->number:<number>->1"
+      ],
+      "children": []
+    },
+    {
+      "version": 1,
+      "trigger": "otherwise",
+      "when": [],
+      "do": [
+        "tile.var->sTa7hJm4Wq62Rzpd",
+        "tile.op->assign",
+        "tile.literal->number:<number>->0"
+      ],
+      "children": []
+    }
+  ],
+  "catalog": [
+    {
+      "version": 1,
+      "kind": "variable",
+      "tileId": "tile.var->cnT8rYb2Ks41LmQv",
+      "varName": "count",
+      "varType": "number:<number>",
+      "uniqueId": "cnT8rYb2Ks41LmQv"
+    },
+    {
+      "version": 1,
+      "kind": "variable",
+      "tileId": "tile.var->sTa7hJm4Wq62Rzpd",
+      "varName": "state",
+      "varType": "number:<number>",
+      "uniqueId": "sTa7hJm4Wq62Rzpd"
+    },
+    {
+      "version": 2,
+      "kind": "literal",
+      "tileId": "tile.literal->number:<number>->0",
+      "valueType": "number:<number>",
+      "value": 0,
+      "valueLabel": "0",
+      "displayFormat": "default"
+    },
+    {
+      "version": 2,
+      "kind": "literal",
+      "tileId": "tile.literal->number:<number>->1",
+      "valueType": "number:<number>",
+      "value": 1,
+      "valueLabel": "1",
+      "displayFormat": "default"
+    },
+    {
+      "version": 2,
+      "kind": "literal",
+      "tileId": "tile.literal->number:<number>->2",
+      "valueType": "number:<number>",
+      "value": 2,
+      "valueLabel": "2",
+      "displayFormat": "default"
+    },
+    {
+      "version": 2,
+      "kind": "literal",
+      "tileId": "tile.literal->number:<number>->3",
+      "valueType": "number:<number>",
+      "value": 3,
+      "valueLabel": "3",
+      "displayFormat": "default"
+    },
+    {
+      "version": 2,
+      "kind": "literal",
+      "tileId": "tile.literal->number:<number>->6",
+      "valueType": "number:<number>",
+      "value": 6,
+      "valueLabel": "6",
+      "displayFormat": "default"
+    }
+  ]
+}
+```
 
 A run of ELSE rules under one WHEN reads top to bottom like a ladder. Each rung gets
 its turn only when no rung above it has fired this frame, so at most one rule of the
@@ -56,16 +234,99 @@ taking turns.
 ## THEN: One Thing After Another
 
 A rule side holds one action, so doing two things in a row means two rules. Give the
-second one THEN and it waits for the first.
+second one THEN and it waits for the first:
 
-| Trigger | WHEN side        | DO side       |
-| ------- | ---------------- | ------------- |
-| WHEN    | button A pressed | scroll "hi"   |
-| THEN    | (empty)          | beep          |
-| THEN    | (empty)          | scroll "bye"  |
+```brain
+{
+  "ruleJsons": [
+    {
+      "version": 1,
+      "when": [
+        "tile.sensor->on-page-entered"
+      ],
+      "do": [
+        "tile.var->cnT8rYb2Ks41LmQv",
+        "tile.op->assign",
+        "tile.literal->number:<number>->0"
+      ],
+      "children": []
+    },
+    {
+      "version": 1,
+      "trigger": "then",
+      "when": [],
+      "do": [
+        "tile.var->sTa7hJm4Wq62Rzpd",
+        "tile.op->assign",
+        "tile.literal->number:<number>->1"
+      ],
+      "children": [],
+      "comment": "Waits for the rule above to finish, then runs."
+    },
+    {
+      "version": 1,
+      "trigger": "then",
+      "when": [],
+      "do": [
+        "tile.var->sTa7hJm4Wq62Rzpd",
+        "tile.op->assign",
+        "tile.literal->number:<number>->2"
+      ],
+      "children": [],
+      "comment": "Waits for the step above it in the same way."
+    }
+  ],
+  "catalog": [
+    {
+      "version": 1,
+      "kind": "variable",
+      "tileId": "tile.var->cnT8rYb2Ks41LmQv",
+      "varName": "count",
+      "varType": "number:<number>",
+      "uniqueId": "cnT8rYb2Ks41LmQv"
+    },
+    {
+      "version": 1,
+      "kind": "variable",
+      "tileId": "tile.var->sTa7hJm4Wq62Rzpd",
+      "varName": "state",
+      "varType": "number:<number>",
+      "uniqueId": "sTa7hJm4Wq62Rzpd"
+    },
+    {
+      "version": 2,
+      "kind": "literal",
+      "tileId": "tile.literal->number:<number>->0",
+      "valueType": "number:<number>",
+      "value": 0,
+      "valueLabel": "0",
+      "displayFormat": "default"
+    },
+    {
+      "version": 2,
+      "kind": "literal",
+      "tileId": "tile.literal->number:<number>->1",
+      "valueType": "number:<number>",
+      "value": 1,
+      "valueLabel": "1",
+      "displayFormat": "default"
+    },
+    {
+      "version": 2,
+      "kind": "literal",
+      "tileId": "tile.literal->number:<number>->2",
+      "valueType": "number:<number>",
+      "value": 2,
+      "valueLabel": "2",
+      "displayFormat": "default"
+    }
+  ]
+}
+```
 
-Press the button and the message scrolls. When the scroll has finished, the beep
-sounds. When the beep has finished, "bye" scrolls.
+The page starts, the first rule runs, and each THEN below waits for the step above it.
+An action that takes time -- a message scrolling, a sound playing -- holds the rest of
+the line back until it is done.
 
 "Finished" means more than the DO side. A rule is finished when everything that one
 firing started has finished: its own action, the child rules it spawned, their
@@ -83,16 +344,111 @@ of the line goes with it.
 
 That matters most when a THEN rule carries a condition of its own:
 
-| Trigger | WHEN side        | DO side       |
-| ------- | ---------------- | ------------- |
-| WHEN    | button A pressed | scroll "hi"   |
-| THEN    | shaken           | beep          |
-| THEN    | (empty)          | scroll "bye"  |
+```brain
+{
+  "ruleJsons": [
+    {
+      "version": 1,
+      "when": [
+        "tile.sensor->on-page-entered"
+      ],
+      "do": [
+        "tile.var->cnT8rYb2Ks41LmQv",
+        "tile.op->assign",
+        "tile.literal->number:<number>->0"
+      ],
+      "children": []
+    },
+    {
+      "version": 1,
+      "trigger": "then",
+      "when": [
+        "tile.var->cnT8rYb2Ks41LmQv",
+        "tile.op->lt",
+        "tile.literal->number:<number>->3"
+      ],
+      "do": [
+        "tile.var->sTa7hJm4Wq62Rzpd",
+        "tile.op->assign",
+        "tile.literal->number:<number>->1"
+      ],
+      "children": [],
+      "comment": "Skips the completion when the count is not under three."
+    },
+    {
+      "version": 1,
+      "trigger": "then",
+      "when": [],
+      "do": [
+        "tile.var->sTa7hJm4Wq62Rzpd",
+        "tile.op->assign",
+        "tile.literal->number:<number>->2"
+      ],
+      "children": [],
+      "comment": "Skipped along with it, having nothing to wait for."
+    }
+  ],
+  "catalog": [
+    {
+      "version": 1,
+      "kind": "variable",
+      "tileId": "tile.var->cnT8rYb2Ks41LmQv",
+      "varName": "count",
+      "varType": "number:<number>",
+      "uniqueId": "cnT8rYb2Ks41LmQv"
+    },
+    {
+      "version": 1,
+      "kind": "variable",
+      "tileId": "tile.var->sTa7hJm4Wq62Rzpd",
+      "varName": "state",
+      "varType": "number:<number>",
+      "uniqueId": "sTa7hJm4Wq62Rzpd"
+    },
+    {
+      "version": 2,
+      "kind": "literal",
+      "tileId": "tile.literal->number:<number>->0",
+      "valueType": "number:<number>",
+      "value": 0,
+      "valueLabel": "0",
+      "displayFormat": "default"
+    },
+    {
+      "version": 2,
+      "kind": "literal",
+      "tileId": "tile.literal->number:<number>->1",
+      "valueType": "number:<number>",
+      "value": 1,
+      "valueLabel": "1",
+      "displayFormat": "default"
+    },
+    {
+      "version": 2,
+      "kind": "literal",
+      "tileId": "tile.literal->number:<number>->2",
+      "valueType": "number:<number>",
+      "value": 2,
+      "valueLabel": "2",
+      "displayFormat": "default"
+    },
+    {
+      "version": 2,
+      "kind": "literal",
+      "tileId": "tile.literal->number:<number>->3",
+      "valueType": "number:<number>",
+      "value": 3,
+      "valueLabel": "3",
+      "displayFormat": "default"
+    }
+  ]
+}
+```
 
-No shake means no beep **and** no "bye". A step cannot reach past the one above it to
-attach itself to the first rule. If you want "bye" either way, take the condition off,
-reorder the steps, or move the conditional step off the line and indent it under the
-rule it belongs to.
+A miss on the middle step means the last step is skipped too. A step cannot reach past
+the one above it to attach itself to the first rule. If you want the last step either
+way, take the condition off, reorder the steps, or move the conditional step off the
+line and indent it under the rule it belongs to.
 
 ## A THEN Condition Filters, It Does Not Wait
 
@@ -112,17 +468,111 @@ the flag when it fires, so the wait ends.
 ## ELSE After a THEN: The While-Waiting Branch
 
 An ELSE rule under a THEN takes the frames the THEN did not fire on, and a THEN that
-is still waiting has not fired. That makes it a "while waiting" branch.
+is still waiting has not fired. That makes it a "while waiting" branch:
 
-| Trigger | WHEN side        | DO side       |
-| ------- | ---------------- | ------------- |
-| WHEN    | button A pressed | scroll "hi"   |
-| THEN    | (empty)          | beep          |
-| ELSE    | tilted           | show a frown  |
+```brain
+{
+  "ruleJsons": [
+    {
+      "version": 1,
+      "when": [
+        "tile.sensor->on-page-entered"
+      ],
+      "do": [
+        "tile.var->cnT8rYb2Ks41LmQv",
+        "tile.op->assign",
+        "tile.literal->number:<number>->0"
+      ],
+      "children": []
+    },
+    {
+      "version": 1,
+      "trigger": "then",
+      "when": [],
+      "do": [
+        "tile.var->sTa7hJm4Wq62Rzpd",
+        "tile.op->assign",
+        "tile.literal->number:<number>->1"
+      ],
+      "children": []
+    },
+    {
+      "version": 1,
+      "trigger": "otherwise",
+      "when": [
+        "tile.var->cnT8rYb2Ks41LmQv",
+        "tile.op->lt",
+        "tile.literal->number:<number>->3"
+      ],
+      "do": [
+        "tile.var->sTa7hJm4Wq62Rzpd",
+        "tile.op->assign",
+        "tile.literal->number:<number>->2"
+      ],
+      "children": [],
+      "comment": "Runs on the frames the THEN above is still waiting."
+    }
+  ],
+  "catalog": [
+    {
+      "version": 1,
+      "kind": "variable",
+      "tileId": "tile.var->cnT8rYb2Ks41LmQv",
+      "varName": "count",
+      "varType": "number:<number>",
+      "uniqueId": "cnT8rYb2Ks41LmQv"
+    },
+    {
+      "version": 1,
+      "kind": "variable",
+      "tileId": "tile.var->sTa7hJm4Wq62Rzpd",
+      "varName": "state",
+      "varType": "number:<number>",
+      "uniqueId": "sTa7hJm4Wq62Rzpd"
+    },
+    {
+      "version": 2,
+      "kind": "literal",
+      "tileId": "tile.literal->number:<number>->0",
+      "valueType": "number:<number>",
+      "value": 0,
+      "valueLabel": "0",
+      "displayFormat": "default"
+    },
+    {
+      "version": 2,
+      "kind": "literal",
+      "tileId": "tile.literal->number:<number>->1",
+      "valueType": "number:<number>",
+      "value": 1,
+      "valueLabel": "1",
+      "displayFormat": "default"
+    },
+    {
+      "version": 2,
+      "kind": "literal",
+      "tileId": "tile.literal->number:<number>->2",
+      "valueType": "number:<number>",
+      "value": 2,
+      "valueLabel": "2",
+      "displayFormat": "default"
+    },
+    {
+      "version": 2,
+      "kind": "literal",
+      "tileId": "tile.literal->number:<number>->3",
+      "valueType": "number:<number>",
+      "value": 3,
+      "valueLabel": "3",
+      "displayFormat": "default"
+    }
+  ]
+}
+```
 
-The frown shows on any frame where the beep did not happen and the board is tilted,
-including all the frames the scroll is still running. On the frame the beep finally
-happens, the ELSE stays quiet.
+The ELSE rule runs on any frame where the THEN above it did not fire and its own
+condition holds, including all the frames the first rule's action is still running.
+On the frame the THEN finally fires, the ELSE stays quiet.
 
 ## How Long a Chain Can Be
 

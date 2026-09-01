@@ -1,8 +1,10 @@
 import { assertUnreachable } from "@wendoo/core";
-import { type IBrainTileDef, RuleSide } from "@wendoo/core/brain";
+import { type IBrainTileDef, RuleSide, RuleTriggerMode } from "@wendoo/core/brain";
 import type { BrainTileAccessorDef, BrainTileLiteralDef, BrainTileVariableDef } from "@wendoo/core/brain/tiles";
+import { createDefaultLocalizer } from "@wendoo/core/localization";
 import { adjustColor, cn, formatValue, readableInk, staticAssetUrl } from "@wendoo/ui";
 import { kDefaultTileHue, tileBorderColor, tileEdgeColor } from "@wendoo/ui/brain-editor/tile-visual-utils";
+import { triggerModeLabel } from "@wendoo/ui/brain-editor/trigger-mode";
 import type { TileVisual } from "@wendoo/ui/brain-editor/types";
 import { useLayoutEffect, useState } from "react";
 import { useDocsResolveTileVisual } from "./DocsSidebarContext";
@@ -213,22 +215,87 @@ export function InlineTileIcon({ tileDef, className }: InlineTileIconProps) {
 // Single read-only brain rule row
 // ---------------------------------------------------------------------------
 
+/**
+ * Shape, spacing and chrome shared by the two capsules at the head of a rule
+ * row's sides. Fill, edge and letter ink are supplied by the call site.
+ */
+const kCapsuleClasses =
+  "px-2 py-1 border-2 rounded-md rounded-l-2xl flex h-24 self-center items-center justify-center shadow-sm relative overflow-hidden shrink-0";
+
+/** How a capsule's stacked-upright letters are set, in the ink the capsule around them carries. */
+const kCapsuleLettersClasses = "font-semibold text-sm uppercase cursor-default";
+
+/**
+ * The leading each stacked letter carries along the capsule's vertical inline
+ * axis, which is what `mx-*` sets under the capsule's vertical writing mode.
+ * Every letter carries the same, so the word's rows are evenly spaced and
+ * bar-heavy letterforms stay apart.
+ */
+const kCapsuleLetterLeading = "mx-0.75";
+
+/** The fill, edge and ink of a capsule reading in the `when` mode, which the DO capsule also wears. */
+const kWhenCapsuleChrome = "bg-brain-capsule border-brain-capsule-edge text-brain-capsule-ink";
+
+/** The fill, edge and ink each trigger mode's capsule is painted in, matching the editor's treatment. */
+const kTriggerCapsuleChrome: Record<RuleTriggerMode, string> = {
+  [RuleTriggerMode.When]: kWhenCapsuleChrome,
+  [RuleTriggerMode.Otherwise]:
+    "bg-brain-capsule-otherwise border-brain-capsule-otherwise-edge text-brain-capsule-otherwise-ink",
+  [RuleTriggerMode.Then]: "bg-brain-capsule-then border-brain-capsule-then-edge text-brain-capsule-then-ink",
+};
+
+/**
+ * The connective a rule of each mode opens its reading with when its WHEN side
+ * holds tiles: the mode's own word, and after the two marked modes the ordinary
+ * "when" the condition clause keeps.
+ */
+const kTriggerReadingConnective: Record<RuleTriggerMode, string> = {
+  [RuleTriggerMode.When]: "When",
+  [RuleTriggerMode.Otherwise]: "Otherwise, when",
+  [RuleTriggerMode.Then]: "Then, when",
+};
+
+/** The word a rule of each mode opens its reading with when its WHEN side holds no tiles. */
+const kBareTriggerReading: Record<RuleTriggerMode, string> = {
+  [RuleTriggerMode.When]: "Always",
+  [RuleTriggerMode.Otherwise]: "Otherwise",
+  [RuleTriggerMode.Then]: "Then",
+};
+
+/** Localizer the read-only docs chrome reads its mode words through, which renders the English sources. */
+const kDocsLocalizer = createDefaultLocalizer();
+
+/** `word` as one upright span per character, which reads down a vertical capsule. */
+function stackedLetters(word: string): React.ReactNode[] {
+  return [...word].map((character, index) => (
+    <span
+      // biome-ignore lint/suspicious/noArrayIndexKey: a letter's place in the word is its identity
+      key={index}
+      className={`inline-block rotate-270 ${kCapsuleLetterLeading}`}
+    >
+      {character}
+    </span>
+  ));
+}
+
 interface DocsRuleRowProps {
   comment?: string;
+  trigger: RuleTriggerMode;
   whenTiles: IBrainTileDef[];
   doTiles: IBrainTileDef[];
   depth?: number;
   lineNumber?: number;
 }
 
-function DocsRuleRow({ comment, whenTiles, doTiles, depth = 0, lineNumber }: DocsRuleRowProps) {
+function DocsRuleRow({ comment, trigger, whenTiles, doTiles, depth = 0, lineNumber }: DocsRuleRowProps) {
   const resolveTileVisual = useDocsResolveTileVisual();
   const whenLabel = whenTiles.map((t) => resolveTileVisual(t)?.label ?? t.tileId).join(", ");
   const doLabel = doTiles.map((t) => resolveTileVisual(t)?.label ?? t.tileId).join(", ");
-  const rowLabel =
-    lineNumber !== undefined
-      ? `Rule ${lineNumber}: When ${whenLabel || ""}, do ${doLabel || ""}`
-      : `When ${whenLabel || ""}, do ${doLabel || ""}`;
+  const triggerReading = whenLabel
+    ? `${kTriggerReadingConnective[trigger]} ${whenLabel}`
+    : kBareTriggerReading[trigger];
+  const reading = `${triggerReading}, do ${doLabel || ""}`;
+  const rowLabel = lineNumber !== undefined ? `Rule ${lineNumber}: ${reading}` : reading;
 
   return (
     <div
@@ -252,18 +319,14 @@ function DocsRuleRow({ comment, whenTiles, doTiles, depth = 0, lineNumber }: Doc
           </span>
         )}
 
-        {/* WHEN capsule */}
+        {/* Trigger capsule, standing at the head of the WHEN side and reading
+            the rule's own mode. */}
         <div
-          className="px-2 py-1 ml-2 bg-brain-capsule border-2 border-brain-capsule-edge rounded-md rounded-l-2xl flex items-center justify-center shadow-sm relative overflow-hidden shrink-0"
+          className={`ml-2 ${kCapsuleClasses} ${kTriggerCapsuleChrome[trigger]}`}
           style={{ writingMode: "vertical-rl" }}
           aria-hidden="true"
         >
-          <span className="text-brain-capsule-ink font-semibold text-base cursor-default">
-            <span className="inline-block rotate-270 mx-0">W</span>
-            <span className="inline-block rotate-270 mx-0.5">H</span>
-            <span className="inline-block rotate-270 mx-0.5">E</span>
-            <span className="inline-block rotate-270 mx-0.5">N</span>
-          </span>
+          <span className={kCapsuleLettersClasses}>{stackedLetters(triggerModeLabel(trigger, kDocsLocalizer))}</span>
         </div>
 
         {/* WHEN tiles */}
@@ -276,14 +339,11 @@ function DocsRuleRow({ comment, whenTiles, doTiles, depth = 0, lineNumber }: Doc
 
         {/* DO capsule */}
         <div
-          className="px-2 py-1 ml-3 bg-brain-capsule border-2 border-brain-capsule-edge rounded-md rounded-l-2xl flex items-center justify-center shadow-sm relative overflow-hidden shrink-0"
+          className={`ml-3 ${kCapsuleClasses} ${kWhenCapsuleChrome}`}
           style={{ writingMode: "vertical-rl" }}
           aria-hidden="true"
         >
-          <span className="text-brain-capsule-ink font-semibold text-base cursor-default">
-            <span className="inline-block rotate-270 mx-0">D</span>
-            <span className="inline-block rotate-270 mx-0.5">O</span>
-          </span>
+          <span className={kCapsuleLettersClasses}>{stackedLetters("Do")}</span>
         </div>
 
         {/* DO tiles */}
@@ -305,6 +365,8 @@ function DocsRuleRow({ comment, whenTiles, doTiles, depth = 0, lineNumber }: Doc
 /** Flat representation of a brain rule with `tileId`s already resolved to `IBrainTileDef`s. */
 export interface DocsRuleData {
   comment?: string;
+  /** Mode arming the rule, which its capsule reads. */
+  trigger: RuleTriggerMode;
   whenTiles: IBrainTileDef[];
   doTiles: IBrainTileDef[];
   depth: number;
@@ -342,6 +404,7 @@ export function DocsRuleBlock({ rules }: DocsRuleBlockProps) {
         <DocsRuleRow
           key={rule.lineNumber}
           comment={rule.comment}
+          trigger={rule.trigger}
           whenTiles={rule.whenTiles}
           doTiles={rule.doTiles}
           depth={rule.depth}

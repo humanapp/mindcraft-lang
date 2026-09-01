@@ -214,6 +214,12 @@ export const coreConceptDocs: readonly CoreConceptDocMeta[] = [
     contentKey: "trigger-modes",
   },
   {
+    id: "sequencing",
+    title: "Putting Steps in Order",
+    tags: ["rules", "sequencing", "children", "nesting", "then", "fundamentals"],
+    contentKey: "sequencing",
+  },
+  {
     id: "pages",
     title: "Pages and Navigation",
     tags: ["pages", "navigation", "control flow", "fundamentals"],

@@ -31,6 +31,7 @@ src/
   BrainCodeBlock.tsx       Renders brain code fences as visual tiles/rules
   DocsPrintView.tsx        Print-friendly documentation layout
   AcceleratorHelp.tsx      The Keyboard category: live section plus full key reference
+  brain-fence.ts           The ```brain``` fence grammar: shapes, meta tokens, tile resolution
   buildDocsRegistry.ts     Factory + shared manifest types
 ```
 
@@ -165,6 +166,26 @@ Accepted JSON formats: array of rules, clipboard wrapper (`{ ruleJsons }`), sing
 (`{ tile }` or `{ tileId }`), multiple tiles (`{ tiles }`). All support optional `catalog`
 for local variables/literals. Fence meta tokens: `noframe`, `do`.
 
+A rule object is the `RuleJson` shape the editor serializes, so a copied rule pastes into a
+page verbatim. Its optional `trigger` names the mode arming the rule -- `"otherwise"` or
+`"then"` -- and an absent `trigger` reads as `"when"`:
+
+    ```brain
+    {
+      "ruleJsons": [
+        { "version": 1, "when": ["tile.sensor->sensor.see"], "do": ["tile.actuator->actuator.eat"] },
+        { "version": 1, "trigger": "otherwise", "when": [], "do": ["tile.actuator->actuator.move"] }
+      ]
+    }
+    ```
+
+The rule's capsule reads the mode's display word (WHEN / ELSE / THEN) in that mode's chrome,
+from the same `triggerModeLabel` and `--color-brain-capsule*` tokens the editor's trigger
+switch uses, and the copy affordance carries the mode into the destination brain.
+
+`brain-fence.ts` owns the grammar: both `DocMarkdown` and `DocsPrintView` parse fences
+through it, so the two surfaces accept exactly the same shapes.
+
 **Inline tile refs**: `` `tile:tile.op->add` `` renders as a colored tile chip.
 
 **Inline tag pills**: `` `tag:Operator;color:#FFE500` `` renders as a colored badge.
@@ -178,6 +199,15 @@ for local variables/literals. Fence meta tokens: `noframe`, `do`.
   edit needs only `npm run build:docs` -- no compiler pass.
 - **App docs**: Loaded at build time via Vite `import.meta.glob` with `?raw`, passed to `buildDocsRegistry()`
 - **Manifests**: Map tile IDs to content keys, tags, and categories
+
+Core content ships to every app, so a fence there may name only tiles the core catalog
+holds plus the fence's own `catalog` entries. An app-only tile id draws in the app that
+registers it and drops silently in the other, because `resolveBrainFenceTiles` skips an id
+nothing resolves. `core-content-fences.spec.ts` sweeps the markdown under
+`packages/core/src/docs/content` for both halves -- every fence parses, and every tile id
+resolves -- reading the markdown source, so an edit is swept before core's `build:docs`
+runs. It resolves the `${tileId}` placeholder the way `DocsRegistry.register` does, and
+names the tile pages the core manifest registers no entry for, whose fences it skips.
 
 ## Consuming This Package
 

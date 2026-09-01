@@ -93,6 +93,7 @@ src/
   DocMarkdown.tsx          Markdown renderer with brain fence support
   DocsRule.tsx             DocsRuleBlock, DocsTileChip, InlineTileIcon
   BrainCodeBlock.tsx       Brain code fence renderer (rules + tiles)
+  brain-fence.ts           Brain code fence grammar: accepted shapes and meta tokens
   DocsPrintView.tsx        Printable documentation layout
   buildDocsRegistry.ts     buildDocsRegistry() factory, AppTileDocMeta, AppPatternDocMeta
 ```

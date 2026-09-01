@@ -1,12 +1,22 @@
-import { List } from "@wendoo/core";
-import { type BrainServices, type IBrainTileDef, type ITileCatalog, RuleSide } from "@wendoo/core/brain";
-import { type CatalogTileJson, TileCatalog } from "@wendoo/core/brain/tiles";
+import { type IBrainTileDef, type ITileCatalog, RuleSide, type RuleTriggerMode } from "@wendoo/core/brain";
+import type { TileCatalog } from "@wendoo/core/brain/tiles";
+import { createDefaultLocalizer } from "@wendoo/core/localization";
 import { kDefaultTileHue } from "@wendoo/ui/brain-editor/tile-visual-utils";
+import { triggerModeLabel } from "@wendoo/ui/brain-editor/trigger-mode";
 import type { TileVisual } from "@wendoo/ui/brain-editor/types";
 import type { Element } from "hast";
 import type { ReactNode } from "react";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import {
+  type BrainFenceRule,
+  brainFenceRuleTrigger,
+  brainFenceTileSide,
+  buildBrainFenceCatalog,
+  parseBrainFence,
+  parseBrainFenceMeta,
+  resolveBrainFenceTiles,
+} from "./brain-fence";
 import { useDocsBrainServices, useDocsResolveTileVisual, useDocsTileCatalog } from "./DocsSidebarContext";
 
 // ---------------------------------------------------------------------------
@@ -37,20 +47,26 @@ function PrintTileChip({ tileDef, side }: PrintTileChipProps) {
 // Print-friendly rule row
 // ---------------------------------------------------------------------------
 
+/** Localizer the print chrome reads its mode words through, which renders the English sources. */
+const kPrintLocalizer = createDefaultLocalizer();
+
 interface PrintRuleRowProps {
   comment?: string;
+  trigger: RuleTriggerMode;
   whenTiles: IBrainTileDef[];
   doTiles: IBrainTileDef[];
   depth: number;
   lineNumber: number;
 }
 
-function PrintRuleRow({ comment, whenTiles, doTiles, depth, lineNumber }: PrintRuleRowProps) {
+function PrintRuleRow({ comment, trigger, whenTiles, doTiles, depth, lineNumber }: PrintRuleRowProps) {
   return (
     <div className="docs-print-rule" style={{ marginLeft: `${depth * 24}px` }}>
       {comment && <div className="docs-print-rule-comment">{comment}</div>}
       <div className="docs-print-rule-number">{lineNumber}</div>
-      <div className="docs-print-chip docs-print-chip-when">WHEN</div>
+      <div className="docs-print-chip docs-print-chip-when">
+        {triggerModeLabel(trigger, kPrintLocalizer).toUpperCase()}
+      </div>
       {whenTiles.map((tile, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: stable in print view
         <PrintTileChip key={`w${i}`} tileDef={tile} side={RuleSide.When} />
@@ -70,71 +86,18 @@ function PrintRuleRow({ comment, whenTiles, doTiles, depth, lineNumber }: PrintR
 // Brain fence -> print rules
 // ---------------------------------------------------------------------------
 
-interface PlainRule {
-  version?: number;
-  catalog?: CatalogTileJson[];
-  comment?: string;
-  when?: string[];
-  do?: string[];
-  children?: PlainRule[];
-}
-
-interface PlainRuleWrapper {
-  ruleJsons: PlainRule[];
-  catalog?: CatalogTileJson[];
-}
-
-interface PlainSingleTile {
-  tile?: string;
-  tileId?: string;
-  catalog?: CatalogTileJson[];
-  side?: "when" | "do";
-}
-
-interface PlainMultiTile {
-  tiles: string[];
-  catalog?: CatalogTileJson[];
-  side?: "when" | "do";
-}
-
 interface FlatPrintRule {
   comment?: string;
+  trigger: RuleTriggerMode;
   whenTiles: IBrainTileDef[];
   doTiles: IBrainTileDef[];
   depth: number;
   lineNumber: number;
 }
 
-function buildPrintLocalCatalog(
-  entries: CatalogTileJson[],
-  brainServices: BrainServices | undefined
-): TileCatalog | undefined {
-  if (entries.length === 0) return undefined;
-  const catalog = new TileCatalog();
-  if (brainServices) catalog.deserializeJson(List.from(entries), brainServices);
-  return catalog;
-}
-
-function collectPrintCatalogEntries(rules: PlainRule[], topLevel?: CatalogTileJson[]): CatalogTileJson[] {
-  const entries: CatalogTileJson[] = topLevel ? [...topLevel] : [];
-  for (const rule of rules) {
-    if (rule.catalog) {
-      entries.push(...rule.catalog);
-    }
-  }
-  return entries;
-}
-
-function resolveTiles(
-  tileIds: string[],
-  tileCatalog: ITileCatalog | undefined,
-  localCatalog?: TileCatalog
-): IBrainTileDef[] {
-  return tileIds.map((id) => localCatalog?.get(id) ?? tileCatalog?.get(id)).filter(Boolean) as IBrainTileDef[];
-}
-
-function flattenPlainRules(
-  rules: PlainRule[],
+/** Resolve the fence's rules into one numbered, depth-carrying row per rule and child rule. */
+function flattenFenceRules(
+  rules: BrainFenceRule[],
   tileCatalog: ITileCatalog | undefined,
   localCatalog: TileCatalog | undefined,
   depth = 0,
@@ -145,13 +108,14 @@ function flattenPlainRules(
   for (const rule of rules) {
     result.push({
       comment: rule.comment,
-      whenTiles: resolveTiles(rule.when ?? [], tileCatalog, localCatalog),
-      doTiles: resolveTiles(rule.do ?? [], tileCatalog, localCatalog),
+      trigger: brainFenceRuleTrigger(rule),
+      whenTiles: resolveBrainFenceTiles(rule.when ?? [], tileCatalog, localCatalog),
+      doTiles: resolveBrainFenceTiles(rule.do ?? [], tileCatalog, localCatalog),
       depth,
       lineNumber: line++,
     });
     if (rule.children && rule.children.length > 0) {
-      const children = flattenPlainRules(rule.children, tileCatalog, localCatalog, depth + 1, line);
+      const children = flattenFenceRules(rule.children, tileCatalog, localCatalog, depth + 1, line);
       result.push(...children);
       line += children.length;
     }
@@ -162,78 +126,44 @@ function flattenPlainRules(
 function PrintBrainCodeBlock({ content, meta }: { content: string; meta: string }) {
   const tileCatalog = useDocsTileCatalog();
   const brainServices = useDocsBrainServices();
-  const noFrame = meta.toLowerCase().split(/\s+/).includes("noframe");
-  const metaSide = meta.toLowerCase().split(/\s+/).includes("do") ? RuleSide.Do : RuleSide.When;
+  const fenceMeta = parseBrainFenceMeta(meta);
+  const block = parseBrainFence(content);
 
-  try {
-    const parsed = JSON.parse(content);
+  if (!block) {
+    return <pre className="docs-print-code-fallback">{content}</pre>;
+  }
 
-    // Single tile: { tile: "tileId" } or { tileId: "..." }
-    const singleId = parsed?.tile ?? parsed?.tileId;
-    if (parsed && typeof parsed === "object" && typeof singleId === "string") {
-      const single = parsed as PlainSingleTile;
-      const localCatalog = buildPrintLocalCatalog(single.catalog ?? [], brainServices);
-      const tiles = resolveTiles([singleId], tileCatalog, localCatalog);
-      const side = single.side === "do" ? RuleSide.Do : single.side === "when" ? RuleSide.When : metaSide;
-      return (
-        <div className={noFrame ? "docs-print-tiles-noframe" : "docs-print-brain-block"}>
-          {tiles.map((tile, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: stable in print view
-            <PrintTileChip key={i} tileDef={tile} side={side} />
-          ))}
-        </div>
-      );
-    }
+  const localCatalog = buildBrainFenceCatalog(block.catalogEntries, brainServices);
 
-    // Multiple tiles: { tiles: [...] }
-    if (parsed && typeof parsed === "object" && Array.isArray(parsed.tiles)) {
-      const multi = parsed as PlainMultiTile;
-      const localCatalog = buildPrintLocalCatalog(multi.catalog ?? [], brainServices);
-      const tiles = resolveTiles(multi.tiles, tileCatalog, localCatalog);
-      const side = multi.side === "do" ? RuleSide.Do : multi.side === "when" ? RuleSide.When : metaSide;
-      return (
-        <div className={noFrame ? "docs-print-tiles-noframe" : "docs-print-brain-block"}>
-          {tiles.map((tile, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: stable in print view
-            <PrintTileChip key={i} tileDef={tile} side={side} />
-          ))}
-        </div>
-      );
-    }
-
-    // Array of rules
-    let rules: PlainRule[];
-    let catalogEntries: CatalogTileJson[] = [];
-    if (Array.isArray(parsed)) {
-      rules = parsed as PlainRule[];
-      catalogEntries = collectPrintCatalogEntries(rules);
-    } else if (parsed && Array.isArray((parsed as PlainRuleWrapper).ruleJsons)) {
-      const wrapper = parsed as PlainRuleWrapper;
-      rules = wrapper.ruleJsons;
-      catalogEntries = collectPrintCatalogEntries(rules, wrapper.catalog);
-    } else {
-      return <pre className="docs-print-code-fallback">{content}</pre>;
-    }
-
-    const localCatalog = buildPrintLocalCatalog(catalogEntries, brainServices);
-    const flat = flattenPlainRules(rules, tileCatalog, localCatalog);
+  if (block.kind === "tiles") {
+    const tiles = resolveBrainFenceTiles(block.tileIds, tileCatalog, localCatalog);
+    const side = brainFenceTileSide(block.side, fenceMeta.side);
     return (
-      <div className="docs-print-brain-block">
-        {flat.map((r) => (
-          <PrintRuleRow
-            key={r.lineNumber}
-            comment={r.comment}
-            whenTiles={r.whenTiles}
-            doTiles={r.doTiles}
-            depth={r.depth}
-            lineNumber={r.lineNumber}
-          />
+      <div className={fenceMeta.noFrame ? "docs-print-tiles-noframe" : "docs-print-brain-block"}>
+        {tiles.map((tile, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: stable in print view
+          <PrintTileChip key={i} tileDef={tile} side={side} />
         ))}
       </div>
     );
-  } catch {
-    return <pre className="docs-print-code-fallback">{content}</pre>;
   }
+
+  const flat = flattenFenceRules(block.rules, tileCatalog, localCatalog);
+  return (
+    <div className="docs-print-brain-block">
+      {flat.map((r) => (
+        <PrintRuleRow
+          key={r.lineNumber}
+          comment={r.comment}
+          trigger={r.trigger}
+          whenTiles={r.whenTiles}
+          doTiles={r.doTiles}
+          depth={r.depth}
+          lineNumber={r.lineNumber}
+        />
+      ))}
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
