@@ -3,7 +3,7 @@ import { sanitizeCatalogTile } from "./sanitize.js";
 
 /** The catalog serialized for a model's context. */
 export interface CatalogDigest {
-  /** One line per tile, tiles in ascending tile-id order. */
+  /** One JSON object per line, tiles in ascending tile-id order. */
   readonly text: string;
   /** Tiles the text carries a line for. */
   readonly tileCount: number;
@@ -35,34 +35,19 @@ function fingerprint(text: string): string {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
-/** Render one tile as a single digest line. Author text arrives neutralized. */
-function digestLine(tile: CatalogTile): string {
-  const fields: string[] = [tile.tileId, tile.label, tile.kind];
-  if (tile.outputType) fields.push(`out=${tile.outputType}`);
-  if (tile.placement.length > 0) fields.push(`place=${tile.placement.join("+")}`);
-  if (tile.args) fields.push(`args=${tile.args}`);
-  if (tile.requires.length > 0) fields.push(`needs=${tile.requires.join("+")}`);
-  if (tile.provides.length > 0) fields.push(`gives=${tile.provides.join("+")}`);
-  if (tile.outputs.length > 0) fields.push(`outputs=${tile.outputs.join("+")}`);
-  if (tile.consumesWhenResult) fields.push(`whenResult=${tile.consumesWhenResult}`);
-  if (tile.deprecated) fields.push("deprecated");
-  if (tile.grammarNote) fields.push(`note=${tile.grammarNote}`);
-  if (tile.description) fields.push(tile.description);
-  return fields.join(" | ");
-}
-
 /**
- * Serialize the catalog deterministically for the prompt prefix. Tiles the
- * editor hides from its pickers are omitted; the rest have their author text
- * neutralized by {@link sanitizeCatalogTile} and are sorted by tile id, so the
- * same catalog always produces the same bytes and no tile's text can close a
- * field or open a line.
+ * Serialize the catalog deterministically for the prompt prefix as JSON Lines:
+ * one line per tile, each holding exactly the object `read_catalog` reports for
+ * that tile once {@link sanitizeCatalogTile} has capped its author text. Tiles
+ * the editor hides from its pickers are omitted, and the rest are sorted by
+ * tile id, so the same catalog always produces the same bytes. Every character
+ * of a tile's text is carried, JSON-encoded.
  */
 export function catalogDigest(tiles: readonly CatalogTile[]): CatalogDigest {
   const listed = tiles
     .filter((tile) => !tile.hidden)
     .map(sanitizeCatalogTile)
     .sort((a, b) => (a.tileId < b.tileId ? -1 : a.tileId > b.tileId ? 1 : 0));
-  const text = listed.map(digestLine).join("\n");
+  const text = listed.map((tile) => JSON.stringify(tile)).join("\n");
   return { text, tileCount: listed.length, hash: fingerprint(text) };
 }

@@ -91,13 +91,13 @@ describe("what shoot reports about the shot it just took", () => {
 
   test("the digest advertises the report on shoot's own line", () => {
     const digest = catalogDigest(ecosimCatalog());
-    const shootLine = digest.text.split("\n").find((line) => line.startsWith(`${SHOOT_TILE_ID} |`));
+    const shootLine = digest.text
+      .split("\n")
+      .map((line) => JSON.parse(line) as CatalogTile)
+      .find((tile) => tile.tileId === SHOOT_TILE_ID);
 
     assert.ok(shootLine, "the digest carries a line for shoot");
-    assert.ok(
-      shootLine.includes("outputs=__out.boolean:<boolean>.shot fired"),
-      `shoot's digest line names its output key: ${shootLine}`
-    );
+    assert.deepEqual(shootLine.outputs, ["__out.boolean:<boolean>.shot fired"]);
   });
 
   test("the report tracks the shots the runtime actually took, not the calls made", async () => {

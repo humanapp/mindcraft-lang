@@ -16,20 +16,17 @@ function tile(overrides: Partial<CatalogTile> & Pick<CatalogTile, "tileId">): Ca
 }
 
 describe("catalog text sanitation", () => {
-  test("leaves text that is already one plain line untouched", () => {
+  test("leaves text under its limit exactly as written", () => {
     assert.equal(
       sanitizeCatalogText("rate clamps to 0..5 shots per second", 1024),
       "rate clamps to 0..5 shots per second"
     );
   });
 
-  test("collapses newlines and pipes to single spaces", () => {
-    assert.equal(sanitizeCatalogText("first\nsecond|third", 1024), "first second third");
-    assert.equal(sanitizeCatalogText("a \r\n | \t b", 1024), "a b");
-  });
-
-  test("drops leading and trailing whitespace", () => {
-    assert.equal(sanitizeCatalogText("  padded  ", 1024), "padded");
+  test("keeps newlines, pipes, and padding, which carry no structural role", () => {
+    assert.equal(sanitizeCatalogText("first\nsecond|third", 1024), "first\nsecond|third");
+    assert.equal(sanitizeCatalogText("a \r\n | \t b", 1024), "a \r\n | \t b");
+    assert.equal(sanitizeCatalogText("  padded  ", 1024), "  padded  ");
   });
 
   test("cuts text longer than the limit to exactly the limit, marked", () => {
@@ -46,31 +43,24 @@ describe("catalog text sanitation", () => {
   });
 
   test("is deterministic and unchanged by a second application", () => {
-    const hostile = `${"y".repeat(400)}\nmore | text`;
-    const once = sanitizeCatalogText(hostile, 128);
+    const long = `${"y".repeat(400)}\nmore | text`;
+    const once = sanitizeCatalogText(long, 128);
 
-    assert.equal(once, sanitizeCatalogText(hostile, 128));
+    assert.equal(once, sanitizeCatalogText(long, 128));
     assert.equal(sanitizeCatalogText(once, 128), once);
   });
 
-  test("neutralizes every field an author writes and leaves the generated ones alone", () => {
-    const sanitized = sanitizeCatalogTile(
-      tile({
-        tileId: "actuator.shoot",
-        label: "shoot\n| fake",
-        grammarNote: "clamps\nto 0..5",
-        description: "fires|a shot",
-        args: "one-of(x | y)",
-        outputType: "boolean",
-      })
-    );
+  test("leaves every field of a tile under its limit exactly as it arrived", () => {
+    const original = tile({
+      tileId: "actuator.shoot",
+      label: "shoot\n| fake",
+      grammarNote: "clamps\nto 0..5",
+      description: "fires|a shot",
+      args: "one-of(x | y)",
+      outputType: "boolean",
+    });
 
-    assert.equal(sanitized.label, "shoot fake");
-    assert.equal(sanitized.grammarNote, "clamps to 0..5");
-    assert.equal(sanitized.description, "fires a shot");
-    assert.equal(sanitized.args, "one-of(x | y)", "the generated argument grammar keeps its own delimiters");
-    assert.equal(sanitized.tileId, "actuator.shoot");
-    assert.equal(sanitized.outputType, "boolean");
+    assert.deepEqual(sanitizeCatalogTile(original), original);
   });
 
   test("leaves a tile carrying no note and no description carrying neither", () => {

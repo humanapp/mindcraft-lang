@@ -181,7 +181,7 @@ function outputKeys(tile: IBrainTileDef): string[] {
 /**
  * Describe one tile for the model, reading it by its word in `localizer`'s
  * locale and its argument grammar through `slotType`. The fields the tile's
- * author writes are neutralized by {@link sanitizeCatalogTile}.
+ * author writes are capped by {@link sanitizeCatalogTile}.
  */
 function describeTile(
   tile: IBrainTileDef,

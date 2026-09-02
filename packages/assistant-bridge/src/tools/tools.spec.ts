@@ -11,6 +11,7 @@ import {
 } from "../testing/index.js";
 import { executeToolCall } from "./dispatch.js";
 import { proposeEdit } from "./propose-edit.js";
+import type { CatalogTile } from "./read-catalog.js";
 import { catalogTiles, readCatalog } from "./read-catalog.js";
 import { readProject } from "./read-project.js";
 import { suggestTiles } from "./suggest-tiles.js";
@@ -222,20 +223,24 @@ describe("the bridge tools over a real target", () => {
       [CatalogScope.Document],
       "a minted variable is the document's own tile"
     );
-    assert.ok(digest.text.includes(" | hunger | "), digest.text);
+    assert.ok(
+      digest.text.split("\n").some((line) => (JSON.parse(line) as CatalogTile).label === "hunger"),
+      digest.text
+    );
   });
 
   test("carries a registered grammar note to the tile's catalog entry and digest line", () => {
     const listed = catalogTiles(readCatalog(workspace(), {}));
     const emit = listed.find((tile) => tile.tileId === tiles.actuator);
     const sensor = listed.find((tile) => tile.tileId === tiles.sensor);
-    const line = catalogDigest(listed)
+    const digested = catalogDigest(listed)
       .text.split("\n")
-      .find((entry) => entry.startsWith(`${tiles.actuator} |`));
+      .map((line) => JSON.parse(line) as CatalogTile)
+      .find((entry) => entry.tileId === tiles.actuator);
 
     assert.equal(emit?.grammarNote, FAKE_EMIT_GRAMMAR_NOTE);
     assert.equal(sensor?.grammarNote, undefined, "a tile registering no note carries none");
-    assert.ok(line?.includes(`note=${FAKE_EMIT_GRAMMAR_NOTE}`), line);
+    assert.equal(digested?.grammarNote, FAKE_EMIT_GRAMMAR_NOTE);
   });
 
   test("reads an anonymous argument out as the value type it takes, never as a tile to place", () => {
