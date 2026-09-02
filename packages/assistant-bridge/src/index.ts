@@ -14,6 +14,7 @@ export type {
   AdapterArtifactResult,
   AdapterExpectation,
   AdapterNonconformance,
+  CoreBuild,
   DispatchObservation,
   GateObservation,
   OperationEnding,
@@ -25,6 +26,7 @@ export type {
   SimulationScenario,
   SubjectStateChannel,
   TargetAdapter,
+  TargetBuildStamp,
   TargetManifest,
   ThinkObservation,
   WorldObservation,
@@ -36,6 +38,7 @@ export {
   adapterNonconformance,
   DispatchOutcome,
   readAdapterArtifact,
+  readBuildStamp,
 } from "./target/adapter.js";
 export type { CompileDiagnostic, CompileResult } from "./tools/compile.js";
 export { compileBrain } from "./tools/compile.js";

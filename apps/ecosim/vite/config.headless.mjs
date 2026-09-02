@@ -1,4 +1,4 @@
-import { assertDependencyDistsFresh } from "@wendoo/assistant-bridge/kit/node";
+import { assertDependencyDistsFresh, createTargetBuildStamp } from "@wendoo/assistant-bridge/kit/node";
 import path from "path";
 import { defineConfig } from "vite";
 import { rehearsalDefines } from "../src/rehearsal/source-content.ts";
@@ -26,7 +26,7 @@ export default defineConfig({
   ssr: {
     noExternal: true,
   },
-  define: rehearsalDefines(),
+  define: { ...rehearsalDefines(), BUILD_STAMP: JSON.stringify(createTargetBuildStamp(appDir)) },
   publicDir: false,
   logLevel: "warn",
   build: {

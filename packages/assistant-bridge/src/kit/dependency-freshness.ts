@@ -139,6 +139,18 @@ function localDependencyDirs(packageDir: string): string[] {
   return found;
 }
 
+/**
+ * Directory of the package named `packageName` that `packageDir` reaches
+ * through `file:` dependencies, runtime and dev alike, transitively;
+ * `undefined` when nothing it reaches declares that name.
+ *
+ * @param packageDir Absolute path of the package to search from.
+ * @param packageName Name the sought package declares for itself.
+ */
+export function localDependencyDir(packageDir: string, packageName: string): string | undefined {
+  return localDependencyDirs(packageDir).find((dir) => readManifest(dir).name === packageName);
+}
+
 /** The file under `directory` with the newest modification time, and that time. */
 function newestFile(
   directory: string,
