@@ -5,6 +5,7 @@ import { tileSentenceWord } from "@wendoo/core/brain/language-service";
 import type { BrainTileParameterDef } from "@wendoo/core/brain/tiles";
 import type { Localizer } from "@wendoo/core/localization";
 import type { BrainActionCallArgSpec, BrainActionCallSpec } from "@wendoo/core/runtime";
+import { sanitizeCatalogTile } from "../catalog/sanitize.js";
 import type { CatalogScope } from "../catalog/scope.js";
 import type { ToolInput } from "./tool-schemas.js";
 import { type AuthoringWorkspace, tilesByScope } from "./workspace.js";
@@ -179,7 +180,8 @@ function outputKeys(tile: IBrainTileDef): string[] {
 
 /**
  * Describe one tile for the model, reading it by its word in `localizer`'s
- * locale and its argument grammar through `slotType`.
+ * locale and its argument grammar through `slotType`. The fields the tile's
+ * author writes are neutralized by {@link sanitizeCatalogTile}.
  */
 function describeTile(
   tile: IBrainTileDef,
@@ -192,7 +194,7 @@ function describeTile(
   const args =
     action && action.callDef.argSlots.size() > 0 ? renderCallSpec(action.callDef.callSpec, slotType) : undefined;
   const consumesWhenResult = tile.consumesWhenResult();
-  return {
+  return sanitizeCatalogTile({
     tileId: tile.tileId,
     label: tileSentenceWord(tile, localizer),
     kind: tile.kind,
@@ -207,7 +209,7 @@ function describeTile(
     ...(tile.metadata?.grammarNote ? { grammarNote: tile.metadata.grammarNote } : {}),
     ...(tile.hidden ? { hidden: true } : {}),
     ...(tile.deprecated ? { deprecated: true } : {}),
-  };
+  });
 }
 
 /** True when any of the tile's searchable text contains `needle`. */

@@ -1,5 +1,11 @@
 export type { CatalogDigest } from "./catalog/digest.js";
 export { catalogDigest, languageGrammarLegend } from "./catalog/digest.js";
+export {
+  CATALOG_TEXT_LIMITS,
+  sanitizeCatalogText,
+  sanitizeCatalogTile,
+  TRUNCATION_MARKER,
+} from "./catalog/sanitize.js";
 export { CatalogScope } from "./catalog/scope.js";
 export type {
   ExcludedRule,

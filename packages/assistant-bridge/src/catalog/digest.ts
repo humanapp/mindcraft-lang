@@ -1,4 +1,5 @@
 import type { CatalogTile } from "../tools/read-catalog.js";
+import { sanitizeCatalogTile } from "./sanitize.js";
 
 /** The catalog serialized for a model's context. */
 export interface CatalogDigest {
@@ -34,12 +35,7 @@ function fingerprint(text: string): string {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
-/** Collapse a description to one line of digest text. */
-function oneLine(text: string): string {
-  return text.replace(/\s+/g, " ").trim();
-}
-
-/** Render one tile as a single digest line. */
+/** Render one tile as a single digest line. Author text arrives neutralized. */
 function digestLine(tile: CatalogTile): string {
   const fields: string[] = [tile.tileId, tile.label, tile.kind];
   if (tile.outputType) fields.push(`out=${tile.outputType}`);
@@ -50,20 +46,22 @@ function digestLine(tile: CatalogTile): string {
   if (tile.outputs.length > 0) fields.push(`outputs=${tile.outputs.join("+")}`);
   if (tile.consumesWhenResult) fields.push(`whenResult=${tile.consumesWhenResult}`);
   if (tile.deprecated) fields.push("deprecated");
-  if (tile.grammarNote) fields.push(`note=${oneLine(tile.grammarNote)}`);
-  if (tile.description) fields.push(oneLine(tile.description));
+  if (tile.grammarNote) fields.push(`note=${tile.grammarNote}`);
+  if (tile.description) fields.push(tile.description);
   return fields.join(" | ");
 }
 
 /**
  * Serialize the catalog deterministically for the prompt prefix. Tiles the
- * editor hides from its pickers are omitted; the rest are sorted by tile id, so
- * the same catalog always produces the same bytes.
+ * editor hides from its pickers are omitted; the rest have their author text
+ * neutralized by {@link sanitizeCatalogTile} and are sorted by tile id, so the
+ * same catalog always produces the same bytes and no tile's text can close a
+ * field or open a line.
  */
 export function catalogDigest(tiles: readonly CatalogTile[]): CatalogDigest {
   const listed = tiles
     .filter((tile) => !tile.hidden)
-    .slice()
+    .map(sanitizeCatalogTile)
     .sort((a, b) => (a.tileId < b.tileId ? -1 : a.tileId > b.tileId ? 1 : 0));
   const text = listed.map(digestLine).join("\n");
   return { text, tileCount: listed.length, hash: fingerprint(text) };
