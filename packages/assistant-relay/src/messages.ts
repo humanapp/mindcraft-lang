@@ -76,16 +76,22 @@ export interface RelayNarrationDelta {
 }
 
 /**
- * The model is writing a tool call right now. The first of one call's pulses
- * carries a `chars` of `0` and names the tool the model has begun writing; the
- * ones after it are progress ticks the service throttles, sent while the call's
- * JSON accumulates.
+ * The `tool` a {@link RelayTurnWriting} carries while the model is reasoning.
+ * No bridge tool answers to this name.
+ */
+export const thinkingWritingName = "thinking";
+
+/**
+ * The model is producing something right now: one tool call, or the reasoning
+ * it does before acting, named {@link thinkingWritingName}. The first of one
+ * run's pulses carries a `chars` of `0` and names what the model has begun; the
+ * ones after it are progress ticks the service throttles as the text grows.
  */
 export interface RelayTurnWriting {
   readonly type: "turn:writing";
-  /** Bridge name of the tool being written. */
+  /** Bridge name of the tool being written, or {@link thinkingWritingName} while the model reasons. */
   readonly tool: string;
-  /** Characters of the call's JSON written so far; `0` at write-start. */
+  /** Characters written so far -- of the call's JSON, or of the reasoning; `0` at the start. */
   readonly chars: number;
 }
 

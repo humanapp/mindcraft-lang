@@ -11,6 +11,7 @@ import {
   ASSISTANT_RELAY_PROTOCOL_VERSION,
   ConversationTurnFailureCode,
   RelayTakeoverCode,
+  thinkingWritingName,
 } from "@wendoo/assistant-relay";
 import { assertUnreachable } from "@wendoo/core";
 import type { PersonActivity } from "../app/person-activity";
@@ -586,7 +587,12 @@ export class AssistantMachine {
           });
           break;
         case "turn:writing":
-          this.beginDoing(brainId, { kind: "writing", tool: message.tool, chars: message.chars });
+          this.beginDoing(
+            brainId,
+            message.tool === thinkingWritingName
+              ? { kind: "planning" }
+              : { kind: "writing", tool: message.tool, chars: message.chars }
+          );
           break;
         case "turn:toolCalls": {
           this.beginDoing(brainId, {

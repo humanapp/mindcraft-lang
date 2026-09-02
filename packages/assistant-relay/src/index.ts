@@ -33,6 +33,7 @@ export {
   RelayTurnEndCode,
   relayDownstreamMessageSchema,
   relayUpstreamMessageSchema,
+  thinkingWritingName,
 } from "./messages.js";
 export type {
   RelayConnect,

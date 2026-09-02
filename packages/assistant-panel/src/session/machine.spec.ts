@@ -18,6 +18,7 @@ import {
   RelayDeclineCode,
   RelayRefusalCode,
   RelayTakeoverCode,
+  thinkingWritingName,
 } from "@wendoo/assistant-relay";
 import type { RelayLoopback } from "@wendoo/assistant-relay/testing";
 import { createRelayLoopback } from "@wendoo/assistant-relay/testing";
@@ -802,6 +803,40 @@ describe("what a running turn stands at, in the order it stood there", () => {
       { kind: "writing", tool: "propose_edit", chars: 4312 },
       undefined,
     ]);
+  });
+
+  test("stands at planning while the model reasons", async () => {
+    const seen = await stoodAt({
+      turns: [
+        {
+          steps: [
+            { kind: "writing", tool: thinkingWritingName, chars: 0 },
+            { kind: "writing", tool: thinkingWritingName, chars: 9312 },
+          ],
+        },
+      ],
+    });
+
+    assert.deepEqual(
+      seen.map((at) => at?.kind),
+      [undefined, "planning", "planning", "planning", undefined]
+    );
+  });
+
+  test("keeps the reasoning's name and its count out of what the turn stands at", async () => {
+    const seen = await stoodAt({
+      turns: [
+        {
+          steps: [
+            { kind: "writing", tool: thinkingWritingName, chars: 9312 },
+            { kind: "writing", tool: "propose_edit", chars: 40 },
+          ],
+        },
+      ],
+    });
+
+    const named = seen.filter((at) => at?.kind === "writing").map((at) => (at?.kind === "writing" ? at.tool : ""));
+    assert.deepEqual(named, ["propose_edit"], "only a real tool call is ever stood at by name");
   });
 
   test("stands at nothing while narration arrives, which says for itself what the turn is at", async () => {
