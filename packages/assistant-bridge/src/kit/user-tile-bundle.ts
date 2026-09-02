@@ -64,5 +64,6 @@ export function userTileBundle(): CompiledActionBundle {
         isAsync: false,
       }),
     ],
+    roots: [],
   };
 }

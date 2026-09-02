@@ -9,6 +9,7 @@ export type {
   BrainJsonMigration,
   CompiledActionArtifact,
   CompiledActionBundle,
+  CompiledRoot,
   CreateBrainOptions,
   CreateHostActuatorOptions,
   CreateHostSensorOptions,
@@ -171,7 +172,7 @@ export {
 
 // -- Tile visual types (editor integration) -------------------------------------
 
-export type { BrainTileKind, IBrainTileDef, ITileMetadata } from "../brain/interfaces";
+export type { BrainTileKind, IBrainTileDef, ITileMetadata, TileProvenance } from "../brain/interfaces";
 
 // -- Platform utilities (commonly needed by apps) -------------------------------
 

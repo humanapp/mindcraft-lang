@@ -27,7 +27,7 @@ import {
 } from "@wendoo/core/runtime";
 import { BitSet } from "@wendoo/core/util";
 import { collectModifiers, collectParams } from "../compiler/arg-spec-utils.js";
-import { privateArgTileId } from "../compiler/symbol-keys.js";
+import { parseQualifiedClassName, privateArgTileId } from "../compiler/symbol-keys.js";
 import type { ExtractedModifier, ExtractedParam, UserAuthoredProgram, UserTileDefinition } from "../compiler/types.js";
 
 /** Resolve a parameter type name to a runtime `TypeId`, or `undefined` when the type is not registered. */
@@ -36,30 +36,52 @@ export type UserTileTypeResolver = (typeName: string) => TypeId | undefined;
 /** A tile surface a bundle registers: a compiled program or a program-less tile definition. */
 export type UserTileSurface = UserAuthoredProgram | UserTileDefinition;
 
+/** One struct-derived tile paired with the namespace of the library declaring the struct. */
+export interface OwnedStructTypeTile {
+  tile: IBrainTileDef;
+  /** Namespace segment of the struct's cross-module identity: the library or host project declaring it. */
+  namespace: string;
+}
+
 /**
  * Accessor tiles and variable-factory tiles derived from a program's declared
- * struct types: one accessor per field for `accessors: true` declarations, one
- * variable factory for `variables: true` declarations. Tile ids derive from
- * the struct's registered type id, so every program collecting one declared
- * type derives the identical tile set (register-if-absent by tile id).
+ * or imported struct types: one accessor per field for `accessors: true`
+ * declarations, one variable factory for `variables: true` declarations. Each
+ * tile is paired with the namespace of the struct's declaring root, taken from
+ * the struct's cross-module identity, so an importing program derives the same
+ * tile under the same owner. Tile ids derive from the struct's registered type
+ * id, so every program collecting one declared type derives the identical tile
+ * set (register-if-absent by tile id). Throws when a struct's identity is not a
+ * `<namespace>:<file>::<binding>` name.
  */
-export function buildStructTypeTiles(program: UserAuthoredProgram, services: BrainServices): readonly IBrainTileDef[] {
-  const tiles: IBrainTileDef[] = [];
+export function buildStructTypeTiles(
+  program: UserAuthoredProgram,
+  services: BrainServices
+): readonly OwnedStructTypeTile[] {
+  const tiles: OwnedStructTypeTile[] = [];
   for (const structType of program.structTypes ?? []) {
+    const parsed = parseQualifiedClassName(structType.identity);
+    if (!parsed) {
+      throw new Error(
+        `Struct type "${structType.name}" has identity "${structType.identity}", which is not a <namespace>:<file>::<binding> name`
+      );
+    }
+    const namespace = parsed.namespace;
     if (structType.accessors) {
       for (const field of structType.fields) {
-        tiles.push(createAccessorTileDef(structType.typeId, field.name, field.typeId));
+        tiles.push({ tile: createAccessorTileDef(structType.typeId, field.name, field.typeId), namespace });
       }
     }
     if (structType.variables) {
-      tiles.push(
-        createVariableFactoryTileDef(
+      tiles.push({
+        tile: createVariableFactoryTileDef(
           structType.typeId,
           structType.typeId,
           { metadata: { label: structType.name } },
           services
-        )
-      );
+        ),
+        namespace,
+      });
     }
   }
   return tiles;

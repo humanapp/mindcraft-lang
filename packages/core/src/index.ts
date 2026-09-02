@@ -32,6 +32,7 @@ export type {
   BrainInvalidationEvent,
   CompiledActionArtifact,
   CompiledActionBundle,
+  CompiledRoot,
   ConversionDefinition,
   CreateBrainOptions,
   CreateHostActuatorOptions,

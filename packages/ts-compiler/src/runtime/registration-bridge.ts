@@ -7,9 +7,9 @@ import { buildStructTypeTiles, buildUserTileMetadata } from "./user-tile-metadat
 /** Register a program's derived struct-type tiles (accessors, variable factories) that are not yet registered. */
 function registerStructTypeTiles(program: UserAuthoredProgram, services: BrainServices): void {
   const { tiles } = services.edit;
-  for (const structTile of buildStructTypeTiles(program, services)) {
-    if (!tiles.has(structTile.tileId)) {
-      tiles.registerTileDef(structTile);
+  for (const { tile } of buildStructTypeTiles(program, services)) {
+    if (!tiles.has(tile.tileId)) {
+      tiles.registerTileDef(tile);
     }
   }
 }

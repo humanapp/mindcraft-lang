@@ -159,7 +159,7 @@ function bundle(
     actions.set(entry.artifact.key, entry.artifact);
     tiles.push(entry.tile);
   }
-  return { revision, actions, tiles };
+  return { revision, actions, tiles, roots: [] };
 }
 
 /**

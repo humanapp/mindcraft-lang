@@ -929,14 +929,14 @@ describe("Conversion declarations: environment bundle lifecycle", () => {
         actions.set(entry.program.key, entry.program);
       }
     }
-    environment.replaceActionBundle({ revision: "conv-1", tiles: [], actions });
+    environment.replaceActionBundle({ revision: "conv-1", tiles: [], actions, roots: [] });
 
     const registered = services.shared.conversions.get(CoreTypeIds.Number, CoreTypeIds.Buffer);
     assert.ok(registered, "the bundle apply registers the conversion");
     assert.ok(isBytecodeConversion(registered));
     assert.equal(registered.descriptor.key, conversionProgram.key);
 
-    environment.replaceActionBundle({ revision: "conv-2", tiles: [], actions: new Dict() });
+    environment.replaceActionBundle({ revision: "conv-2", tiles: [], actions: new Dict(), roots: [] });
     assert.equal(
       services.shared.conversions.get(CoreTypeIds.Number, CoreTypeIds.Buffer),
       undefined,

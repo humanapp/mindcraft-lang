@@ -49,6 +49,7 @@ test("exports wendoo public contracts from the root package", () => {
     revision: "rev-2",
     tiles: [],
     actions: new Dict<string, CompiledActionArtifact>(),
+    roots: [],
   } satisfies CompiledActionBundle;
 
   const options = {

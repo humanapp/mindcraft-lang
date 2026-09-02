@@ -384,6 +384,21 @@ export default Sensor({
     assert.ok(installed.bundle.actions.get(HOST_ACTION_KEY), "the host's tile action is in the bundle");
     assert.equal(installed.rootResults.length, 2, "the host and the one extension are both compilation roots");
 
+    assert.deepEqual(
+      installed.bundle.roots.map((root) => root.namespace),
+      ["acme/beeper", TEST_PROJECT_NAMESPACE].sort(),
+      "both compilation roots carry a content identity"
+    );
+    assert.deepEqual(
+      installed.bundle.roots.find((root) => root.namespace === TEST_PROJECT_NAMESPACE)?.closure,
+      ["acme/beeper"],
+      "the host's closure names its installed extension"
+    );
+    const extTile = installed.bundle.tiles.find((tile) => tile.tileId === `tile.sensor->${EXT_ACTION_KEY}`);
+    const hostTile = installed.bundle.tiles.find((tile) => tile.tileId === `tile.sensor->${HOST_ACTION_KEY}`);
+    assert.deepEqual(extTile?.provenance?.owners, ["acme/beeper"]);
+    assert.deepEqual(hostTile?.provenance?.owners, [TEST_PROJECT_NAMESPACE]);
+
     // Uninstall: re-resolve to no extensions.
     compiler.setDependencies([], []);
     const uninstalled = compiler.compile();

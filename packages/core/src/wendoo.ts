@@ -379,6 +379,18 @@ export interface HydratedTileMetadataSnapshot {
   readonly tiles: readonly TileDefinitionInput[];
 }
 
+/** One compilation root's content identity within a {@link CompiledActionBundle}. */
+export interface CompiledRoot {
+  /** The root's namespace: a library's `<owner>/<repo>` coordinate or the host project's namespace. */
+  readonly namespace: string;
+  /** Lowercase hex SHA-256 over the root's owned tile surface: each owned tile's id and metadata, in tile-id order. */
+  readonly digest: string;
+  /** Namespaces of the root's transitive dependencies present in the bundle, sorted; empty when it has none. */
+  readonly closure: readonly string[];
+  /** Lowercase hex SHA-256 over `digest` followed by each closure member's namespace and `digest` in closure order; changes when any member's surface changes. */
+  readonly closureDigest: string;
+}
+
 /**
  * A bundle of compiled user actions and the tiles they back. Apply with
  * {@link WendooEnvironment.replaceActionBundle}.
@@ -387,6 +399,8 @@ export interface CompiledActionBundle {
   readonly revision: string;
   readonly tiles: readonly TileDefinitionInput[];
   readonly actions: Dict<string, CompiledActionArtifact>;
+  /** One entry per compilation root that built the bundle, sorted by namespace. A root contributing no tiles still has an entry. */
+  readonly roots: readonly CompiledRoot[];
 }
 
 /** Result of {@link WendooEnvironment.replaceActionBundle}: which actions changed and which brains were invalidated. */
@@ -896,6 +910,8 @@ class WendooEnvironmentImpl implements WendooEnvironment {
   private readonly bundleResolver = new Dict<string, CompiledActionArtifact>();
   /** Revision of the bundle last applied, or undefined while none has been. */
   private bundleRevision: string | undefined;
+  /** Compilation roots of the bundle last applied; empty while none has been. */
+  private bundleRoots: readonly CompiledRoot[] = [];
   /** `(fromType, toType)` pairs this environment registered from the active bundle's conversion artifacts. */
   private readonly bundleConversionPairs = new List<{ fromType: TypeId; toType: TypeId }>();
   private readonly trackedBrains = List.empty<ManagedWendooBrain>();
@@ -975,6 +991,7 @@ class WendooEnvironmentImpl implements WendooEnvironment {
 
     this.replaceCatalogContents(this.bundleCatalog, List.from(bundle.tiles));
     this.bundleRevision = bundle.revision;
+    this.bundleRoots = bundle.roots;
 
     this.bundleResolver.clear();
     const nextKeys = nextActions.keys();
@@ -1020,6 +1037,7 @@ class WendooEnvironmentImpl implements WendooEnvironment {
       revision: this.bundleRevision,
       tiles: this.bundleCatalog.getAll().toArray(),
       actions: copyActionArtifacts(this.bundleResolver),
+      roots: this.bundleRoots,
     };
   }
 

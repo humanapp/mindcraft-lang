@@ -103,6 +103,10 @@ export interface CompileResult {
 
 /** Result of compiling every user-tile source file in a {@link UserTileProject}. */
 export interface ProjectCompileResult {
+  /** The compiling project's namespace: a host project's store id or an extension's `<owner>/<repo>` coordinate. */
+  readonly namespace: string;
+  /** The project's direct dependency coordinates as configured, in configured order. */
+  readonly dependencies: readonly string[];
   /** Per-source-file compile result, keyed by workspace path. */
   results: Map<string, CompileResult>;
   /** TypeScript pre-emit diagnostics, keyed by workspace path. */
@@ -271,6 +275,14 @@ export class UserTileProject {
     this._dependencyMounts = dependencyMounts;
   }
 
+  /** The namespace and configured dependency coordinates every compile result of this project carries. */
+  private resultIdentity(): Pick<ProjectCompileResult, "namespace" | "dependencies"> {
+    return {
+      namespace: this._projectNamespace,
+      dependencies: this._dependencies.map((dependency) => dependency.coordinate),
+    };
+  }
+
   setFiles(files: ReadonlyMap<string, FileContent>): void {
     this._files.clear();
     for (const [path, content] of files) {
@@ -425,7 +437,7 @@ export class UserTileProject {
     }
 
     if (userRootFiles.length === 0) {
-      return { results: new Map(), tsErrors: new Map(), sourceRewrites: new Map() };
+      return { ...this.resultIdentity(), results: new Map(), tsErrors: new Map(), sourceRewrites: new Map() };
     }
 
     const host = createVirtualCompilerHost(compilerFiles, checkerOptions, resolveExtensionBase);
@@ -489,7 +501,7 @@ export class UserTileProject {
     }
     const hasGlobalErrors = (tsErrors.get("<global>") ?? []).some((diag) => diag.severity === "error");
     if (hasGlobalErrors) {
-      return { results: new Map(), tsErrors, sourceRewrites: new Map() };
+      return { ...this.resultIdentity(), results: new Map(), tsErrors, sourceRewrites: new Map() };
     }
 
     const checker = tsProgram.getTypeChecker();
@@ -653,7 +665,7 @@ export class UserTileProject {
       publishedTypes = publication.publishedTypes;
     }
 
-    return { results, tsErrors, sourceRewrites, publishedTypes };
+    return { ...this.resultIdentity(), results, tsErrors, sourceRewrites, publishedTypes };
   }
 
   /**

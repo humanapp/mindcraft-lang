@@ -293,6 +293,7 @@ function createActionBundle(
     revision,
     actions,
     tiles: tiles.toArray(),
+    roots: [],
   };
 }
 

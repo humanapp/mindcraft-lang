@@ -75,6 +75,7 @@ function nudgeBundle(): CompiledActionBundle {
     tiles: [
       new BrainTileActuatorDef(kNudgeKey, { key: kNudgeKey, kind: "actuator", callDef: nudgeCallDef, isAsync: false }),
     ],
+    roots: [],
   };
 }
 

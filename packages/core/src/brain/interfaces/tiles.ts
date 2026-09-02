@@ -220,11 +220,24 @@ export type BrainTileLiteralDefOptions = BrainTileDefCreateOptions & {
 // Tile Definitions
 // ----------------------------------------------------
 
+/** Which compilation roots own a bundle tile's authored surface. */
+export interface TileProvenance {
+  /**
+   * Namespaces owning the tile -- a library's `<owner>/<repo>` coordinate or
+   * the host project's namespace -- sorted, never empty. A shared-id tile
+   * (`modifier.*`, `parameter.*`, anonymous `parameter.anon.*`) lists every
+   * root that declared it.
+   */
+  readonly owners: readonly string[];
+}
+
 /** Definition of a single brain tile: stable id, kind, display metadata, placement, and capability/requirement bits. */
 export interface IBrainTileDef {
   readonly kind: BrainTileKind;
   readonly tileId: TileId;
   metadata?: ITileMetadata;
+  /** Set on every tile a compiled action bundle registers; absent on tiles the environment's modules register. */
+  provenance?: TileProvenance;
   placement?: TilePlacement;
   deprecated?: boolean;
   hidden?: boolean;

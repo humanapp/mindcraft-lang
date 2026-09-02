@@ -1584,7 +1584,7 @@ export class AppEnvironmentHost {
     this._brainCache.clear();
     this._projectRecordFailure = undefined;
     this._pendingBrainRebuild = false;
-    this.env.replaceActionBundle({ revision: "", tiles: [], actions: Dict.empty() });
+    this.env.replaceActionBundle({ revision: "", tiles: [], actions: Dict.empty(), roots: [] });
     // Compiles invalidate types per project namespace, so the outgoing
     // project's registrations must be cleared here or they outlive it.
     this.env.brainServices.runtime.types.removeUserTypes();
