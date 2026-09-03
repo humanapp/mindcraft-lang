@@ -4,6 +4,12 @@ import type { Actor } from "@/brain/actor";
 import { getActor } from "@/brain/execution-context-types";
 import { EcosimTypeIds, extractVector2, resolveActor } from "@/brain/type-system";
 
+/** Steering weight contributed by a call that names no priority. */
+export const DEFAULT_STEERING_PRIORITY = 0.5;
+
+/** Seconds a speech bubble stands for when the call names no duration. */
+export const SAY_DEFAULT_DURATION_SECONDS = 5;
+
 /** True when a positional action arg slot contains a non-nil value. */
 export function hasArg(args: ReadonlyList<Value>, slotId: number): boolean {
   const value = args.at(slotId);

@@ -14,7 +14,7 @@ import type { BrainRuleDef } from "@wendoo/core/brain/model";
 import { TileIds } from "@/brain/tileids";
 import { createTargetAdapter } from "@/rehearsal/adapter";
 import { sourceRehearsalContent } from "@/rehearsal/source-content";
-import { clampShootRate } from "./shoot";
+import shootAction, { clampShootRate } from "./shoot";
 
 /** Tile id the shoot actuator is addressed by. */
 const SHOOT_TILE_ID = "tile.actuator->actuator.shoot";
@@ -55,20 +55,25 @@ function countDispatches(run: SimulationRun, action: string): number {
   );
 }
 
-/** The `low..high` range a note advertises. */
-function advertisedRange(note: string): { low: number; high: number } {
-  const match = /(-?\d+(?:\.\d+)?)\.\.(-?\d+(?:\.\d+)?)/.exec(note);
-  assert.ok(match, `no range in ${JSON.stringify(note)}`);
-  return { low: Number(match[1]), high: Number(match[2]) };
+/** The bounds shoot's rate slot declares, which must be declared. */
+function declaredRateRange(): { low: number; high: number } {
+  const slots = shootAction.callDef.argSlots;
+  for (let i = 0; i < slots.size(); i++) {
+    const range = slots.get(i).argSpec.range;
+    if (range?.min !== undefined && range.max !== undefined) return { low: range.min, high: range.max };
+  }
+  assert.fail("shoot declares a range on its rate slot");
 }
 
 describe("what shoot advertises about its rate", () => {
-  test("the catalog carries shoot's rate rule", () => {
-    assert.ok(shootTile().grammarNote, "shoot registers a grammar note");
+  test("the catalog reads shoot's rate bounds out of its argument grammar", () => {
+    const { low, high } = declaredRateRange();
+
+    assert.ok(shootTile().args?.includes(`[${low}..${high} clamp]`), shootTile().args);
   });
 
-  test("the advertised range is the range the runtime clamps a rate into", () => {
-    const { low, high } = advertisedRange(shootTile().grammarNote!);
+  test("the declared range is the range the runtime clamps a rate into", () => {
+    const { low, high } = declaredRateRange();
 
     assert.equal(clampShootRate(low), low, "the low end is reachable");
     assert.equal(clampShootRate(high), high, "the high end is reachable");

@@ -11,6 +11,7 @@ import {
   isNumberValue,
   logger,
   mkCallDef,
+  mkNumberValue,
   type NumberValue,
   optional,
   type ParameterTileInput,
@@ -28,16 +29,6 @@ import { TileIds } from "@/brain/tileids";
 import { EcosimTypeIds } from "@/brain/type-system";
 import { resolveTargetActor } from "./utils";
 
-const AnonActorRef = param(TileIds.Parameter.AnonymousActorRef, {
-  anonymous: true,
-});
-const Rate = param(TileIds.Parameter.Rate);
-
-const callDef = mkCallDef(bag(optional(AnonActorRef), optional(Rate)));
-
-const kAnonActorRefSlotId = getSlotId(callDef, AnonActorRef);
-const kRateSlotId = getSlotId(callDef, Rate);
-
 /** Shots per second a call-site fires at when its call names no rate. */
 const DEFAULT_SHOOT_RATE = 2;
 
@@ -47,7 +38,26 @@ const MAX_SHOOT_RATE = 5;
 /** Lowest shots per second a call-site fires at. */
 const MIN_SHOOT_RATE = 0;
 
-/** The requested shots-per-second `rate`, brought into the range the shooter fires at. */
+const AnonActorRef = param(TileIds.Parameter.AnonymousActorRef, {
+  anonymous: true,
+  name: "target",
+  derived: true,
+});
+const Rate = param(TileIds.Parameter.Rate, {
+  unit: "per-second",
+  default: mkNumberValue(DEFAULT_SHOOT_RATE),
+  range: { min: MIN_SHOOT_RATE, max: MAX_SHOOT_RATE, onExceed: "clamp" },
+});
+
+const callDef = mkCallDef(bag(optional(AnonActorRef), optional(Rate)));
+
+const kAnonActorRefSlotId = getSlotId(callDef, AnonActorRef);
+const kRateSlotId = getSlotId(callDef, Rate);
+
+/**
+ * The requested shots-per-second `rate`, brought into the range the shooter
+ * fires at.
+ */
 export function clampShootRate(rate: number): number {
   return Math.max(MIN_SHOOT_RATE, Math.min(MAX_SHOOT_RATE, rate));
 }
@@ -180,7 +190,6 @@ export default {
   metadata: {
     label: "shoot",
     iconUrl: `${ICON_BASE}/shoot.svg`,
-    grammarNote: `rate clamps to ${MIN_SHOOT_RATE}..${MAX_SHOOT_RATE} shots per second`,
   },
 } satisfies CreateHostActuatorOptions;
 

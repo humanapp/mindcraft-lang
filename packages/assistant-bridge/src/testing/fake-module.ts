@@ -18,6 +18,7 @@ import {
   getSlotId,
   isNilValue,
   mkCallDef,
+  mkNumberValue,
   mod,
   optional,
   param,
@@ -81,13 +82,38 @@ export interface FakeWorldState {
 const Loudly = mod(FakeTileIds.Loudly);
 const Immediately = mod(FakeTileIds.Immediately);
 const InBackground = mod(FakeTileIds.InBackground);
-const Strength = param(FakeTileIds.Strength);
-const AnonNumber = param(CoreParameterId.AnonymousNumber, { anonymous: true });
+/** Strength an emit carrying no strength emits at. */
+const DEFAULT_STRENGTH = 1;
+
+/** Weakest and strongest strength an emit emits at. */
+const MIN_STRENGTH = 0;
+const MAX_STRENGTH = 1;
+
+/** Highest count a chime takes. */
+const MAX_CHIMES = 4;
+
+/** A unit longer than the catalog's cap, for the rendering that cuts it. */
+export const FAKE_LONG_UNIT = "fraction-of-full-power";
+
+const Strength = param(FakeTileIds.Strength, {
+  unit: FAKE_LONG_UNIT,
+  default: mkNumberValue(DEFAULT_STRENGTH),
+  range: { min: MIN_STRENGTH, max: MAX_STRENGTH, onExceed: "clamp" },
+});
+const AnonNumber = param(CoreParameterId.AnonymousNumber, {
+  anonymous: true,
+  name: "count",
+  derived: true,
+  range: { min: 0, max: MAX_CHIMES, onExceed: "drop" },
+});
 
 const signalCallDef = mkCallDef(bag());
 const emitCallDef = mkCallDef(bag(optional(Loudly), optional(Strength)));
 const chimeCallDef = mkCallDef(bag(optional(AnonNumber)));
-const ringCallDef = mkCallDef(bag(optional(Immediately), optional(InBackground)));
+/** A slot the grammar reads out under the `value` fallback, declaring no name. */
+const UnnamedAmount = param(CoreParameterId.AnonymousNumber, { anonymous: true });
+
+const ringCallDef = mkCallDef(bag(optional(UnnamedAmount), optional(Immediately), optional(InBackground)));
 
 const kRingImmediatelySlotId = getSlotId(ringCallDef, Immediately);
 const kRingInBackgroundSlotId = getSlotId(ringCallDef, InBackground);

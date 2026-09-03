@@ -140,3 +140,19 @@ describe("catalog digest", () => {
     assert.equal(parsed?.consumesWhenResult, "number");
   });
 });
+
+describe("what the digest bounds in a tile's argument grammar", () => {
+  test("cuts an args string the producer left over the limit", () => {
+    const digest = catalogDigest([tile({ tileId: "a", args: `any-order(optional(x:string=${"q".repeat(3000)}))` })]);
+    const listed = parseLines(digest.text)[0];
+
+    assert.equal(listed?.args?.length, CATALOG_TEXT_LIMITS.args);
+  });
+
+  test("leaves an args string inside the limit exactly as it arrived", () => {
+    const args = "any-order(optional(pitch:number(Hz)=880[0..9999 clamp]))";
+    const listed = parseLines(catalogDigest([tile({ tileId: "a", args })]).text)[0];
+
+    assert.equal(listed?.args, args);
+  });
+});

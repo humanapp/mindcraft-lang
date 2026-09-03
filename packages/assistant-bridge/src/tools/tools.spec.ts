@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { catalogDigest } from "../catalog/digest.js";
+import { ARGS_TRUNCATION_MARKER, CATALOG_TEXT_LIMITS, sanitizeArgsText } from "../catalog/sanitize.js";
 import { CatalogScope } from "../catalog/scope.js";
 import {
   createTargetAdapter,
   FAKE_EMIT_GRAMMAR_NOTE,
   FAKE_INPUT_KIND,
+  FAKE_LONG_UNIT,
   FAKE_SUBJECT,
   ruleIdAt,
 } from "../testing/index.js";
@@ -247,7 +249,39 @@ describe("the bridge tools over a real target", () => {
     const chime = catalogTiles(readCatalog(workspace(), {})).find((tile) => tile.tileId === tiles.asyncActuator);
 
     assert.ok(chime, tiles.asyncActuator);
-    assert.equal(chime.args, "any-order(optional(value:number:<number>))");
+    assert.equal(chime.args, "any-order(optional(count:number:<number>=derived[0..4 drop]))");
+  });
+
+  test("reads a slot's unit, default and bounds out as structure beside its tile", () => {
+    const emit = catalogTiles(readCatalog(workspace(), {})).find((tile) => tile.tileId === tiles.actuator);
+
+    assert.ok(emit, tiles.actuator);
+    assert.ok(emit.args?.includes("=1[0..1 clamp]"), emit.args);
+  });
+
+  test("cuts a slot's unit to its limit, so author text inside the args string is bounded", () => {
+    const emit = catalogTiles(readCatalog(workspace(), {})).find((tile) => tile.tileId === tiles.actuator);
+
+    const cut = sanitizeArgsText(FAKE_LONG_UNIT, CATALOG_TEXT_LIMITS.argUnit);
+    assert.equal(cut.length, CATALOG_TEXT_LIMITS.argUnit);
+    assert.ok(cut.endsWith(ARGS_TRUNCATION_MARKER), cut);
+    assert.ok(!cut.includes("["), "a cut inside the args string carries no bracket");
+    assert.ok(emit?.args?.includes(`(${cut})=`), emit?.args);
+    assert.ok(!emit?.args?.includes(FAKE_LONG_UNIT), "the full author unit does not reach the args string");
+  });
+
+  test("reads an anonymous slot declaring no name out under the `value` fallback", () => {
+    const ring = catalogTiles(readCatalog(workspace(), {})).find(
+      (tile) => tile.tileId === "tile.actuator->actuator.fake.ring"
+    );
+
+    assert.ok(ring?.args?.includes("value:number"), ring?.args);
+  });
+
+  test("leaves a slot name inside its limit exactly as the author wrote it", () => {
+    const chime = catalogTiles(readCatalog(workspace(), {})).find((tile) => tile.tileId === tiles.asyncActuator);
+
+    assert.ok(chime?.args?.includes("count:"), chime?.args);
   });
 
   test("lists an argument tile only where some action names it as a tile to place", () => {

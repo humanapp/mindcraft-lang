@@ -7,12 +7,16 @@ import { getCallSiteState, setCallSiteState } from "../context";
 import { CoreTypeIds } from "../core-types";
 import { type ActionDescriptor, type BrainActionCallDef, getSlotId, mkCallDef } from "../function-defs";
 import { CoreParameterId, mkSensorTileId } from "../tile-ids";
-import { FALSE_VALUE, isNilValue, isNumberValue, TRUE_VALUE, type Value } from "../value";
+import { FALSE_VALUE, isNilValue, isNumberValue, mkNumberValue, TRUE_VALUE, type Value } from "../value";
+
+/** Seconds between firings when the slot is empty. */
+const DEFAULT_DELAY_SECONDS = 1;
 
 const AnonNumber = param(CoreParameterId.AnonymousNumber, {
-  name: "anonNumber",
-  required: true,
+  name: "seconds",
   anonymous: true,
+  unit: "seconds",
+  default: mkNumberValue(DEFAULT_DELAY_SECONDS),
 });
 
 const callDef: BrainActionCallDef = mkCallDef(bag(optional(AnonNumber)));
@@ -44,7 +48,7 @@ function onPageEntered(ctx: ExecutionContext) {
 }
 
 function execTimeout(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
-  let delay = 1; // default 1 second
+  let delay = DEFAULT_DELAY_SECONDS;
   const anonNumberValue = args.get(kAnonymousNumberSlotId);
   if (anonNumberValue !== undefined && !isNilValue(anonNumberValue)) {
     // The user supplied a delay expression. If it failed to evaluate to a

@@ -11,6 +11,7 @@ import {
   isNumberValue,
   logger,
   mkCallDef,
+  mkNumberValue,
   type NumberValue,
   optional,
   type ParameterTileInput,
@@ -27,20 +28,28 @@ import { TileIds } from "../tileids";
 import { EcosimTypeIds } from "../type-system";
 import { resolveTargetActor } from "./utils";
 
+/** Shots per second a call-site fires at when its call names no rate. */
+const DEFAULT_SHOOT_RATE = 2;
+/** Highest shots per second a call-site fires at. */
+const MAX_SHOOT_RATE = 5;
+/** Lowest shots per second a call-site fires at. */
+const MIN_SHOOT_RATE = 0;
+
 const AnonActorRef = param(TileIds.Parameter.AnonymousActorRef, {
   anonymous: true,
+  name: "target",
+  derived: true,
 });
-const Rate = param(TileIds.Parameter.Rate);
+const Rate = param(TileIds.Parameter.Rate, {
+  unit: "per-second",
+  default: mkNumberValue(DEFAULT_SHOOT_RATE),
+  range: { min: MIN_SHOOT_RATE, max: MAX_SHOOT_RATE, onExceed: "clamp" },
+});
 
 const callDef = mkCallDef(bag(optional(AnonActorRef), optional(Rate)));
 
 const kAnonActorRefSlotId = getSlotId(callDef, AnonActorRef);
 const kRateSlotId = getSlotId(callDef, Rate);
-
-/** Default ms between consecutive shots from the same call-site. */
-const DEFAULT_SHOOT_RATE = 2; // shots per second
-const MAX_SHOOT_RATE = 5; // shots per second
-const MIN_SHOOT_RATE = 0; // shots per second
 
 /** Energy cost to fire a single blip. */
 const SHOOT_ENERGY_COST = 5;

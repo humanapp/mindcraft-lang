@@ -2,7 +2,7 @@
 applyTo: "packages/docs/**"
 ---
 
-<!-- Last reviewed: 2026-03-12 -->
+<!-- Last reviewed: 2026-09-02 -->
 
 # Docs Package -- Rules & Patterns
 
@@ -208,6 +208,12 @@ nothing resolves. `core-content-fences.spec.ts` sweeps the markdown under
 resolves -- reading the markdown source, so an edit is swept before core's `build:docs`
 runs. It resolves the `${tileId}` placeholder the way `DocsRegistry.register` does, and
 names the tile pages the core manifest registers no entry for, whose fences it skips.
+
+A tile doc never restates a default, a range, or a unit its action declares on the
+argument slot: those are structure, read out of the call spec by the editor, the runtime's
+tests, and the assistant alike, and a second copy in prose drifts from the first. Doc
+prose says what a value MEANS -- what the thing it sets does, what picking a larger or
+smaller one gets you -- and leaves the number to the declaration.
 
 ## Consuming This Package
 

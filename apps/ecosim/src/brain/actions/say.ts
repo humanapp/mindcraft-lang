@@ -9,6 +9,7 @@ import {
   getSlotId,
   logger,
   mkCallDef,
+  mkNumberValue,
   optional,
   type ParameterTileInput,
   param,
@@ -17,16 +18,20 @@ import {
   VOID_VALUE,
 } from "@wendoo/core/app";
 import { EcosimHostActions } from "@/brain/abi-ids";
-import { hasArg } from "@/brain/actions/utils";
+import { hasArg, SAY_DEFAULT_DURATION_SECONDS } from "@/brain/actions/utils";
 import { getSelf } from "@/brain/execution-context-types";
 import { ICON_BASE } from "@/brain/icon-base";
 import { TileIds } from "@/brain/tileids";
 
 const AnonString = param(CoreParameterId.AnonymousString, {
   anonymous: true,
+  name: "text",
 });
 
-const Duration = param(TileIds.Parameter.Duration);
+const Duration = param(TileIds.Parameter.Duration, {
+  unit: "seconds",
+  default: mkNumberValue(SAY_DEFAULT_DURATION_SECONDS),
+});
 
 const callDef = mkCallDef(bag(optional(AnonString), optional(Duration)));
 

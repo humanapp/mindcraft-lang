@@ -8,6 +8,7 @@ import {
   type Vector2,
   type WendooBrain,
 } from "@wendoo/core/app";
+import { SAY_DEFAULT_DURATION_SECONDS } from "./actions/utils";
 import { ARCHETYPES } from "./archetypes";
 import { Engine } from "./engine";
 import { Mover, type MoverConfig, type Steering, steerAvoidObstacles } from "./movement";
@@ -361,11 +362,11 @@ export class Actor {
 
   /**
    * Display a chat bubble with the given text above the actor.
-   * The bubble auto-dismisses after the given duration (default 5 seconds),
-   * or is replaced if displayString is called again before the timer expires.
+   * The bubble auto-dismisses after the given duration, or is replaced if
+   * displayString is called again before the timer expires.
    *
    * @param text - The text to display in the bubble.
-   * @param durationSecs - Duration in seconds before auto-dismiss. Defaults to 5.
+   * @param durationSecs - Seconds before auto-dismiss; {@link SAY_DEFAULT_DURATION_SECONDS} when absent.
    */
   displayString(text?: string, durationSecs?: number) {
     // If the same text is already displayed, just reset the timer
@@ -436,7 +437,7 @@ export class Actor {
     this.chatBubble = container;
     this.chatBubbleText = text;
 
-    const dismissMs = (durationSecs ?? 5) * 1000;
+    const dismissMs = (durationSecs ?? SAY_DEFAULT_DURATION_SECONDS) * 1000;
     this.chatBubbleTimer = scene.time.delayedCall(dismissMs, () => {
       this.clearDisplayString();
     });

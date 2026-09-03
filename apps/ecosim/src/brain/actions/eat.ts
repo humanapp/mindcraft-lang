@@ -26,6 +26,8 @@ import { resolveTargetActor } from "./utils";
 
 const AnonActorRef = param(TileIds.Parameter.AnonymousActorRef, {
   anonymous: true,
+  name: "target",
+  derived: true,
 });
 
 const callDef = mkCallDef(bag(optional(AnonActorRef)));

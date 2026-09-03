@@ -17,6 +17,7 @@ import {
   logger,
   type ModifierTileInput,
   mkCallDef,
+  mkNumberValue,
   mod,
   optional,
   type ParameterTileInput,
@@ -35,7 +36,7 @@ import { getSelf } from "../execution-context-types";
 import { type Steering, steerAvoid, steerAwayFrom, steerForward, steerToward } from "../movement";
 import { TileIds } from "../tileids";
 import { EcosimTypeIds, extractVector2, mkVector2Value } from "../type-system";
-import { hasArg, resolveTargetPosition } from "./utils";
+import { DEFAULT_STEERING_PRIORITY, hasArg, resolveTargetPosition } from "./utils";
 
 // ---------------------------------------------------------------------------
 // Call definition & slot IDs
@@ -48,9 +49,13 @@ const Avoid = mod(TileIds.Modifier.MovementAvoid);
 const Wander = mod(TileIds.Modifier.MovementWander);
 const Quickly = mod(TileIds.Modifier.Quickly);
 const Slowly = mod(TileIds.Modifier.Slowly);
-const Priority = param(TileIds.Parameter.Priority);
+const Priority = param(TileIds.Parameter.Priority, {
+  default: mkNumberValue(DEFAULT_STEERING_PRIORITY),
+});
 const AnonActorRef = param(TileIds.Parameter.AnonymousActorRef, {
   anonymous: true,
+  name: "target",
+  derived: true,
 });
 
 // Named choice so the conditional can check if a targeted modifier was selected
@@ -115,7 +120,7 @@ function getSpeedMultiplier(args: ReadonlyList<Value>): number {
 
 /** Extract priority weight (default 0.5). */
 function getWeight(args: ReadonlyList<Value>): number {
-  return extractNumberValue(args.at(kPrioritySlotId)) ?? 0.5;
+  return extractNumberValue(args.at(kPrioritySlotId)) ?? DEFAULT_STEERING_PRIORITY;
 }
 
 /**

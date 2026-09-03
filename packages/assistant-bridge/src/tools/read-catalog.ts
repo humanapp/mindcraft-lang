@@ -1,14 +1,16 @@
 import type { ReadonlyBitSet } from "@wendoo/core";
+import type { Value } from "@wendoo/core/app";
 import type { IBrainTileDef } from "@wendoo/core/brain";
 import { isActionTileDef, TilePlacement } from "@wendoo/core/brain";
 import { tileSentenceWord } from "@wendoo/core/brain/language-service";
 import type { BrainTileParameterDef } from "@wendoo/core/brain/tiles";
 import type { Localizer } from "@wendoo/core/localization";
 import type { BrainActionCallArgSpec, BrainActionCallSpec } from "@wendoo/core/runtime";
-import { sanitizeCatalogTile } from "../catalog/sanitize.js";
+import { CATALOG_TEXT_LIMITS, sanitizeArgsText, sanitizeCatalogTile } from "../catalog/sanitize.js";
 import type { CatalogScope } from "../catalog/scope.js";
+import { createValueLabeler, renderValue } from "../kit/value-text.js";
 import type { ToolInput } from "./tool-schemas.js";
-import { type AuthoringWorkspace, tilesByScope } from "./workspace.js";
+import { type AuthoringWorkspace, tileCatalogsOf, tilesByScope } from "./workspace.js";
 
 /** One tile as `read_catalog` describes it. */
 export interface CatalogTile {
@@ -101,19 +103,57 @@ function placementNames(tile: IBrainTileDef): string[] {
 }
 
 /**
+ * How the argument grammar renders the values a slot declares: `value` renders
+ * a declared default, `number` renders a numeric bound.
+ */
+interface ValueRendering {
+  readonly value: (value: Value) => string;
+  readonly number: (value: number) => string;
+}
+
+/**
+ * Render what an argument slot declares of the value it carries, as the unit it
+ * is measured in, what an empty slot means, and the bounds it is held to:
+ * `(Hz)=880[0..9999 clamp]`. Empty for a slot declaring none of them. The unit
+ * and the rendered default are the author's text, each cut to its
+ * {@link CATALOG_TEXT_LIMITS} entry by {@link sanitizeArgsText}.
+ *
+ * @param values How a declared default and a numeric bound each render.
+ */
+function renderArgDeclarations(spec: BrainActionCallArgSpec, values: ValueRendering): string {
+  const unit = spec.unit === undefined ? "" : `(${sanitizeArgsText(spec.unit, CATALOG_TEXT_LIMITS.argUnit)})`;
+  let empty = "";
+  if (spec.derived === true) empty = "=derived";
+  else if (spec.default !== undefined) {
+    empty = `=${sanitizeArgsText(values.value(spec.default), CATALOG_TEXT_LIMITS.argDefault)}`;
+  }
+  const bound = (value: number | undefined) => (value === undefined ? "" : values.number(value));
+  const range =
+    spec.range === undefined ? "" : `[${bound(spec.range.min)}..${bound(spec.range.max)} ${spec.range.onExceed}]`;
+  return `${unit}${empty}${range}`;
+}
+
+/**
  * Render one call-spec node as a compact grammar string. A named argument reads
  * as the tile id to place, suffixed with `!` when required; an anonymous
- * argument takes no tile of its own and reads as `value:<typeId>`, the type of
- * the value expression that fills it.
+ * argument takes no tile of its own and reads as `<name>:<typeId>`, the type of
+ * the value expression that fills it, under the name the slot declares and
+ * `value` when it declares none. Either carries what the slot declares of its
+ * value; see {@link renderArgDeclarations}.
  *
  * @param slotType The value type an anonymous slot keyed by a parameter tile id takes.
  */
-function renderCallSpec(spec: BrainActionCallSpec, slotType: (tileId: string) => string | undefined): string {
-  const render = (item: BrainActionCallSpec) => renderCallSpec(item, slotType);
+function renderCallSpec(
+  spec: BrainActionCallSpec,
+  slotType: (tileId: string) => string | undefined,
+  values: ValueRendering
+): string {
+  const render = (item: BrainActionCallSpec) => renderCallSpec(item, slotType, values);
   switch (spec.type) {
     case "arg": {
-      const named = spec.anonymous ? `value:${slotType(spec.tileId) ?? "unknown"}` : spec.tileId;
-      return spec.required ? `${named}!` : named;
+      const slotName = sanitizeArgsText(spec.name ?? "value", CATALOG_TEXT_LIMITS.argName);
+      const named = spec.anonymous ? `${slotName}:${slotType(spec.tileId) ?? "unknown"}` : spec.tileId;
+      return `${named}${spec.required ? "!" : ""}${renderArgDeclarations(spec, values)}`;
     }
     case "seq":
       return `seq(${spec.items.map(render).join(", ")})`;
@@ -187,12 +227,15 @@ function describeTile(
   tile: IBrainTileDef,
   descriptions: ReadonlyMap<string, string>,
   localizer: Localizer,
-  slotType: (tileId: string) => string | undefined
+  slotType: (tileId: string) => string | undefined,
+  values: ValueRendering
 ): CatalogTile {
   const description = descriptions.get(tile.tileId);
   const action = isActionTileDef(tile) ? tile.action : undefined;
   const args =
-    action && action.callDef.argSlots.size() > 0 ? renderCallSpec(action.callDef.callSpec, slotType) : undefined;
+    action && action.callDef.argSlots.size() > 0
+      ? renderCallSpec(action.callDef.callSpec, slotType, values)
+      : undefined;
   const consumesWhenResult = tile.consumesWhenResult();
   return sanitizeCatalogTile({
     tileId: tile.tileId,
@@ -225,10 +268,9 @@ function matches(tile: CatalogTile, needle: string): boolean {
 /**
  * List every tile a document may hold, grouped by the scope of the catalog it
  * came from, each with the author's description and the metadata the model
- * plans from. Argument tiles no action names as a tile to place are left out:
- * an anonymous slot's parameter tile carries only that slot's value type, which
- * the argument grammar reads out as `value:<typeId>`. `input.filter` narrows
- * the tiles within every group and leaves `total` counting all of them.
+ * plans from. Argument tiles that no action names as a tile to place are left
+ * out. `input.filter` narrows the tiles within every group and leaves `total`
+ * counting all of them.
  */
 export function readCatalog(workspace: AuthoringWorkspace, input: ToolInput<"read_catalog">): CatalogView {
   const localizer = workspace.environment.appServices.localizer;
@@ -240,6 +282,12 @@ export function readCatalog(workspace: AuthoringWorkspace, input: ToolInput<"rea
     const tile = byId.get(tileId);
     return tile && tile.kind === "parameter" ? (tile as BrainTileParameterDef).dataType : undefined;
   };
+  const numberText = (value: number) => workspace.environment.appServices.numerics.formatNumber(value);
+  const labelOf = createValueLabeler(() => tileCatalogsOf(workspace.catalogs).toArray(), numberText);
+  const values: ValueRendering = {
+    value: (value: Value) => renderValue(value, numberText, labelOf),
+    number: numberText,
+  };
   const listed = (tile: IBrainTileDef) =>
     (tile.kind !== "parameter" && tile.kind !== "modifier") || namedAsTile.has(tile.tileId);
   const needle = input.filter?.trim().toLowerCase();
@@ -249,7 +297,7 @@ export function readCatalog(workspace: AuthoringWorkspace, input: ToolInput<"rea
   for (const group of scoped) {
     const described = group.tiles
       .filter(listed)
-      .map((tile) => describeTile(tile, workspace.descriptions, localizer, slotType));
+      .map((tile) => describeTile(tile, workspace.descriptions, localizer, slotType, values));
     total += described.length;
     const tiles = needle ? described.filter((tile) => matches(tile, needle)) : described;
     if (tiles.length > 0) groups.push({ scope: group.scope, tiles });

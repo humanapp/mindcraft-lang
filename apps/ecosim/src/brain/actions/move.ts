@@ -17,6 +17,7 @@ import {
   logger,
   type ModifierTileInput,
   mkCallDef,
+  mkNumberValue,
   mod,
   optional,
   type ParameterTileInput,
@@ -30,7 +31,7 @@ import {
   VOID_VALUE,
 } from "@wendoo/core/app";
 import { EcosimHostActions } from "@/brain/abi-ids";
-import { hasArg, resolveTargetPosition } from "@/brain/actions/utils";
+import { DEFAULT_STEERING_PRIORITY, hasArg, resolveTargetPosition } from "@/brain/actions/utils";
 import type { Actor } from "@/brain/actor";
 import { getSelf } from "@/brain/execution-context-types";
 import { ICON_BASE } from "@/brain/icon-base";
@@ -49,9 +50,13 @@ const Avoid = mod(TileIds.Modifier.MovementAvoid);
 const Wander = mod(TileIds.Modifier.MovementWander);
 const Quickly = mod(TileIds.Modifier.Quickly);
 const Slowly = mod(TileIds.Modifier.Slowly);
-const Priority = param(TileIds.Parameter.Priority);
+const Priority = param(TileIds.Parameter.Priority, {
+  default: mkNumberValue(DEFAULT_STEERING_PRIORITY),
+});
 const AnonActorRef = param(TileIds.Parameter.AnonymousActorRef, {
   anonymous: true,
+  name: "target",
+  derived: true,
 });
 
 // Named choice so the conditional can check if a targeted modifier was selected
@@ -114,9 +119,9 @@ function getSpeedMultiplier(args: ReadonlyList<Value>): number {
   return 1;
 }
 
-/** Extract priority weight (default 0.5). */
+/** Extract priority weight. */
 function getWeight(args: ReadonlyList<Value>): number {
-  return extractNumberValue(args.at(kPrioritySlotId)) ?? 0.5;
+  return extractNumberValue(args.at(kPrioritySlotId)) ?? DEFAULT_STEERING_PRIORITY;
 }
 
 /**

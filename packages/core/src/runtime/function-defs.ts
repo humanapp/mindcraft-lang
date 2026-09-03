@@ -3,6 +3,7 @@ import { List, type ReadonlyList } from "../platform/list";
 import { TypeUtils } from "../platform/types";
 import type { StableIdOwner } from "./abi-ids";
 import type { TypeId } from "./type-defs";
+import { isNumberValue, type Value } from "./value";
 import type { HostAsyncFn, HostFn, HostSyncFn } from "./vm-types";
 
 // ----------------------------------------------------
@@ -22,14 +23,136 @@ export type BrainActionCallSpec =
   | BrainActionCallConditionalSpec;
 
 /**
+ * What the implementation does with a numeric argument outside the declared
+ * bounds, as a token the model reads: `clamp` holds the value at the bound it
+ * exceeded and the call proceeds, `wrap` brings the value back into the bounds
+ * by modulus and the call proceeds, `drop` lets the call complete without doing
+ * anything.
+ */
+export type BrainActionArgOnExceed = "clamp" | "wrap" | "drop";
+
+/**
+ * The bounds an action's implementation holds a numeric argument slot to,
+ * stated for the model. A bound left absent is unbounded on that side.
+ */
+export interface BrainActionArgRange {
+  /** Smallest value the implementation accepts. */
+  readonly min?: number;
+  /** Largest value the implementation accepts. */
+  readonly max?: number;
+  /** What the implementation does with a value outside `min`..`max`. */
+  readonly onExceed: BrainActionArgOnExceed;
+}
+
+/**
  * A single argument slot (parameter or modifier tile)
+ *
+ * `default`, `derived`, `range` and `unit` are argument metadata for the
+ * assistant: structured facts about the slot, rendered into the catalog digest
+ * the model reads, like the `tileId` beside them. None of them is display text
+ * and none is localized; anything that ever renders one to a person must pass
+ * it through the Localizer first.
  */
 export interface BrainActionCallArgSpec {
   readonly type: "arg";
+  /**
+   * Name the slot is read by, unique among the names anywhere in one call
+   * spec. A `conditional` spec resolves its `condition` against the names the
+   * parser matched, so a name identifies this spec to the grammar as well as
+   * naming the slot wherever its value is described.
+   */
   readonly name?: string;
   readonly tileId: string;
   readonly required?: boolean;
   readonly anonymous?: boolean;
+  /**
+   * What the implementation does when the slot is left empty: it acts on this
+   * value. Nothing substitutes it into a call. Never declared together with
+   * `derived`.
+   */
+  readonly default?: Value;
+  /**
+   * Declared when leaving the slot empty makes the action choose the value as
+   * it runs, so no fixed value states what an empty slot means. Never declared
+   * together with `default`.
+   */
+  readonly derived?: true;
+  /**
+   * Bounds the implementation holds the slot's value to; declared on numeric
+   * slots only. Absent when the implementation accepts any value.
+   */
+  readonly range?: BrainActionArgRange;
+  /**
+   * Unit the slot's value is measured in, as the author writes it. Absent for
+   * a slot whose value counts no unit.
+   */
+  readonly unit?: string;
+}
+
+/**
+ * Check one argument declaration and throw when it contradicts itself: a slot
+ * declaring both `default` and `derived`, a slot declaring either beside
+ * `required`, a `range` carrying no bound or a `min` above its `max`, or a
+ * `range` on a slot whose `default` is not a number.
+ *
+ * The non-numeric check applies only to a slot declaring a `default`; a `range`
+ * on a slot without one passes.
+ */
+function validateArgSpec(argSpec: BrainActionCallArgSpec): void {
+  const where = argSpec.name ?? argSpec.tileId;
+  if (argSpec.default !== undefined && argSpec.derived !== undefined) {
+    throw new Error(`Arg ${where} declares both a default and derived; an empty slot means one or the other`);
+  }
+  if (argSpec.required === true && (argSpec.default !== undefined || argSpec.derived !== undefined)) {
+    throw new Error(`Arg ${where} is required and declares what an empty slot means; a required slot is never empty`);
+  }
+  const range = argSpec.range;
+  if (range === undefined) return;
+  if (range.min === undefined && range.max === undefined) {
+    throw new Error(`Arg ${where} declares a range carrying neither bound`);
+  }
+  if (range.min !== undefined && range.max !== undefined && range.min > range.max) {
+    throw new Error(`Arg ${where} declares a range whose min ${range.min} is above its max ${range.max}`);
+  }
+  if (argSpec.default !== undefined && !isNumberValue(argSpec.default)) {
+    throw new Error(`Arg ${where} declares a range on a non-numeric slot`);
+  }
+}
+
+/**
+ * Check that no two specs anywhere in `callSpec` carry the same name, so a
+ * `conditional` naming one resolves to exactly one spec. Throws on a repeat.
+ */
+function validateSpecNames(callSpec: BrainActionCallSpec): void {
+  const seen = List.empty<string>();
+  const visit = (spec: BrainActionCallSpec): void => {
+    if (spec.name !== undefined) {
+      if (seen.indexOf(spec.name) !== -1) {
+        throw new Error(`Call spec names ${spec.name} twice; a name identifies one spec to the grammar`);
+      }
+      seen.push(spec.name);
+    }
+    switch (spec.type) {
+      case "arg":
+        return;
+      case "seq":
+      case "bag":
+        for (const item of spec.items) visit(item);
+        return;
+      case "choice":
+        for (const option of spec.options) visit(option);
+        return;
+      case "optional":
+      case "repeat":
+        visit(spec.item);
+        return;
+      case "conditional":
+        visit(spec.then);
+        if (spec.else) visit(spec.else);
+        return;
+    }
+  };
+  visit(callSpec);
 }
 
 /**
@@ -148,8 +271,13 @@ export type ActionDescriptor = {
   outputs?: readonly ActionOutputSpec[];
 };
 
-/** Flatten a {@link BrainActionCallSpec} tree into a {@link BrainActionCallDef}. */
+/**
+ * Flatten a {@link BrainActionCallSpec} tree into a {@link BrainActionCallDef}.
+ * Throws when an argument declaration in the tree contradicts itself, or when
+ * two specs in the tree carry the same name.
+ */
 export function mkCallDef(callSpec: BrainActionCallSpec): BrainActionCallDef {
+  validateSpecNames(callSpec);
   const argSlots = callSpecToArgSlots(callSpec);
   return {
     callSpec,
@@ -173,7 +301,10 @@ export function getSlotId(callDef: BrainActionCallDef, tileIdOrSpec: string | Br
 
 let nextChoiceGroupId = 0;
 
-/** Flatten a {@link BrainActionCallSpec} into ordered, slot-indexed args. */
+/**
+ * Flatten a {@link BrainActionCallSpec} into ordered, slot-indexed args. Throws
+ * when an argument declaration in the tree contradicts itself.
+ */
 export function callSpecToArgSlots(callSpec: BrainActionCallSpec): ReadonlyList<BrainActionArgSlot> {
   const argList = List.empty<BrainActionArgSlot>();
   callSpecToArgSlotsImpl(callSpec, argList, undefined, undefined);
@@ -188,6 +319,7 @@ function callSpecToArgSlotsImpl(
 ) {
   switch (callSpec.type) {
     case "arg":
+      validateArgSpec(callSpec);
       argList.push({
         slotId: argList.size(),
         argSpec: callSpec,

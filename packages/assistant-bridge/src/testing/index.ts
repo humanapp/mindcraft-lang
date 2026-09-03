@@ -13,6 +13,7 @@ export {
   createFakeModule,
   FAKE_EMIT_GRAMMAR_NOTE,
   FAKE_EMIT_OUTPUT,
+  FAKE_LONG_UNIT,
   FakeActionKeys,
   FakeTileIds,
 } from "./fake-module.js";

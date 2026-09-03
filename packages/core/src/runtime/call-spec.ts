@@ -33,23 +33,22 @@ import type {
 } from "./function-defs";
 import { mkModifierTileId, mkParameterTileId } from "./tile-ids";
 
+/** Everything an arg spec carries beyond its node type and the tile that fills it. */
+export type ArgSpecOptions = Omit<BrainActionCallArgSpec, "type" | "tileId">;
+
+/** Build the {@link BrainActionCallArgSpec} for `tileId` under `opts`. */
+function arg(tileId: string, opts?: ArgSpecOptions): BrainActionCallArgSpec {
+  return { type: "arg", tileId, ...opts };
+}
+
 /** Creates a modifier arg spec. Wraps the tileId with `mkModifierTileId`. */
 export function mod(tileId: string): BrainActionCallArgSpec {
-  return { type: "arg", tileId: mkModifierTileId(tileId) };
+  return arg(mkModifierTileId(tileId));
 }
 
 /** Creates a parameter arg spec. Wraps the tileId with `mkParameterTileId`. */
-export function param(
-  tileId: string,
-  opts?: { name?: string; required?: boolean; anonymous?: boolean }
-): BrainActionCallArgSpec {
-  return {
-    type: "arg",
-    tileId: mkParameterTileId(tileId),
-    name: opts?.name,
-    required: opts?.required,
-    anonymous: opts?.anonymous,
-  };
+export function param(tileId: string, opts?: ArgSpecOptions): BrainActionCallArgSpec {
+  return arg(mkParameterTileId(tileId), opts);
 }
 
 /** Unordered set -- items can appear in any order. */

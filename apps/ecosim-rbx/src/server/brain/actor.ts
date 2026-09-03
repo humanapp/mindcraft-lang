@@ -10,6 +10,7 @@ import {
 } from "@wendoo/core/app";
 import type { CreatureSprite } from "../world/sprite";
 import type { CreatureVisuals } from "../world/visuals";
+import { SAY_DEFAULT_DURATION_SECONDS } from "./actions/utils";
 import { ARCHETYPES } from "./archetypes";
 import type { Engine } from "./engine";
 import { VISION_PHASES } from "./engine-constants";
@@ -21,7 +22,6 @@ import type { SightResult } from "./vision";
 export type Archetype = "carnivore" | "herbivore" | "plant";
 
 /** Default seconds a speech bubble stays up when `say` gives no duration. */
-const DEFAULT_SPEECH_SECONDS = 5;
 
 /** True when any tile in the tile set carries the given capability bit. */
 function tileSetHasCapability(tileSet: IBrainTileSet, bit: number): boolean {
@@ -424,7 +424,7 @@ export class Actor {
    * @param durationSecs - Duration in seconds before auto-dismiss. Defaults to 5.
    */
   displayString(text?: string, durationSecs?: number) {
-    const dismissMs = (durationSecs ?? DEFAULT_SPEECH_SECONDS) * 1000;
+    const dismissMs = (durationSecs ?? SAY_DEFAULT_DURATION_SECONDS) * 1000;
 
     // If the same text is already displayed, just reset the timer
     if (this.speechText !== undefined && this.speechText === text) {

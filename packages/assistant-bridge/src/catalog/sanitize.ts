@@ -8,10 +8,37 @@ export const CATALOG_TEXT_LIMITS = {
   label: 128,
   grammarNote: 1024,
   description: 1024,
+  /** The name an argument slot reads by, inside the rendered args string. */
+  argName: 32,
+  /** The unit an argument slot's value is measured in, inside the rendered args string. */
+  argUnit: 16,
+  /** The rendering of an argument slot's declared default, inside the rendered args string. */
+  argDefault: 64,
+  /** The whole rendered argument grammar of one tile. */
+  args: 512,
 } as const;
 
 /** Suffix ending text a limit cut short. */
 export const TRUNCATION_MARKER = " [truncated]";
+
+/**
+ * Suffix ending text a limit cut short inside the rendered args string, which
+ * spells a slot's bounds with `[` and `]`. It carries neither, so a cut never
+ * reads as a bounds group.
+ */
+export const ARGS_TRUNCATION_MARKER = "~";
+
+/**
+ * `text` cut to `limit` characters for use inside the rendered args string,
+ * ending in {@link ARGS_TRUNCATION_MARKER} when it ran longer. Pure, and
+ * applying it to its own result changes nothing.
+ *
+ * @param limit Characters the result may run to, counting the marker.
+ */
+export function sanitizeArgsText(text: string, limit: number): string {
+  if (text.length <= limit) return text;
+  return text.slice(0, limit - ARGS_TRUNCATION_MARKER.length) + ARGS_TRUNCATION_MARKER;
+}
 
 /**
  * `text` cut to `limit` characters, ending in {@link TRUNCATION_MARKER} when it
@@ -27,8 +54,10 @@ export function sanitizeCatalogText(text: string, limit: number): string {
 }
 
 /**
- * `tile` with every field an author writes -- its label, its grammar note, and
- * its description -- cut to that field's limit by {@link sanitizeCatalogText}.
+ * `tile` with every field an author writes -- its label, its grammar note, its
+ * description, and the argument grammar author text is rendered into -- cut to
+ * that field's limit, the args string by {@link sanitizeArgsText} and the rest
+ * by {@link sanitizeCatalogText}.
  * The fields the catalog generates itself pass through untouched. Applying it
  * to its own result changes nothing.
  */
@@ -36,6 +65,7 @@ export function sanitizeCatalogTile(tile: CatalogTile): CatalogTile {
   return {
     ...tile,
     label: sanitizeCatalogText(tile.label, CATALOG_TEXT_LIMITS.label),
+    ...(tile.args === undefined ? {} : { args: sanitizeArgsText(tile.args, CATALOG_TEXT_LIMITS.args) }),
     ...(tile.grammarNote === undefined
       ? {}
       : { grammarNote: sanitizeCatalogText(tile.grammarNote, CATALOG_TEXT_LIMITS.grammarNote) }),

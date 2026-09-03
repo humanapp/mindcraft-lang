@@ -9,6 +9,7 @@ import {
   getSlotId,
   logger,
   mkCallDef,
+  mkNumberValue,
   optional,
   type ParameterTileInput,
   param,
@@ -19,13 +20,17 @@ import {
 import { EcosimHostActions } from "../abi-ids";
 import { getSelf } from "../execution-context-types";
 import { TileIds } from "../tileids";
-import { hasArg } from "./utils";
+import { hasArg, SAY_DEFAULT_DURATION_SECONDS } from "./utils";
 
 const AnonString = param(CoreParameterId.AnonymousString, {
   anonymous: true,
+  name: "text",
 });
 
-const Duration = param(TileIds.Parameter.Duration);
+const Duration = param(TileIds.Parameter.Duration, {
+  unit: "seconds",
+  default: mkNumberValue(SAY_DEFAULT_DURATION_SECONDS),
+});
 
 const callDef = mkCallDef(bag(optional(AnonString), optional(Duration)));
 

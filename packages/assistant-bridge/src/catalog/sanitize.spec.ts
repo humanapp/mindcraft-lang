@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { CatalogTile } from "../tools/read-catalog.js";
-import { CATALOG_TEXT_LIMITS, sanitizeCatalogText, sanitizeCatalogTile, TRUNCATION_MARKER } from "./sanitize.js";
+import {
+  ARGS_TRUNCATION_MARKER,
+  CATALOG_TEXT_LIMITS,
+  sanitizeArgsText,
+  sanitizeCatalogText,
+  sanitizeCatalogTile,
+  TRUNCATION_MARKER,
+} from "./sanitize.js";
 
 function tile(overrides: Partial<CatalogTile> & Pick<CatalogTile, "tileId">): CatalogTile {
   return {
@@ -83,5 +90,36 @@ describe("catalog text sanitation", () => {
     assert.equal(sanitized.label.length, CATALOG_TEXT_LIMITS.label);
     assert.equal(sanitized.grammarNote?.length, CATALOG_TEXT_LIMITS.grammarNote);
     assert.equal(sanitized.description?.length, CATALOG_TEXT_LIMITS.description);
+  });
+});
+
+describe("the author text a rendered args string carries", () => {
+  test("cuts text to its limit with a marker carrying no bracket", () => {
+    const cut = sanitizeArgsText("x".repeat(200), CATALOG_TEXT_LIMITS.argDefault);
+
+    assert.equal(cut.length, CATALOG_TEXT_LIMITS.argDefault);
+    assert.ok(cut.endsWith(ARGS_TRUNCATION_MARKER), cut);
+    assert.ok(!cut.includes("[") && !cut.includes("]"), cut);
+  });
+
+  test("leaves args text inside its limit exactly as it arrived", () => {
+    assert.equal(sanitizeArgsText("(Hz)=880", CATALOG_TEXT_LIMITS.argDefault), "(Hz)=880");
+  });
+
+  test("is unchanged by a second application", () => {
+    const once = sanitizeArgsText("y".repeat(200), CATALOG_TEXT_LIMITS.argUnit);
+
+    assert.equal(sanitizeArgsText(once, CATALOG_TEXT_LIMITS.argUnit), once);
+  });
+
+  test("caps a tile's whole args string, whatever produced it", () => {
+    const capped = sanitizeCatalogTile(tile({ tileId: "a", args: "z".repeat(4000) }));
+
+    assert.equal(capped.args?.length, CATALOG_TEXT_LIMITS.args);
+    assert.ok(capped.args?.endsWith(ARGS_TRUNCATION_MARKER), capped.args);
+  });
+
+  test("leaves a tile carrying no args carrying none", () => {
+    assert.equal(sanitizeCatalogTile(tile({ tileId: "a" })).args, undefined);
   });
 });
