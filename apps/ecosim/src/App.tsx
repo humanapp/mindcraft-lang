@@ -43,6 +43,7 @@ import { createDocsRegistry } from "./docs/docs-registry";
 import type { Playground, SceneBrainState } from "./game/scenes/Playground";
 import { PhaserGame } from "./PhaserGame";
 import { createTargetAdapter } from "./rehearsal/adapter";
+import { ecosimFeaturedNamespaces } from "./services/ecosim-extension-browser";
 import { downloadTextFile } from "./utils/file-download";
 import { pickFile } from "./utils/file-upload";
 
@@ -221,7 +222,15 @@ function App() {
     return {
       manifest: assistantToolManifest(adapter),
       activity,
-      workspaces: createEditedBrainWorkspaces({ environment: store.env, adapter, activity }),
+      workspaces: createEditedBrainWorkspaces({
+        environment: store.env,
+        adapter,
+        activity,
+        featuring: () => ({
+          featured: ecosimFeaturedNamespaces,
+          ...(store.activeProjectManifest ? { hostNamespace: store.activeProjectManifest.id } : {}),
+        }),
+      }),
       connect: () => createWebSocketConnect(assistantSessionUrl(store.getAppSettings().assistantServiceUrl))(),
     };
   }, [store]);

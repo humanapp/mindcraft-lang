@@ -1,4 +1,4 @@
-import type { AuthoringWorkspace, BrainEditHistory, TargetAdapter } from "@wendoo/assistant-bridge";
+import type { AuthoringWorkspace, BrainEditHistory, CatalogFeaturing, TargetAdapter } from "@wendoo/assistant-bridge";
 import { scopedCatalogs, sessionTileDescriptions } from "@wendoo/assistant-bridge";
 import type { WendooEnvironment } from "@wendoo/core/app";
 import type { BrainCommandHistory } from "@wendoo/core/brain/model";
@@ -39,6 +39,13 @@ export interface EditedBrainWorkspacesOptions {
   readonly environment: WendooEnvironment;
   /** The target the workspaces rehearse through. */
   readonly adapter: TargetAdapter;
+  /**
+   * Which libraries the app features. Called each time a workspace is handed
+   * out, and the value it returns is the featuring that workspace carries.
+   * Absent features none, which leaves every bundle tile's long-form
+   * documentation withheld.
+   */
+  readonly featuring?: () => CatalogFeaturing;
   /**
    * Where the person's own acting on the edited brain is recorded, and read
    * from to leave the view alone while they are working. Absent leaves every
@@ -106,7 +113,7 @@ function toolEditHistory(history: BrainCommandHistory): BrainEditHistory {
  * the call.
  */
 export function createEditedBrainWorkspaces(options: EditedBrainWorkspacesOptions): EditedBrainWorkspaces {
-  const { environment, adapter, activity } = options;
+  const { environment, adapter, activity, featuring } = options;
   const doc = options.doc ?? (typeof document === "undefined" ? undefined : document);
   const descriptions = sessionTileDescriptions(adapter.tileDocs());
   let edited: EditedBrain | undefined;
@@ -140,6 +147,7 @@ export function createEditedBrainWorkspaces(options: EditedBrainWorkspacesOption
         history: toolEditHistory(history),
         catalogs: scopedCatalogs(environment, brainDef),
         descriptions,
+        ...(featuring ? { featuring: featuring() } : {}),
         adapter,
         onEditLanded: (landed) => {
           if (activity?.isInteracting(brainId) === true) return;

@@ -1,10 +1,8 @@
 /**
- * Per-tile provenance and per-root content identity of a multi-root action
+ * Per-tile provenance and per-root structure of a multi-root action
  * bundle. Pins tile ownership (surface tiles by their project namespace,
  * struct-derived tiles by the declaring library, shared-id tiles by every
- * declaring root), the shape of `roots` and its dependency closures, and the
- * content-addressed digests: stable across fresh sessions, and reacting to a
- * dependency's changed surface through `closureDigest` alone.
+ * declaring root) and the shape of `roots` and its dependency closures.
  */
 
 import assert from "node:assert/strict";
@@ -257,41 +255,5 @@ describe("bundle tile provenance", () => {
     for (const tile of firstParty) {
       assert.equal(tile.provenance, undefined, `a first-party tile must stay unstamped: ${tile.tileId}`);
     }
-  });
-});
-
-describe("compiled root digests", () => {
-  test("the same root set digests identically in two fresh sessions", () => {
-    const first = buildBundle(fourRootSet("shared probe"));
-    const second = buildBundle(fourRootSet("shared probe"));
-
-    assert.deepEqual(second.bundle.roots, first.bundle.roots);
-    assert.equal(
-      new Set(first.bundle.roots.map((root) => root.digest)).size,
-      first.bundle.roots.length,
-      "each root's surface digests distinctly, so equality is not the empty digest everywhere"
-    );
-  });
-
-  test("a dependency's changed surface moves its digest and every dependent's closure digest", () => {
-    const before = buildBundle(fourRootSet("shared probe")).bundle;
-    const after = buildBundle(fourRootSet("shared beacon")).bundle;
-
-    const sharedBefore = rootByNamespace(before, SHARED_NS);
-    const sharedAfter = rootByNamespace(after, SHARED_NS);
-    assert.notEqual(sharedAfter.digest, sharedBefore.digest, "the changed library's own digest moves");
-
-    const extABefore = rootByNamespace(before, EXT_A_NS);
-    const extAAfter = rootByNamespace(after, EXT_A_NS);
-    assert.equal(extAAfter.digest, extABefore.digest, "a dependent's own surface is unchanged");
-    assert.notEqual(
-      extAAfter.closureDigest,
-      extABefore.closureDigest,
-      "a dependent's closure digest follows its dependency"
-    );
-
-    const hostBefore = rootByNamespace(before, HOST_NS);
-    const hostAfter = rootByNamespace(after, HOST_NS);
-    assert.notEqual(hostAfter.closureDigest, hostBefore.closureDigest, "the host's closure digest follows too");
   });
 });

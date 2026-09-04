@@ -7,6 +7,7 @@ import type { BrainCommand, BrainEditOrigin, BrainJson, BrainPageDef, BrainRuleD
 import { BrainCommandHistory, BrainDef } from "@wendoo/core/brain/model";
 import { CatalogScope } from "../catalog/scope.js";
 import type { TargetAdapter } from "../target/adapter.js";
+import type { CatalogFeaturing } from "./featuring.js";
 import { sessionTileDescriptions } from "./tile-descriptions.js";
 import type { RuleSideName } from "./tool-schemas.js";
 
@@ -75,6 +76,12 @@ export interface AuthoringWorkspace {
   readonly catalogs: ReadonlyList<ScopedTileCatalog>;
   /** Author description text keyed by tile id; a tile with no documented description is absent. */
   readonly descriptions: ReadonlyMap<string, string>;
+  /**
+   * Which libraries this session may show the model the long-form documentation
+   * of. Absent features none, which leaves every bundle tile's long-form
+   * documentation withheld.
+   */
+  readonly featuring?: CatalogFeaturing;
   readonly adapter: TargetAdapter;
   /**
    * Called as each accepted edit lands in the document, once per editor command
@@ -91,6 +98,11 @@ export interface AuthoringWorkspaceOptions {
    * session edits this project.
    */
   readonly brainJson?: BrainJson;
+  /**
+   * Which libraries the session may show the model the long-form documentation
+   * of. Absent features none.
+   */
+  readonly featuring?: CatalogFeaturing;
 }
 
 /**
@@ -131,6 +143,7 @@ export function createAuthoringWorkspace(
     history: new BrainCommandHistory(),
     catalogs: scopedCatalogs(environment, brainDef),
     descriptions: sessionTileDescriptions(adapter.tileDocs()),
+    ...(options?.featuring ? { featuring: options.featuring } : {}),
     adapter,
   };
 }

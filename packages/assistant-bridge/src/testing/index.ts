@@ -11,7 +11,6 @@ export {
 export type { FakeBell, FakeWorldState } from "./fake-module.js";
 export {
   createFakeModule,
-  FAKE_EMIT_GRAMMAR_NOTE,
   FAKE_EMIT_OUTPUT,
   FAKE_LONG_UNIT,
   FakeActionKeys,

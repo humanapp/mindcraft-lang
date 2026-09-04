@@ -9,6 +9,7 @@ import {
   Dict,
   List,
   type ReadonlyList,
+  type TileDefinitionInput,
   type WendooEnvironment,
   type WendooModule,
 } from "@wendoo/core";
@@ -286,6 +287,8 @@ function createActionBundle(
   for (let i = 0; i < entryList.size(); i++) {
     const entry = entryList.get(i)!;
     actions.set(entry.artifact.key, entry.artifact);
+    const tile: TileDefinitionInput = entry.tile;
+    tile.provenance = { owners: ["spec/bundle"] };
     tiles.push(entry.tile);
   }
 

@@ -57,6 +57,8 @@ export type {
 export { ruleSideName, serializeDiagParams, toToolDiagnostic } from "./tools/diagnostics.js";
 export type { ToolCallError, ToolCallOutcome } from "./tools/dispatch.js";
 export { executeToolCall, isToolName, ToolCallErrorCode } from "./tools/dispatch.js";
+export type { CatalogFeaturing } from "./tools/featuring.js";
+export { admitsLongFormDocs } from "./tools/featuring.js";
 export type {
   BatchAccepted,
   BatchResult,

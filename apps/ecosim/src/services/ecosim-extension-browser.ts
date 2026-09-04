@@ -126,6 +126,12 @@ export const ecosimCatalogCoordinateOrder: readonly string[] = ecosimLibraryCata
 );
 
 /**
+ * The namespaces an apps/ecosim session features: every coordinate the bundled
+ * catalog lists.
+ */
+export const ecosimFeaturedNamespaces: ReadonlySet<string> = new Set(ecosimCatalogCoordinateOrder);
+
+/**
  * Build the catalog offers for an apps/ecosim project: one offer per bundled
  * catalog entry that is compatible with the project's sim platform stack, marked
  * installed when the project's extensions map already carries the entry's

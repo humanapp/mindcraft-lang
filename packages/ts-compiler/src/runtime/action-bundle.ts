@@ -2,7 +2,6 @@ import { assertUnreachable, type CompiledActionBundle, type CompiledRoot, Dict }
 import type { BrainServices, IBrainTileDef } from "@wendoo/core/brain";
 import type { CompileResult, ProjectCompileResult } from "../compiler/compile.js";
 import type { UserAuthoredProgram, UserTileDefinition } from "../compiler/types.js";
-import { canonicalJson, sha256Hex } from "./content-digest.js";
 import { buildStructTypeTiles, buildUserTileMetadata, type UserTileTypeResolver } from "./user-tile-metadata.js";
 
 /** Options for {@link buildCompiledActionBundle}. */
@@ -91,13 +90,12 @@ function buildRevision(contributions: BundleContributions): string {
 
 /**
  * Every contribution of a tile, recorded before dedup: which namespaces own
- * each tile id, and each owner's canonical entry text per tile id.
+ * each tile id.
  */
 class ContributionLedger {
   private readonly ownersByTile = new Map<string, Set<string>>();
-  private readonly entriesByOwner = new Map<string, Map<string, string>>();
 
-  /** Record that `namespace` contributed `tile`, keeping the first entry text a namespace contributed for a tile id. */
+  /** Record that `namespace` contributed `tile`. */
   record(tile: IBrainTileDef, namespace: string): void {
     let owners = this.ownersByTile.get(tile.tileId);
     if (!owners) {
@@ -105,30 +103,11 @@ class ContributionLedger {
       this.ownersByTile.set(tile.tileId, owners);
     }
     owners.add(namespace);
-
-    let entries = this.entriesByOwner.get(namespace);
-    if (!entries) {
-      entries = new Map<string, string>();
-      this.entriesByOwner.set(namespace, entries);
-    }
-    if (!entries.has(tile.tileId)) {
-      entries.set(tile.tileId, canonicalJson({ tileId: tile.tileId, metadata: tile.metadata }));
-    }
   }
 
   /** The namespaces that contributed the tile id, sorted; empty for a tile id nothing contributed. */
   owners(tileId: string): readonly string[] {
     return [...(this.ownersByTile.get(tileId) ?? [])].sort();
-  }
-
-  /** SHA-256 over `namespace`'s owned tile entries in tile-id order; the digest of the empty string when it owns none. */
-  digest(namespace: string): string {
-    const entries = this.entriesByOwner.get(namespace);
-    if (!entries) {
-      return sha256Hex("");
-    }
-    const ordered = [...entries.keys()].sort().map((tileId) => entries.get(tileId)!);
-    return sha256Hex(ordered.join("\n"));
   }
 }
 
@@ -156,27 +135,18 @@ function addTiles(
 }
 
 /**
- * The content identity of every input root, sorted by namespace: each root's
- * digest over the tiles it owns, its transitive dependency closure restricted
- * to the input namespaces, and a digest folding that closure in.
+ * One entry per input root, sorted by namespace, each with its transitive
+ * dependency closure restricted to the input namespaces.
  */
-function buildRoots(results: readonly ProjectCompileResult[], ledger: ContributionLedger): CompiledRoot[] {
+function buildRoots(results: readonly ProjectCompileResult[]): CompiledRoot[] {
   const dependenciesByNamespace = new Map<string, readonly string[]>();
   for (const result of results) {
     dependenciesByNamespace.set(result.namespace, result.dependencies);
   }
 
-  const digests = new Map<string, string>();
-  for (const namespace of dependenciesByNamespace.keys()) {
-    digests.set(namespace, ledger.digest(namespace));
-  }
-
   const roots: CompiledRoot[] = [];
   for (const namespace of dependenciesByNamespace.keys()) {
-    const closure = transitiveClosure(namespace, dependenciesByNamespace);
-    const digest = digests.get(namespace)!;
-    const closureText = closure.map((member) => `\n${member}\n${digests.get(member)!}`).join("");
-    roots.push({ namespace, digest, closure, closureDigest: sha256Hex(digest + closureText) });
+    roots.push({ namespace, closure: transitiveClosure(namespace, dependenciesByNamespace) });
   }
 
   roots.sort((left, right) => left.namespace.localeCompare(right.namespace));
@@ -235,9 +205,8 @@ export function buildCompiledActionBundle(
  * shared-id tile (`modifier.*`, `parameter.*`, anonymous `parameter.anon.*`)
  * therefore lists every root that declared it.
  *
- * `roots` carries one entry per input result, sorted by namespace, holding
- * that root's digest over the tiles it owns and a digest folding in its
- * dependency closure.
+ * `roots` carries one entry per input result, sorted by namespace, with its
+ * dependency closure restricted to the input roots.
  */
 export function buildMultiRootActionBundle(
   results: Iterable<ProjectCompileResult>,
@@ -306,6 +275,6 @@ export function buildMultiRootActionBundle(
     revision: options.revision ?? buildRevision(contributions),
     actions,
     tiles,
-    roots: buildRoots(resultList, ledger),
+    roots: buildRoots(resultList),
   };
 }

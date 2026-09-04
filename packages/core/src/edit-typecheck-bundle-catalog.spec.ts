@@ -8,6 +8,7 @@ import {
   createWendooEnvironment,
   Dict,
   List,
+  type TileDefinitionInput,
   type WendooEnvironment,
   type WendooModule,
 } from "@wendoo/core";
@@ -157,6 +158,8 @@ function bundle(
   const tiles: (BrainTileActuatorDef | BrainTileSensorDef)[] = [];
   for (const entry of entries) {
     actions.set(entry.artifact.key, entry.artifact);
+    const tile: TileDefinitionInput = entry.tile;
+    tile.provenance = { owners: ["spec/bundle"] };
     tiles.push(entry.tile);
   }
   return { revision, actions, tiles, roots: [] };
@@ -189,7 +192,10 @@ describe("edit-time typecheck resolves against the bundle catalog", () => {
 
     const steerCallDef = mkCallDef(bag(param("steer.position", { anonymous: true })));
     const steer = actuatorTile("steer", steerCallDef);
-    const positionParam = new BrainTileParameterDef("steer.position", kSteerPositionTypeId, { hidden: true });
+    const positionParam: TileDefinitionInput = new BrainTileParameterDef("steer.position", kSteerPositionTypeId, {
+      hidden: true,
+    });
+    positionParam.provenance = { owners: ["spec/bundle"] };
     const position = sensorTile("steer.decodedPosition", kSteerPositionTypeId);
 
     // The struct-typed parameter tile lives ONLY in the bundle catalog; it is

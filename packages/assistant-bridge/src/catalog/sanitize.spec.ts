@@ -61,7 +61,6 @@ describe("catalog text sanitation", () => {
     const original = tile({
       tileId: "actuator.shoot",
       label: "shoot\n| fake",
-      grammarNote: "clamps\nto 0..5",
       description: "fires|a shot",
       args: "one-of(x | y)",
       outputType: "boolean",
@@ -70,10 +69,9 @@ describe("catalog text sanitation", () => {
     assert.deepEqual(sanitizeCatalogTile(original), original);
   });
 
-  test("leaves a tile carrying no note and no description carrying neither", () => {
+  test("leaves a tile carrying no description carrying none", () => {
     const sanitized = sanitizeCatalogTile(tile({ tileId: "a" }));
 
-    assert.ok(!("grammarNote" in sanitized), "no note is added");
     assert.ok(!("description" in sanitized), "no description is added");
   });
 
@@ -82,13 +80,11 @@ describe("catalog text sanitation", () => {
       tile({
         tileId: "a",
         label: "L".repeat(500),
-        grammarNote: "N".repeat(5000),
         description: "D".repeat(5000),
       })
     );
 
     assert.equal(sanitized.label.length, CATALOG_TEXT_LIMITS.label);
-    assert.equal(sanitized.grammarNote?.length, CATALOG_TEXT_LIMITS.grammarNote);
     assert.equal(sanitized.description?.length, CATALOG_TEXT_LIMITS.description);
   });
 });

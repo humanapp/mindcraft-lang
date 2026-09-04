@@ -104,12 +104,6 @@ export interface ITileMetadata {
   tags?: readonly string[];
   /** Words the sentence projection reads this tile with. */
   language?: ITileLanguageMetadata;
-  /**
-   * One plain sentence stating a rule this tile's use obeys that its argument
-   * grammar does not say -- the range a value is clamped into, an ordering the
-   * call requires. Absent when the tile adds no such rule.
-   */
-  grammarNote?: string;
 }
 
 /** Optional flags configurable on tileDef constructors. */

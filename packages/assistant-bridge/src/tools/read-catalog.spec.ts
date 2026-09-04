@@ -3,8 +3,11 @@ import { describe, test } from "node:test";
 import { isPageTileId } from "@wendoo/core/brain";
 import { CoreHostActions, mkActuatorTileId } from "@wendoo/core/runtime";
 import { CatalogScope } from "../catalog/scope.js";
+import { USER_TILE_ID, USER_TILE_NAMESPACE, userTileBundle } from "../kit/user-tile-bundle.js";
 import { createTargetAdapter, ruleIdAt } from "../testing/index.js";
+import { admitsLongFormDocs } from "./featuring.js";
 import { proposeEdit } from "./propose-edit.js";
+import type { CatalogTile } from "./read-catalog.js";
 import { catalogTiles, catalogTilesInScope, readCatalog } from "./read-catalog.js";
 import type { AuthoringWorkspace } from "./workspace.js";
 import { createAuthoringWorkspace } from "./workspace.js";
@@ -116,5 +119,77 @@ describe("the tiles the catalog tells the model not to author with", () => {
     const signal = listed.find((tile) => tile.tileId === installedSensor);
 
     assert.equal(signal?.deprecated, undefined);
+  });
+});
+
+/** The documentation a compiled library ships with a tile: an opening paragraph, then the rules it states. */
+const bundleTileDoc = "# Mark\n\nMarks the run so the rehearsal can see it.\n\n## Rules\n\n- one mark to a rule\n";
+
+/** The description {@link bundleTileDoc} opens with. */
+const bundleTileDescription = "Marks the run so the rehearsal can see it.";
+
+/** First-party description text keyed by a tile id, standing in for the documented core and target tiles. */
+function bakedDescriptions(tileId: string): ReadonlyMap<string, string> {
+  return new Map([[tileId, "the first-party text"]]);
+}
+
+/**
+ * A workspace whose environment holds the compiled bundle, its one tile
+ * documented by `markdown` and owned by the bundle's compilation root.
+ */
+function bundledWorkspace(markdown?: string): AuthoringWorkspace {
+  const ws = workspace();
+  const bundle = userTileBundle();
+  const tile = bundle.tiles[0]!;
+  tile.metadata = { label: "mark", ...(markdown === undefined ? {} : { docsMarkdown: markdown }) };
+  ws.environment.replaceActionBundle(bundle);
+  return ws;
+}
+
+/** The catalog entry `ws` lists the compiled bundle's tile under. */
+function bundledTile(ws: AuthoringWorkspace): CatalogTile {
+  const listed = catalogTiles(readCatalog(ws, {})).find((tile) => tile.tileId === USER_TILE_ID);
+  assert.ok(listed, `the catalog lists ${USER_TILE_ID}`);
+  return listed;
+}
+
+describe("the description read_catalog gives each tile", () => {
+  test("reads a compiled bundle tile's own documentation", () => {
+    assert.equal(bundledTile(bundledWorkspace(bundleTileDoc)).description, bundleTileDescription);
+  });
+
+  test("leaves it out for a bundle tile whose documentation opens with none", () => {
+    assert.equal(bundledTile(bundledWorkspace()).description, undefined);
+  });
+
+  test("keeps a bundle tile off the first-party text, even where its tile id collides with a documented one", () => {
+    const documented = bundledWorkspace(bundleTileDoc);
+    const undocumented = bundledWorkspace();
+
+    const collidingDocumented = bundledTile({ ...documented, descriptions: bakedDescriptions(USER_TILE_ID) });
+    const collidingUndocumented = bundledTile({ ...undocumented, descriptions: bakedDescriptions(USER_TILE_ID) });
+
+    assert.equal(collidingDocumented.description, bundleTileDescription);
+    assert.equal(collidingUndocumented.description, undefined);
+  });
+
+  test("serves it for a bundle tile no session features, whose long-form documentation is withheld", () => {
+    const ws = bundledWorkspace(bundleTileDoc);
+    const tile = ws.environment.appliedActionBundle()?.tiles.find((entry) => entry.tileId === USER_TILE_ID);
+
+    assert.deepEqual(tile?.provenance?.owners, [USER_TILE_NAMESPACE]);
+    assert.equal(
+      admitsLongFormDocs(tile?.provenance, ws.environment.appliedActionBundle()?.roots ?? [], undefined),
+      false
+    );
+    assert.equal(bundledTile(ws).description, bundleTileDescription);
+  });
+
+  test("reads the first-party text for a tile the environment's modules registered", () => {
+    const ws = workspace();
+
+    const listed = catalogTiles(readCatalog({ ...ws, descriptions: bakedDescriptions(installedSensor) }, {}));
+
+    assert.equal(listed.find((tile) => tile.tileId === installedSensor)?.description, "the first-party text");
   });
 });

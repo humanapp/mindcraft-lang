@@ -9,6 +9,7 @@ import type { BrainActionCallArgSpec, BrainActionCallSpec } from "@wendoo/core/r
 import { CATALOG_TEXT_LIMITS, sanitizeArgsText, sanitizeCatalogTile } from "../catalog/sanitize.js";
 import type { CatalogScope } from "../catalog/scope.js";
 import { createValueLabeler, renderValue } from "../kit/value-text.js";
+import { descriptionFromMarkdown } from "./tile-descriptions.js";
 import type { ToolInput } from "./tool-schemas.js";
 import { type AuthoringWorkspace, tileCatalogsOf, tilesByScope } from "./workspace.js";
 
@@ -38,12 +39,6 @@ export interface CatalogTile {
   readonly outputs: readonly string[];
   /** Type of WHEN result the tile consumes; absent for tiles that consume none. */
   readonly consumesWhenResult?: string;
-  /**
-   * A rule this tile's use obeys that its argument grammar does not state, in
-   * one plain sentence, as the tile's registration states it; absent when the
-   * tile adds no such rule.
-   */
-  readonly grammarNote?: string;
   /** `true` for a tile the editor hides from its pickers. */
   readonly hidden?: boolean;
   /** `true` for a tile kept only for documents that already use it. */
@@ -219,6 +214,20 @@ function outputKeys(tile: IBrainTileDef): string[] {
 }
 
 /**
+ * The author's description of `tile`. A tile a compiled bundle registered takes
+ * the opening prose of the documentation it ships and never reads
+ * `descriptions`, whatever its tile id; a tile the environment's modules
+ * registered takes the text `descriptions` holds for its tile id, and its own
+ * documentation when that map holds none. `undefined` when neither carries one.
+ */
+function tileDescription(tile: IBrainTileDef, descriptions: ReadonlyMap<string, string>): string | undefined {
+  const markdown = tile.metadata?.docsMarkdown;
+  const documented = markdown === undefined ? undefined : descriptionFromMarkdown(markdown);
+  if (tile.provenance !== undefined) return documented;
+  return descriptions.get(tile.tileId) ?? documented;
+}
+
+/**
  * Describe one tile for the model, reading it by its word in `localizer`'s
  * locale and its argument grammar through `slotType`. The fields the tile's
  * author writes are capped by {@link sanitizeCatalogTile}.
@@ -230,7 +239,7 @@ function describeTile(
   slotType: (tileId: string) => string | undefined,
   values: ValueRendering
 ): CatalogTile {
-  const description = descriptions.get(tile.tileId);
+  const description = tileDescription(tile, descriptions);
   const action = isActionTileDef(tile) ? tile.action : undefined;
   const args =
     action && action.callDef.argSlots.size() > 0
@@ -249,7 +258,6 @@ function describeTile(
     provides: capabilityNames(tile.capabilities()),
     outputs: outputKeys(tile),
     ...(consumesWhenResult ? { consumesWhenResult } : {}),
-    ...(tile.metadata?.grammarNote ? { grammarNote: tile.metadata.grammarNote } : {}),
     ...(tile.hidden ? { hidden: true } : {}),
     ...(tile.deprecated ? { deprecated: true } : {}),
   });

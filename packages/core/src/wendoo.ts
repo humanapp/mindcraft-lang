@@ -379,16 +379,12 @@ export interface HydratedTileMetadataSnapshot {
   readonly tiles: readonly TileDefinitionInput[];
 }
 
-/** One compilation root's content identity within a {@link CompiledActionBundle}. */
+/** One compilation root of a {@link CompiledActionBundle}. */
 export interface CompiledRoot {
   /** The root's namespace: a library's `<owner>/<repo>` coordinate or the host project's namespace. */
   readonly namespace: string;
-  /** Lowercase hex SHA-256 over the root's owned tile surface: each owned tile's id and metadata, in tile-id order. */
-  readonly digest: string;
   /** Namespaces of the root's transitive dependencies present in the bundle, sorted; empty when it has none. */
   readonly closure: readonly string[];
-  /** Lowercase hex SHA-256 over `digest` followed by each closure member's namespace and `digest` in closure order; changes when any member's surface changes. */
-  readonly closureDigest: string;
 }
 
 /**
@@ -438,10 +434,19 @@ export interface WendooEnvironment {
    * project's namespace qualifies refs whose namespace field is absent.
    */
   deserializeBrainJsonFromPlain(plain: unknown, projectNamespace: string): IBrainDef;
+  /**
+   * Replace the bundle catalog's tiles with `snapshot`'s, leaving the applied
+   * bundle's revision and roots untouched. A hydrated tile that omits
+   * `provenance` reads as first-party to the catalog.
+   */
   hydrateTileMetadata(snapshot: HydratedTileMetadataSnapshot): void;
   createBrain(definition: IBrainDef, options?: CreateBrainOptions): WendooBrain;
   /** Compiles and links a brain definition into a {@link BrainBuildResult}. */
   linkBrain(definition: IBrainDef): BrainBuildResult;
+  /**
+   * Apply `bundle` as the environment's compiled-action bundle. Every tile in
+   * `bundle.tiles` must carry `provenance`; throws on one that does not.
+   */
   replaceActionBundle(bundle: CompiledActionBundle): ActionBundleUpdate;
   /**
    * The action bundle this environment currently holds, as a fresh
@@ -984,6 +989,11 @@ class WendooEnvironmentImpl implements WendooEnvironment {
   }
 
   replaceActionBundle(bundle: CompiledActionBundle): ActionBundleUpdate {
+    for (const tile of bundle.tiles) {
+      if (!tile.provenance) {
+        throw new Error(`replaceActionBundle: bundle tile "${tile.tileId}" carries no provenance`);
+      }
+    }
     const nextActions = copyActionArtifacts(bundle.actions);
     const changedActionKeys = collectChangedActionKeys(this.bundleResolver, nextActions);
     const changedActionKeySet = toActionKeySet(changedActionKeys);

@@ -8,6 +8,7 @@ import {
   createWendooEnvironment,
   Dict,
   List,
+  type TileDefinitionInput,
   type WendooEnvironment,
 } from "@wendoo/core";
 import type { BrainServices, IBrainDef } from "@wendoo/core/brain";
@@ -69,14 +70,14 @@ function nudgeArtifact(): CompiledActionArtifact {
 function nudgeBundle(): CompiledActionBundle {
   const actions = new Dict<string, CompiledActionArtifact>();
   actions.set(kNudgeKey, nudgeArtifact());
-  return {
-    revision: kRevision,
-    actions,
-    tiles: [
-      new BrainTileActuatorDef(kNudgeKey, { key: kNudgeKey, kind: "actuator", callDef: nudgeCallDef, isAsync: false }),
-    ],
-    roots: [],
-  };
+  const tile: TileDefinitionInput = new BrainTileActuatorDef(kNudgeKey, {
+    key: kNudgeKey,
+    kind: "actuator",
+    callDef: nudgeCallDef,
+    isAsync: false,
+  });
+  tile.provenance = { owners: ["spec/bundle"] };
+  return { revision: kRevision, actions, tiles: [tile], roots: [] };
 }
 
 /** A one-rule brain whose DO side drives the nudge actuator of `environment`. */

@@ -6,7 +6,6 @@ import type { CatalogTile } from "../tools/read-catalog.js";
  */
 export const CATALOG_TEXT_LIMITS = {
   label: 128,
-  grammarNote: 1024,
   description: 1024,
   /** The name an argument slot reads by, inside the rendered args string. */
   argName: 32,
@@ -54,10 +53,10 @@ export function sanitizeCatalogText(text: string, limit: number): string {
 }
 
 /**
- * `tile` with every field an author writes -- its label, its grammar note, its
- * description, and the argument grammar author text is rendered into -- cut to
- * that field's limit, the args string by {@link sanitizeArgsText} and the rest
- * by {@link sanitizeCatalogText}.
+ * `tile` with every field an author writes -- its label, its description, and
+ * the argument grammar author text is rendered into -- cut to that field's
+ * limit, the args string by {@link sanitizeArgsText} and the rest by
+ * {@link sanitizeCatalogText}.
  * The fields the catalog generates itself pass through untouched. Applying it
  * to its own result changes nothing.
  */
@@ -66,9 +65,6 @@ export function sanitizeCatalogTile(tile: CatalogTile): CatalogTile {
     ...tile,
     label: sanitizeCatalogText(tile.label, CATALOG_TEXT_LIMITS.label),
     ...(tile.args === undefined ? {} : { args: sanitizeArgsText(tile.args, CATALOG_TEXT_LIMITS.args) }),
-    ...(tile.grammarNote === undefined
-      ? {}
-      : { grammarNote: sanitizeCatalogText(tile.grammarNote, CATALOG_TEXT_LIMITS.grammarNote) }),
     ...(tile.description === undefined
       ? {}
       : { description: sanitizeCatalogText(tile.description, CATALOG_TEXT_LIMITS.description) }),

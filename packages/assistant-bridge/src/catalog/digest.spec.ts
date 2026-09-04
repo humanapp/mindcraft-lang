@@ -77,15 +77,6 @@ describe("catalog digest", () => {
     assert.equal(parseLines(digest.text)[0]?.description, description);
   });
 
-  test("carries the tile's grammar note on its own object and no other", () => {
-    const grammarNote = "rate clamps to 0..5\nshots per second";
-    const digest = catalogDigest([tile({ tileId: "a", grammarNote }), tile({ tileId: "b" })]);
-    const [noted, plain] = parseLines(digest.text);
-
-    assert.equal(noted?.grammarNote, grammarNote);
-    assert.equal(plain?.grammarNote, undefined, "a tile carrying no note carries none");
-  });
-
   test("marks a deprecated tile on its own object, keeping the line", () => {
     const digest = catalogDigest([tile({ tileId: "a", deprecated: true }), tile({ tileId: "b" })]);
     const [marked, plain] = parseLines(digest.text);

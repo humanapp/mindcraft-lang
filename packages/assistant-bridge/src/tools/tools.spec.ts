@@ -3,14 +3,7 @@ import { describe, test } from "node:test";
 import { catalogDigest } from "../catalog/digest.js";
 import { ARGS_TRUNCATION_MARKER, CATALOG_TEXT_LIMITS, sanitizeArgsText } from "../catalog/sanitize.js";
 import { CatalogScope } from "../catalog/scope.js";
-import {
-  createTargetAdapter,
-  FAKE_EMIT_GRAMMAR_NOTE,
-  FAKE_INPUT_KIND,
-  FAKE_LONG_UNIT,
-  FAKE_SUBJECT,
-  ruleIdAt,
-} from "../testing/index.js";
+import { createTargetAdapter, FAKE_INPUT_KIND, FAKE_LONG_UNIT, FAKE_SUBJECT, ruleIdAt } from "../testing/index.js";
 import { executeToolCall } from "./dispatch.js";
 import { proposeEdit } from "./propose-edit.js";
 import type { CatalogTile } from "./read-catalog.js";
@@ -229,20 +222,6 @@ describe("the bridge tools over a real target", () => {
       digest.text.split("\n").some((line) => (JSON.parse(line) as CatalogTile).label === "hunger"),
       digest.text
     );
-  });
-
-  test("carries a registered grammar note to the tile's catalog entry and digest line", () => {
-    const listed = catalogTiles(readCatalog(workspace(), {}));
-    const emit = listed.find((tile) => tile.tileId === tiles.actuator);
-    const sensor = listed.find((tile) => tile.tileId === tiles.sensor);
-    const digested = catalogDigest(listed)
-      .text.split("\n")
-      .map((line) => JSON.parse(line) as CatalogTile)
-      .find((entry) => entry.tileId === tiles.actuator);
-
-    assert.equal(emit?.grammarNote, FAKE_EMIT_GRAMMAR_NOTE);
-    assert.equal(sensor?.grammarNote, undefined, "a tile registering no note carries none");
-    assert.equal(digested?.grammarNote, FAKE_EMIT_GRAMMAR_NOTE);
   });
 
   test("reads an anonymous argument out as the value type it takes, never as a tile to place", () => {
