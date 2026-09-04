@@ -143,6 +143,18 @@ export interface RelayUserMessage {
   readonly text: string;
 }
 
+/**
+ * The person added a library to the project from a card the assistant offered,
+ * which starts a turn carrying that news. Sent only for an install that put the
+ * library there: one that failed, one the person's app refused, and one of a
+ * library the project already held all send nothing.
+ */
+export interface RelayLibraryAdded {
+  readonly type: "session:libraryAdded";
+  /** The `<owner>/<repo>` coordinate of the library the project now holds. */
+  readonly coordinate: string;
+}
+
 /** The person asked the turn in flight to stop. */
 export interface RelayStop {
   readonly type: "turn:stop";
@@ -160,9 +172,14 @@ export type RelayDownstreamMessage =
 
 /**
  * Every message the client sends the service over a relay session: the connect,
- * tool results, a user message, and a stop.
+ * tool results, a user message, a library the person added, and a stop.
  */
-export type RelayUpstreamMessage = RelayConnect | RelayToolResultBatch | RelayUserMessage | RelayStop;
+export type RelayUpstreamMessage =
+  | RelayConnect
+  | RelayToolResultBatch
+  | RelayUserMessage
+  | RelayLibraryAdded
+  | RelayStop;
 
 /** Schema of {@link RelayDownstreamMessage}. */
 export const relayDownstreamMessageSchema = z.discriminatedUnion("type", [
@@ -204,5 +221,6 @@ export const relayUpstreamMessageSchema = z.discriminatedUnion("type", [
   }),
   z.strictObject({ type: z.literal("turn:toolResults"), results: z.array(relayToolResultSchema) }),
   z.strictObject({ type: z.literal("session:userMessage"), text: z.string() }),
+  z.strictObject({ type: z.literal("session:libraryAdded"), coordinate: z.string().min(1) }),
   z.strictObject({ type: z.literal("turn:stop") }),
 ]);

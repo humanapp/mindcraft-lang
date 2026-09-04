@@ -12,17 +12,21 @@ import {
 } from "@wendoo/app-host";
 import {
   type AppEnvironmentHost,
+  addOfferedLibrary,
   buildExtensionCatalog,
   buildExtensionCatalogOffers,
+  buildExtensionCatalogShelf,
   type EmbeddedExtension,
   type ExtensionActionResult,
   type ExtensionCatalogEntry,
   type ExtensionCatalogOffer,
+  type ExtensionCatalogShelfEntry,
   type ExtensionFetchFailures,
   type ExtensionInstallReport,
   type FetchedExtensionContentMap,
   installEmbeddedExtension,
   installExtensionReference,
+  type LibraryOfferToasts,
   uninstallExtension,
 } from "@wendoo/bridge-app";
 import type { ExtensionBrowserEntry } from "@wendoo/ui";
@@ -44,6 +48,13 @@ export type ExtensionReferenceInstallSurface = Pick<
   AppEnvironmentHost,
   "resolveExtensionInstallInput" | "updateProjectExtensions"
 >;
+
+/**
+ * The active-project surface adding a library the assistant offered drives: the
+ * add-field install surface plus the installed libraries its display name is
+ * read from.
+ */
+export type LibraryOfferInstallHost = ExtensionReferenceInstallSurface & Pick<AppEnvironmentHost, "installedLibraries">;
 
 /**
  * An extension action's map-mutation result together with the install
@@ -152,6 +163,21 @@ export function buildEcosimCatalogOffers(
   embedRecord: readonly EmbeddedExtension[]
 ): ExtensionCatalogOffer[] {
   return buildExtensionCatalogOffers(ecosimLibraryCatalog, extensions, embedRecord, ECOSIM_LAYER_COORDINATES);
+}
+
+/**
+ * Build the library shelf for an apps/ecosim project: every bundled catalog
+ * entry the project already holds, marked installed, plus every entry
+ * compatible with the project's sim platform stack, marked not installed.
+ *
+ * @param extensions - The project's extensions map, keyed by coordinate.
+ * @param embedRecord - The bundled embedded extensions used to derive the platform stack and read embedded offer targets.
+ */
+export function buildEcosimLibraryShelf(
+  extensions: Readonly<Record<string, string>> | undefined,
+  embedRecord: readonly EmbeddedExtension[]
+): ExtensionCatalogShelfEntry[] {
+  return buildExtensionCatalogShelf(ecosimLibraryCatalog, extensions, embedRecord, ECOSIM_LAYER_COORDINATES);
 }
 
 /**
@@ -322,6 +348,36 @@ export async function installEcosimReference(
     return { ok: true, reference: trimmed, action, report: await surface.updateProjectExtensions(action.extensions) };
   }
   return installEcosimExtensionReference(surface, extensions, input);
+}
+
+/**
+ * Add the library at `coordinate` to the project on behalf of an offer the
+ * assistant made: the bundled catalog's approved reference for it, installed
+ * and persisted through the active project, with the outcome presented through
+ * `toasts`. Answers whether this attempt put the library in the project.
+ *
+ * @param host - The active-project normalization, persistence, and installed-library surface.
+ * @param extensions - The project's current extensions map.
+ * @param embedRecord - The bundled embedded extensions an embedded install resolves against.
+ * @param coordinate - The `<owner>/<repo>` coordinate the offer names.
+ * @param toasts - Where the outcome is presented.
+ */
+export function addEcosimLibrary(
+  host: LibraryOfferInstallHost,
+  extensions: Readonly<Record<string, string>> | undefined,
+  embedRecord: readonly EmbeddedExtension[],
+  coordinate: string,
+  toasts: LibraryOfferToasts
+): Promise<boolean> {
+  return addOfferedLibrary(
+    {
+      approvedReference: (named) => ecosimApprovedCatalogEntry(named)?.ref,
+      install: (reference) => installEcosimReference(host, extensions, embedRecord, reference),
+      displayName: (named) => ecosimLibraryDisplayName(host.installedLibraries, named),
+      toasts,
+    },
+    coordinate
+  );
 }
 
 /**

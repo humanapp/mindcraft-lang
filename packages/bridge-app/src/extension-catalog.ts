@@ -1,5 +1,6 @@
 import {
   type ExtensionCatalogDocument,
+  type ExtensionCatalogDocumentEntry,
   type ExtensionTarget,
   type FileContent,
   fileContentText,
@@ -433,6 +434,67 @@ export function buildExtensionCatalogOffers(
     });
   }
   return offers;
+}
+
+/**
+ * One approved catalog entry as the library shelf lists it: the entry's own
+ * curated metadata, annotated with whether the project already holds it.
+ */
+export type ExtensionCatalogShelfEntry = Pick<
+  ExtensionCatalogDocumentEntry,
+  "coordinate" | "name" | "version" | "description"
+> & {
+  /** True when the project's extensions map already carries the entry's coordinate. */
+  readonly installed: boolean;
+  /** GitHub repository URL `https://github.com/<coordinate>`; set only for entries a remote (`gh:`) reference installs. */
+  readonly sourceUrl?: string;
+};
+
+/**
+ * Adapt a validated extension catalog document into the shelf a project can be
+ * told about: every entry the project already holds, marked installed, plus
+ * every offer {@link buildExtensionCatalogOffers} finds compatible with the
+ * project's platform stack, marked not installed. Entries run in document
+ * order, and an entry that is neither installed nor compatible is left out. An
+ * entry a remote (`gh:`) reference installs carries the repository URL it is
+ * published at.
+ *
+ * @param document - The validated catalog document.
+ * @param extensions - The project's extensions map, keyed by coordinate.
+ * @param embedRecord - The host application's bundled embedded extensions.
+ * @param layerCoordinates - The coordinates the host declares as platform layers.
+ */
+export function buildExtensionCatalogShelf(
+  document: ExtensionCatalogDocument,
+  extensions: Readonly<Record<string, string>> | undefined,
+  embedRecord: readonly EmbeddedExtension[],
+  layerCoordinates: ReadonlySet<string>
+): ExtensionCatalogShelfEntry[] {
+  const current = extensions ?? {};
+  const offered = new Map(
+    buildExtensionCatalogOffers(document, extensions, embedRecord, layerCoordinates).map((offer) => [
+      offer.coordinate,
+      offer,
+    ])
+  );
+  const shelf: ExtensionCatalogShelfEntry[] = [];
+  for (const entry of document.entries) {
+    const installed = entry.coordinate in current;
+    const listed = installed ? entry : offered.get(entry.coordinate);
+    if (listed === undefined) {
+      continue;
+    }
+    const remote = parseExtensionReference(listed.ref)?.transport === "gh";
+    shelf.push({
+      coordinate: listed.coordinate,
+      name: listed.name,
+      version: listed.version,
+      description: listed.description,
+      installed,
+      ...(remote ? { sourceUrl: `https://github.com/${listed.coordinate}` } : {}),
+    });
+  }
+  return shelf;
 }
 
 /**

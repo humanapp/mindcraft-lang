@@ -304,17 +304,19 @@ describe("checking the build output of a package's local dependencies", () => {
     assert.deepEqual(staleDependencyDists(app), []);
   });
 
-  test("passes a dependency whose rebuild re-emitted nothing and only refreshed its build record", async () => {
+  test("reports a stale dist however fresh a build record beside it is", async () => {
     const app = await tree({
       scripts: { "build:prod": "tsc" },
       sources: { "index.ts": afterBuild },
       buildRecord: afterBuild + 1,
     });
 
-    assert.deepEqual(staleDependencyDists(app), []);
+    const [stale] = staleDependencyDists(app);
+
+    assert.equal(stale?.code, DistFreshnessCode.DistStale);
   });
 
-  test("reports a dependency edited after its build record was last written", async () => {
+  test("reports a dependency edited after its last build, its build record aside", async () => {
     const app = await tree({
       scripts: { "build:prod": "tsc" },
       sources: { "index.ts": afterBuild },

@@ -12,10 +12,19 @@ type TriggerNamesMatchCore = [RuleTriggerName] extends [RuleTriggerMode]
   : false;
 
 describe("the bridge tool surface", () => {
-  test("offers the six tools of the authoring slice", () => {
+  test("offers the tools of the authoring slice", () => {
     assert.deepEqual(
       toolDefinitions.map((tool) => tool.name),
-      ["compile", "propose_edit", "read_catalog", "read_project", "simulate", "suggest_tiles"]
+      [
+        "compile",
+        "offer_libraries",
+        "propose_edit",
+        "read_catalog",
+        "read_libraries",
+        "read_project",
+        "simulate",
+        "suggest_tiles",
+      ]
     );
   });
 

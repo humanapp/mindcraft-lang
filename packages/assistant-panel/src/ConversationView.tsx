@@ -17,6 +17,7 @@ import type {
   BuildBlock,
   ConversationBlock,
   NarrationBlock,
+  OfferBlock,
   ReceiptBlock,
   ReceiptRule,
   RunBlock,
@@ -28,6 +29,9 @@ import type { BrainPlaces } from "./conversation/brain-places";
 import { BrainPlacesProvider, useBrainPlaces } from "./conversation/brain-places";
 import type { EditSide } from "./conversation/edit-story";
 import { exportTranscript } from "./conversation/export";
+import { LibraryCard } from "./conversation/LibraryCard";
+import type { LibraryOffers } from "./conversation/library-offers";
+import { LibraryOffersProvider } from "./conversation/library-offers";
 import type { RunCell, RunCellCall, RunEvidence, RunMarker } from "./conversation/run";
 import { RunActivity, RunMarkerKind } from "./conversation/run";
 import type { StandingState } from "./conversation/standing";
@@ -80,6 +84,11 @@ export interface ConversationViewProps {
    * conversation itself has seen and leaves every reference untappable.
    */
   brainPlaces?: BrainPlaces | undefined;
+  /**
+   * The shelf the libraries the assistant offers are drawn against, and the
+   * host's own install a tap on one runs. Absent leaves every offer inert.
+   */
+  libraryOffers?: LibraryOffers | undefined;
   /**
    * Send `text` as the person's own next ask, called when they tap one of the
    * answers a question offers. Absent leaves those answers untappable.
@@ -365,7 +374,7 @@ function RuleCard({ rule, context }: { rule: ReceiptRule; context: TranscriptCon
 
 /**
  * Draws each thing the assistant names in its own words as the chip its surface
- * stands for it: a tile as its own chip, a rule as its number, a page as its
+ * stands for it: a tile as its own chip, a rule as its number, and a page as its
  * name. A rule is numbered from the document the host stands where there is one,
  * and from what the conversation itself has seen where there is not; a chip the
  * host can show is one the person can tap. A reference to something neither has
@@ -949,6 +958,21 @@ function NarrationCardView({ block, context }: { block: NarrationBlock; context:
   );
 }
 
+/**
+ * The libraries a turn offered, drawn as the cards they are added from, in the
+ * order the turn offered them. The block stands at the end of the turn, after
+ * everything the assistant said and did.
+ */
+function OfferView({ block }: { block: OfferBlock }) {
+  return (
+    <div data-assistant-offers={block.coordinates.length} className="flex w-full flex-col self-start">
+      {block.coordinates.map((coordinate) => (
+        <LibraryCard key={coordinate} coordinate={coordinate} />
+      ))}
+    </div>
+  );
+}
+
 /** One block of a turn, drawn in the idiom its kind reads in. */
 function BlockView({ block, context }: { block: ConversationBlock; context: TranscriptContext }) {
   switch (block.kind) {
@@ -962,6 +986,8 @@ function BlockView({ block, context }: { block: ConversationBlock; context: Tran
       return <RunView block={block} context={context} />;
     case ConversationBlockKind.Build:
       return <BuildView block={block} />;
+    case ConversationBlockKind.Offer:
+      return <OfferView block={block} />;
   }
 }
 
@@ -1332,6 +1358,7 @@ export function ConversationView(props: ConversationViewProps) {
     opensByPerson,
     brainSurface,
     brainPlaces,
+    libraryOffers,
     onAnswer,
     doing,
   } = props;
@@ -1394,95 +1421,97 @@ export function ConversationView(props: ConversationViewProps) {
   return (
     <BrainSurfaceProvider value={brainSurface}>
       <BrainPlacesProvider value={brainPlaces}>
-        <AnsweringContext.Provider value={answering}>
-          <div
-            ref={surface}
-            tabIndex={-1}
-            className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border outline-none"
-            style={{ background: kBrainDeskFill }}
-          >
-            <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
-              <span className="h-8 w-8 shrink-0 rounded-full border border-border bg-muted" aria-hidden="true" />
-              <span data-assistant-entity className="grow truncate text-sm font-semibold text-card-foreground">
-                {name}
-              </span>
-              <ExportControl record={record} name={name} />
-            </header>
+        <LibraryOffersProvider value={libraryOffers}>
+          <AnsweringContext.Provider value={answering}>
             <div
-              ref={transcript}
-              onScroll={noteScroll}
-              className="flex min-h-0 grow flex-col gap-3 overflow-y-auto px-3 py-4"
+              ref={surface}
+              tabIndex={-1}
+              className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border outline-none"
+              style={{ background: kBrainDeskFill }}
             >
-              {entries.length === 0 ? (
-                <p data-assistant-resting className="text-sm text-muted-foreground">
-                  Hi! What should we build?
-                </p>
-              ) : (
-                entries.map((entry, at) => (
-                  <EntryView
-                    // biome-ignore lint/suspicious/noArrayIndexKey: a record only ever appends, so an entry keeps its position
-                    key={`entry-${at}`}
-                    entry={entry}
-                    context={context}
-                    standing={standing}
-                    folded={at !== newestTurn}
-                    onAskAgain={onAskAgain}
-                  />
-                ))
+              <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
+                <span className="h-8 w-8 shrink-0 rounded-full border border-border bg-muted" aria-hidden="true" />
+                <span data-assistant-entity className="grow truncate text-sm font-semibold text-card-foreground">
+                  {name}
+                </span>
+                <ExportControl record={record} name={name} />
+              </header>
+              <div
+                ref={transcript}
+                onScroll={noteScroll}
+                className="flex min-h-0 grow flex-col gap-3 overflow-y-auto px-3 py-4"
+              >
+                {entries.length === 0 ? (
+                  <p data-assistant-resting className="text-sm text-muted-foreground">
+                    Hi! What should we build?
+                  </p>
+                ) : (
+                  entries.map((entry, at) => (
+                    <EntryView
+                      // biome-ignore lint/suspicious/noArrayIndexKey: a record only ever appends, so an entry keeps its position
+                      key={`entry-${at}`}
+                      entry={entry}
+                      context={context}
+                      standing={standing}
+                      folded={at !== newestTurn}
+                      onAskAgain={onAskAgain}
+                    />
+                  ))
+                )}
+                {running && <PresenceMark doing={doing} />}
+              </div>
+              {connection && (
+                <div className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-1.5">
+                  <p data-assistant-connection={status} className="grow text-xs text-muted-foreground">
+                    {connection}
+                  </p>
+                  {onRetry && (
+                    <button
+                      type="button"
+                      data-assistant-retry
+                      onClick={onRetry}
+                      className="shrink-0 rounded-md border border-border px-2 py-1 text-xs text-card-foreground pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+                    >
+                      Try again
+                    </button>
+                  )}
+                </div>
               )}
-              {running && <PresenceMark doing={doing} />}
-            </div>
-            {connection && (
-              <div className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-1.5">
-                <p data-assistant-connection={status} className="grow text-xs text-muted-foreground">
-                  {connection}
-                </p>
-                {onRetry && (
+              <div className="flex shrink-0 items-end gap-2 border-t border-border p-2">
+                <textarea
+                  ref={intentBox}
+                  data-assistant-intent
+                  className="min-h-16 grow resize-none rounded-md border border-input bg-background px-2 py-1.5 text-sm text-foreground placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 pointer-coarse:text-base"
+                  rows={2}
+                  value={intent}
+                  onChange={(event) => onIntentChange(event.target.value)}
+                  aria-label="What we should build"
+                  placeholder="Tell me your idea..."
+                />
+                {running ? (
                   <button
                     type="button"
-                    data-assistant-retry
-                    onClick={onRetry}
-                    className="shrink-0 rounded-md border border-border px-2 py-1 text-xs text-card-foreground pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+                    data-assistant-stop
+                    onClick={onStop}
+                    className="shrink-0 rounded-md border border-border px-3 py-1.5 text-sm font-medium text-card-foreground pointer-coarse:min-h-11 pointer-coarse:min-w-11"
                   >
-                    Try again
+                    Stop
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    data-assistant-send
+                    onClick={onSend}
+                    disabled={intent.trim().length === 0}
+                    className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50 pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+                  >
+                    Send
                   </button>
                 )}
               </div>
-            )}
-            <div className="flex shrink-0 items-end gap-2 border-t border-border p-2">
-              <textarea
-                ref={intentBox}
-                data-assistant-intent
-                className="min-h-16 grow resize-none rounded-md border border-input bg-background px-2 py-1.5 text-sm text-foreground placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 pointer-coarse:text-base"
-                rows={2}
-                value={intent}
-                onChange={(event) => onIntentChange(event.target.value)}
-                aria-label="What we should build"
-                placeholder="Tell me your idea..."
-              />
-              {running ? (
-                <button
-                  type="button"
-                  data-assistant-stop
-                  onClick={onStop}
-                  className="shrink-0 rounded-md border border-border px-3 py-1.5 text-sm font-medium text-card-foreground pointer-coarse:min-h-11 pointer-coarse:min-w-11"
-                >
-                  Stop
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  data-assistant-send
-                  onClick={onSend}
-                  disabled={intent.trim().length === 0}
-                  className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50 pointer-coarse:min-h-11 pointer-coarse:min-w-11"
-                >
-                  Send
-                </button>
-              )}
             </div>
-          </div>
-        </AnsweringContext.Provider>
+          </AnsweringContext.Provider>
+        </LibraryOffersProvider>
       </BrainPlacesProvider>
     </BrainSurfaceProvider>
   );

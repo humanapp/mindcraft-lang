@@ -99,13 +99,6 @@ const compilerConfigSuffix = ".json";
 /** Directory a package emits its build output to. */
 const distDirName = "dist";
 
-/**
- * Suffix of the incremental-build record a compiler writes beside a package's
- * manifest. A build that finds every output already correct rewrites this
- * record and re-emits nothing, so it is the moment a package was last built.
- */
-const buildRecordSuffix = ".tsbuildinfo";
-
 /** Read the manifest of the package at `packageDir`. Throws when it is absent or unparsable. */
 function readManifest(packageDir: string): PackageManifest {
   return JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8")) as PackageManifest;
@@ -204,17 +197,6 @@ function newestBuildInput(packageDir: string): { path: string; mtimeMs: number }
   const sources = existsSync(sourceDir) ? newestFile(sourceDir, (path) => !path.endsWith(specSuffix)) : undefined;
   const scripts = existsSync(scriptDir) ? newestFile(scriptDir, () => true) : undefined;
   return later(later(sources, scripts), newestCompilerConfig(packageDir));
-}
-
-/** The newest incremental-build record beside `packageDir`'s manifest, if it keeps one. */
-function newestBuildRecord(packageDir: string): { path: string; mtimeMs: number } | undefined {
-  let newest: { path: string; mtimeMs: number } | undefined;
-  for (const entry of readdirSync(packageDir, { withFileTypes: true })) {
-    if (!entry.isFile() || !entry.name.endsWith(buildRecordSuffix)) continue;
-    const path = join(packageDir, entry.name);
-    newest = later(newest, { path, mtimeMs: statSync(path).mtimeMs });
-  }
-  return newest;
 }
 
 /**
@@ -385,12 +367,6 @@ interface Subject {
   readonly newestInput: { path: string; mtimeMs: number };
   /** Platform-specific implementation stems of the dependency, each `<module>.<platform>`. */
   readonly stems: readonly string[];
-  /**
-   * Newest incremental-build record beside the dependency's manifest, counted as
-   * a build of every group. Absent for a dependency that builds more than one
-   * output group.
-   */
-  readonly buildRecord: { path: string; mtimeMs: number } | undefined;
 }
 
 /** Whether one output group of `subject` reflects its sources, as a finding or `undefined`. */
@@ -436,8 +412,8 @@ function stepStaleness(subject: Subject, step: BuildStep): StaleDependency | und
     };
   }
 
-  const lastBuilt = later(built, subject.buildRecord);
-  if (lastBuilt === undefined || newestInput.mtimeMs <= lastBuilt.mtimeMs) return undefined;
+  if (built === undefined || newestInput.mtimeMs <= built.mtimeMs) return undefined;
+  const lastBuilt = built;
   return {
     code: DistFreshnessCode.DistStale,
     packageName,
@@ -462,14 +438,12 @@ function staleness(
   const newestInput = newestBuildInput(dependencyDir);
   if (newestInput === undefined) return undefined;
 
-  const singleGroup = Object.keys(declaredVariants(manifest)).length === 0;
   const subject: Subject = {
     packageDir,
     dependencyDir,
     packageName: manifest.name ?? relative(packageDir, dependencyDir),
     newestInput,
     stems: platformImplementationStems(sourceDir),
-    buildRecord: singleGroup ? newestBuildRecord(dependencyDir) : undefined,
   };
 
   for (const step of steps) {

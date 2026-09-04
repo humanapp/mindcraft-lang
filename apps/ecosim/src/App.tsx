@@ -43,7 +43,13 @@ import { createDocsRegistry } from "./docs/docs-registry";
 import type { Playground, SceneBrainState } from "./game/scenes/Playground";
 import { PhaserGame } from "./PhaserGame";
 import { createTargetAdapter } from "./rehearsal/adapter";
-import { ecosimFeaturedNamespaces } from "./services/ecosim-extension-browser";
+import { ecosimEmbeddedExtensions } from "./services/ecosim-embedded-extensions";
+import {
+  addEcosimLibrary,
+  buildEcosimLibraryShelf,
+  ecosimFeaturedNamespaces,
+} from "./services/ecosim-extension-browser";
+import { ecosimLibraryOfferToasts } from "./services/library-offer-toasts";
 import { downloadTextFile } from "./utils/file-download";
 import { pickFile } from "./utils/file-upload";
 
@@ -230,6 +236,15 @@ function App() {
           featured: ecosimFeaturedNamespaces,
           ...(store.activeProjectManifest ? { hostNamespace: store.activeProjectManifest.id } : {}),
         }),
+        libraryShelf: () => buildEcosimLibraryShelf(store.activeProjectManifest?.extensions, ecosimEmbeddedExtensions),
+        installLibrary: (coordinate) =>
+          addEcosimLibrary(
+            store.host,
+            store.activeProjectManifest?.extensions,
+            ecosimEmbeddedExtensions,
+            coordinate,
+            ecosimLibraryOfferToasts
+          ),
       }),
       connect: () => createWebSocketConnect(assistantSessionUrl(store.getAppSettings().assistantServiceUrl))(),
     };

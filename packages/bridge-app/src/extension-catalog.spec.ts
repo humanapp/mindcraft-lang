@@ -3,10 +3,11 @@ import { describe, test } from "node:test";
 import type { ExtensionCatalogDocument } from "@wendoo/app-host";
 import type { EmbeddedExtension } from "./embedded-extensions.js";
 import { resolveProjectExtensions } from "./embedded-extensions.js";
-import type { ExtensionCatalogEntry, PlatformStackLayer } from "./extension-catalog.js";
+import type { ExtensionCatalogEntry, ExtensionCatalogShelfEntry, PlatformStackLayer } from "./extension-catalog.js";
 import {
   buildExtensionCatalog,
   buildExtensionCatalogOffers,
+  buildExtensionCatalogShelf,
   deriveProjectPlatformStack,
   ExtensionActionResultCode,
   installEmbeddedExtension,
@@ -689,6 +690,129 @@ describe("buildExtensionCatalogOffers -- compatibility-filtered against the proj
     assert.equal(
       offers.some((offer) => offer.coordinate === POSITION),
       false
+    );
+  });
+});
+
+describe("buildExtensionCatalogShelf -- the approved entries annotated with installed state", () => {
+  const PRIOR_SHA = "5d6d05a75e51a7ba0f2a1f4b0e7d5f18a2c3b4d6";
+
+  /** A catalog offering a micro:bit library with an earlier approved version, and one for another platform. */
+  const document: ExtensionCatalogDocument = {
+    format: "wendoo.catalog/1",
+    entries: [
+      {
+        coordinate: POSITION,
+        kind: "library",
+        ref: `embedded:${POSITION}`,
+        name: "Position",
+        version: "1.3.0",
+        description: "Position sensing.",
+        thumbnail: "data:,pos",
+        priors: [{ ref: `gh:${POSITION}@${PRIOR_SHA}`, version: "1.2.0" }],
+      },
+      {
+        coordinate: FLOCK,
+        kind: "library",
+        ref: `embedded:${FLOCK}`,
+        name: "Flock",
+        version: "1.0.0",
+        description: "Flocking.",
+      },
+    ],
+    moves: {},
+  };
+
+  /** The shelf of a micro:bit project holding `extensions` beyond its platform layer. */
+  function shelfOf(extensions: Readonly<Record<string, string>>) {
+    return buildExtensionCatalogShelf(
+      document,
+      { ...microbitProject, ...extensions },
+      microbitEmbedRecord,
+      microbitLayers
+    );
+  }
+
+  test("shelves a compatible entry the project has not installed, from its curated metadata alone", () => {
+    assert.deepStrictEqual(shelfOf({}), [
+      { coordinate: POSITION, name: "Position", version: "1.3.0", description: "Position sensing.", installed: false },
+    ]);
+  });
+
+  test("shelves an installed entry, marked installed", () => {
+    assert.deepStrictEqual(shelfOf({ [POSITION]: `embedded:${POSITION}` }), [
+      { coordinate: POSITION, name: "Position", version: "1.3.0", description: "Position sensing.", installed: true },
+    ]);
+  });
+
+  test("leaves out an entry the project neither holds nor can install on its stack", () => {
+    assert.equal(
+      shelfOf({}).some((entry) => entry.coordinate === FLOCK),
+      false
+    );
+  });
+
+  test("shelves the version the entry offers and never an earlier approved one", () => {
+    const versions = [...shelfOf({}), ...shelfOf({ [POSITION]: `gh:${POSITION}@${PRIOR_SHA}` })].map(
+      (entry) => entry.version
+    );
+
+    assert.deepEqual(versions, ["1.3.0", "1.3.0"]);
+  });
+});
+
+describe("the page a shelved library is published at", () => {
+  const REMOTE_SHA = "b19b80b029a77303ee575d3ff9b29adbf7021b23";
+  const REMOTE = "ext-org/gh-microbit";
+
+  /** A catalog offering one remote library and one bundled with the app. */
+  const document: ExtensionCatalogDocument = {
+    format: "wendoo.catalog/1",
+    entries: [
+      {
+        coordinate: REMOTE,
+        kind: "library",
+        ref: `gh:${REMOTE}@${REMOTE_SHA}`,
+        name: "GH Compatible",
+        version: "1.0.0",
+        description: "A compatible remote library.",
+        targets: { [MICROBIT]: { packageVersion: "^0.2.0" } },
+      },
+      {
+        coordinate: POSITION,
+        kind: "library",
+        ref: `embedded:${POSITION}`,
+        name: "Position",
+        version: "1.3.0",
+        description: "Position sensing.",
+      },
+    ],
+    moves: {},
+  };
+
+  /** The shelf of a micro:bit project holding `extensions` beyond its platform layer, keyed by coordinate. */
+  function shelvedAt(extensions: Readonly<Record<string, string>>): Map<string, ExtensionCatalogShelfEntry> {
+    const shelf = buildExtensionCatalogShelf(
+      document,
+      { ...microbitProject, ...extensions },
+      microbitEmbedRecord,
+      microbitLayers
+    );
+    return new Map(shelf.map((entry) => [entry.coordinate, entry]));
+  }
+
+  test("a library a remote reference installs carries its repository page", () => {
+    assert.equal(shelvedAt({}).get(REMOTE)?.sourceUrl, `https://github.com/${REMOTE}`);
+  });
+
+  test("a library bundled with the app carries no page of its own", () => {
+    assert.equal(shelvedAt({}).get(POSITION)?.sourceUrl, undefined);
+  });
+
+  test("a remote library the project already holds carries its repository page too", () => {
+    assert.equal(
+      shelvedAt({ [REMOTE]: `gh:${REMOTE}@${REMOTE_SHA}` }).get(REMOTE)?.sourceUrl,
+      `https://github.com/${REMOTE}`
     );
   });
 });

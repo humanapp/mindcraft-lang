@@ -53,7 +53,16 @@ describe("the bridge tools over a real target", () => {
     const names = toolDefinitions.map((definition) => definition.name);
 
     assert.deepEqual(names, [...names].sort());
-    assert.deepEqual(names, ["compile", "propose_edit", "read_catalog", "read_project", "simulate", "suggest_tiles"]);
+    assert.deepEqual(names, [
+      "compile",
+      "offer_libraries",
+      "propose_edit",
+      "read_catalog",
+      "read_libraries",
+      "read_project",
+      "simulate",
+      "suggest_tiles",
+    ]);
   });
 
   test("offers the target's own sensor at the start of a WHEN side", () => {

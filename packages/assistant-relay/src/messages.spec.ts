@@ -91,6 +91,7 @@ const upstream: readonly RelayUpstreamMessage[] = [
     ],
   },
   { type: "session:userMessage", text: "make it hide in the dark" },
+  { type: "session:libraryAdded", coordinate: "example-org/lib-position" },
   { type: "turn:stop" },
 ];
 
@@ -118,6 +119,7 @@ describe("the relay wire", () => {
     assert.deepEqual([...named].sort(), [
       "session:accepted",
       "session:connect",
+      "session:libraryAdded",
       "session:refused",
       "session:userMessage",
       "turn:end",
@@ -218,6 +220,19 @@ describe("the relay wire", () => {
     };
 
     assert.equal(relayUpstreamMessageSchema.safeParse(forged).success, false);
+  });
+
+  test("refuses an added library the wire cannot act on", () => {
+    const refused: readonly unknown[] = [
+      { type: "session:libraryAdded" },
+      { type: "session:libraryAdded", coordinate: "" },
+      { type: "session:libraryAdded", coordinate: 7 },
+      { type: "session:libraryAdded", coordinate: "example-org/lib-position", version: "1.3.0" },
+    ];
+
+    for (const message of refused) {
+      assert.equal(relayUpstreamMessageSchema.safeParse(message).success, false, JSON.stringify(message));
+    }
   });
 
   test("refuses a tool result carrying an outcome the envelope does not define", () => {

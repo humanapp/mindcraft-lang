@@ -59,6 +59,8 @@ export type { ToolCallError, ToolCallOutcome } from "./tools/dispatch.js";
 export { executeToolCall, isToolName, ToolCallErrorCode } from "./tools/dispatch.js";
 export type { CatalogFeaturing } from "./tools/featuring.js";
 export { admitsLongFormDocs } from "./tools/featuring.js";
+export type { LibraryOffered, LibraryOfferView } from "./tools/offer-libraries.js";
+export { LibraryOfferUnknownCode, LibraryOfferVerdict, offerLibraries } from "./tools/offer-libraries.js";
 export type {
   BatchAccepted,
   BatchResult,
@@ -71,6 +73,8 @@ export type {
 export { batchReplayStepMs, proposeEdit, proposeEditBatch, resolveRunEntry } from "./tools/propose-edit.js";
 export type { CatalogGroup, CatalogTile, CatalogView } from "./tools/read-catalog.js";
 export { catalogTiles, catalogTilesInScope, readCatalog } from "./tools/read-catalog.js";
+export type { LibraryShelfEntry, LibraryShelfView } from "./tools/read-libraries.js";
+export { readLibraries } from "./tools/read-libraries.js";
 export type { ProjectPage, ProjectPageRef, ProjectRule, ProjectTile, ProjectView } from "./tools/read-project.js";
 export { readProject, readRule } from "./tools/read-project.js";
 export type { PolicyDecision, ProposalPolicyEntry, ProposalVerdict } from "./tools/rejection-policy.js";

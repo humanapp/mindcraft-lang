@@ -14,7 +14,15 @@ import { editCommands, editStoryRow } from "./edit-story";
 import type { RunEvidence } from "./run";
 import { runEvidence } from "./run";
 import type { BuildDiagnostic, RefusedProposal } from "./tool-payloads";
-import { asProjectRule, compiledClean, dirtyBuild, landedCommands, refusedProposal, tileLabels } from "./tool-payloads";
+import {
+  asProjectRule,
+  compiledClean,
+  dirtyBuild,
+  landedCommands,
+  offeredLibraries,
+  refusedProposal,
+  tileLabels,
+} from "./tool-payloads";
 
 /** What one block of a turn stands for. */
 export const ConversationBlockKind = {
@@ -28,6 +36,8 @@ export const ConversationBlockKind = {
   Run: "run",
   /** A build that came back dirty, and everything it reported. */
   Build: "build",
+  /** The libraries the turn offered, as the cards they are added from. */
+  Offer: "offer",
 } as const;
 
 /** What one block of a turn stands for. */
@@ -131,8 +141,15 @@ export interface BuildBlock {
   readonly repeats: number;
 }
 
+/** Every library one turn offered, in the order it offered them. */
+export interface OfferBlock {
+  readonly kind: typeof ConversationBlockKind.Offer;
+  /** The `<owner>/<repo>` coordinate of each library offered, each named once. */
+  readonly coordinates: readonly string[];
+}
+
 /** One block of a turn, as the transcript lays it out. */
-export type ConversationBlock = NarrationBlock | ReceiptBlock | SnagBlock | RunBlock | BuildBlock;
+export type ConversationBlock = NarrationBlock | ReceiptBlock | SnagBlock | RunBlock | BuildBlock | OfferBlock;
 
 /**
  * What a turn's blocks are read against: everything the conversation as a whole
@@ -363,7 +380,7 @@ interface BuildDraft {
 }
 
 /** One block while a turn is still being read. */
-type BlockDraft = NarrationDraft | ReceiptDraft | SnagDraft | RunDraft | BuildDraft;
+type BlockDraft = NarrationDraft | ReceiptDraft | SnagDraft | RunDraft | BuildDraft | OfferBlock;
 
 /**
  * Turn `diagnosis` into the note `resolution` states: the lesson becomes the
@@ -505,6 +522,8 @@ function laidOutBlock(draft: BlockDraft, parentOf: ReadonlyMap<string, string>):
         errors: draft.errors,
         repeats: draft.repeats,
       };
+    case ConversationBlockKind.Offer:
+      return draft;
     case ConversationBlockKind.Narration:
       return {
         kind: ConversationBlockKind.Narration,
@@ -535,8 +554,10 @@ function laidOutReceipt(draft: ReceiptDraft, parentOf: ReadonlyMap<string, strin
 /**
  * Lay one turn out as the blocks the transcript draws: its narration in the
  * order it arrived, one receipt per page its accepted edits landed on, one snag
- * per way a proposal was refused, one card per rehearsal it asked for, and one
- * card per way a build came back dirty. A call that only looked draws nothing.
+ * per way a proposal was refused, one card per rehearsal it asked for, one card
+ * per way a build came back dirty, and the libraries it offered as one block of
+ * cards at the end of the turn, each library named once and in the order it
+ * offered them. A call that only looked draws nothing.
  *
  * A receipt stands where the turn first touched its page and gathers every later
  * edit to that page. A snag stands where the turn was first refused that way and
@@ -567,10 +588,19 @@ export function conversationBlocks(
   const builds = new Map<string, BuildDraft>();
   const runs: RunDraft[] = [];
   const plans: NarrationDraft[] = [];
+  const offered: string[] = [];
   let openDiagnosis: NarrationDraft | undefined;
   let lastSnag: SnagDraft | undefined;
 
   const gather = (call: ConversationToolCall): void => {
+    const presented = offeredLibraries(call);
+    if (presented) {
+      for (const coordinate of presented) {
+        if (!offered.includes(coordinate)) offered.push(coordinate);
+      }
+      return;
+    }
+
     const landed = landedCommands(call);
     if (landed) {
       const commands = editCommands(call.input);
@@ -694,6 +724,8 @@ export function conversationBlocks(
     if (said.role === RoleCode.Diagnosis) openDiagnosis = said;
     drafts.push(said);
   }
+
+  if (offered.length > 0) drafts.push({ kind: ConversationBlockKind.Offer, coordinates: offered });
 
   return drafts.map((draft) => laidOutBlock(draft, context.parentOf));
 }

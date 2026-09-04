@@ -66,6 +66,13 @@ describe("the bound conversation surface", () => {
     assert.match(source, /opensByPerson=\{opensByPerson\}/);
   });
 
+  test("tells the add of a library to the brain whose conversation it stands", () => {
+    const source = readFileSync(fileURLToPath(new URL("./AssistantSurface.tsx", import.meta.url)), "utf8");
+
+    assert.match(source, /const brainId = record\?\.brainId/);
+    assert.match(source, /libraryAdded\(brainId, coordinate\)/);
+  });
+
   test("opens no session by standing under a provider", () => {
     assert.equal(renderBound().connects, 0);
   });

@@ -60,12 +60,14 @@ export type {
   ExtensionActionResult,
   ExtensionCatalogEntry,
   ExtensionCatalogOffer,
+  ExtensionCatalogShelfEntry,
   ExtensionFetchFailures,
   PlatformStackLayer,
 } from "./extension-catalog.js";
 export {
   buildExtensionCatalog,
   buildExtensionCatalogOffers,
+  buildExtensionCatalogShelf,
   deriveProjectPlatformStack,
   ExtensionActionResultCode,
   installEmbeddedExtension,
@@ -119,6 +121,8 @@ export {
   createFolderCompileDiagnosticsPublisher,
   FolderSessionError,
 } from "./folder-host-session.js";
+export type { LibraryInstallAttempt, LibraryOfferInstallSurface, LibraryOfferToasts } from "./library-offer.js";
+export { addOfferedLibrary } from "./library-offer.js";
 export type {
   LibraryUninstallGuardOutcome,
   LibraryUninstallImpact,

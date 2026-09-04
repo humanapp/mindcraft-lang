@@ -1,8 +1,10 @@
 import type { ConversationRecord } from "@wendoo/assistant-relay";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useAssistant } from "./assistant-context";
 import { ConversationView } from "./ConversationView";
 import type { BrainPlaces } from "./conversation/brain-places";
+import type { LibraryOffers } from "./conversation/library-offers";
+import { offersReporting } from "./conversation/library-offers";
 import type { BrainSurface } from "./conversation/tile-visuals";
 import { AssistantStatus } from "./session/machine";
 
@@ -35,6 +37,12 @@ export interface AssistantSurfaceProps {
    * from what the conversation itself has seen and leaves references untappable.
    */
   brainPlaces?: BrainPlaces | undefined;
+  /**
+   * The shelf the libraries the assistant offers are drawn against, and the
+   * host's own install a tap on one runs, as the host's workspaces carry them.
+   * Absent leaves every offer inert.
+   */
+  libraryOffers?: LibraryOffers | undefined;
 }
 
 /** The last thing the person asked for, or `undefined` when they have asked for nothing yet. */
@@ -49,8 +57,9 @@ function lastAsked(record: ConversationRecord | undefined): string | undefined {
 
 /**
  * The conversation surface bound to the standing session: it shows the active
- * brain's conversation, sends what is typed, and stops a running turn. Mounting
- * it starts no session, and it never takes the keyboard on its own.
+ * brain's conversation, sends what is typed, stops a running turn, and tells
+ * the session of each library an offer's install added. Mounting it starts no
+ * session, and it never takes the keyboard on its own.
  */
 export function AssistantSurface({
   name,
@@ -58,9 +67,18 @@ export function AssistantSurface({
   opensByPerson,
   brainSurface,
   brainPlaces,
+  libraryOffers,
 }: AssistantSurfaceProps) {
-  const { status, record, doing, send, stop, openSession } = useAssistant();
+  const { status, record, doing, send, stop, openSession, libraryAdded } = useAssistant();
   const [intent, setIntent] = useState("");
+  const brainId = record?.brainId;
+  const offers = useMemo(
+    () =>
+      brainId === undefined
+        ? libraryOffers
+        : offersReporting(libraryOffers, (coordinate) => libraryAdded(brainId, coordinate)),
+    [libraryOffers, libraryAdded, brainId]
+  );
 
   const submit = (): void => {
     const text = intent.trim();
@@ -69,7 +87,6 @@ export function AssistantSurface({
     send(text);
   };
 
-  const brainId = record?.brainId;
   const retry = status === AssistantStatus.Failed && brainId !== undefined ? () => openSession(brainId) : undefined;
   const asked = lastAsked(record);
   const askAgain = asked === undefined ? undefined : () => send(asked);
@@ -89,6 +106,7 @@ export function AssistantSurface({
       opensByPerson={opensByPerson}
       brainSurface={brainSurface}
       brainPlaces={brainPlaces}
+      libraryOffers={offers}
       onAnswer={send}
       doing={doing}
     />

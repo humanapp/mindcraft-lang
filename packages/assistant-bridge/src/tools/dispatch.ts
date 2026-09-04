@@ -1,7 +1,9 @@
 import type { z } from "zod";
 import { compileBrain } from "./compile.js";
+import { LibraryOfferVerdict, type LibraryOfferView, offerLibraries } from "./offer-libraries.js";
 import { proposeEdit, proposeEditBatch } from "./propose-edit.js";
 import { readCatalog } from "./read-catalog.js";
+import { readLibraries } from "./read-libraries.js";
 import { readProject } from "./read-project.js";
 import { simulate } from "./simulate.js";
 import { suggestTiles } from "./suggest-tiles.js";
@@ -60,12 +62,16 @@ async function runTool(workspace: AuthoringWorkspace, name: ToolName, input: unk
   switch (name) {
     case "compile":
       return compileBrain(workspace);
+    case "offer_libraries":
+      return offerLibraries(workspace, toolInputSchemas.offer_libraries.parse(input));
     case "propose_edit": {
       const edit = toolInputSchemas.propose_edit.parse(input);
       return edit.op === "batch" ? await proposeEditBatch(workspace, edit) : proposeEdit(workspace, edit);
     }
     case "read_catalog":
       return readCatalog(workspace, toolInputSchemas.read_catalog.parse(input));
+    case "read_libraries":
+      return readLibraries(workspace, toolInputSchemas.read_libraries.parse(input));
     case "read_project":
       return readProject(workspace);
     case "simulate":
@@ -98,5 +104,17 @@ export async function executeToolCall(
     };
     return { payload, isError: true };
   }
-  return { payload: await runTool(workspace, name, input) };
+  const payload = await runTool(workspace, name, input);
+  return isEmptyHandedOffer(name, payload) ? { payload, isError: true } : { payload };
+}
+
+/**
+ * Whether an `offer_libraries` answer presented nothing: every verdict unknown.
+ * Such an answer keeps its structured payload but rides back error-flagged, so
+ * the loop's churn guard sees a repeated identical empty-handed offer.
+ */
+function isEmptyHandedOffer(name: ToolName, payload: unknown): boolean {
+  if (name !== "offer_libraries") return false;
+  const offers = (payload as LibraryOfferView).offers;
+  return offers.every((offer) => offer.verdict === LibraryOfferVerdict.Unknown);
 }

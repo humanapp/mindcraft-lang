@@ -73,6 +73,7 @@ function standing(brainDef: BrainDef): Stand {
       workspaceFor: () => undefined as never,
       setEditedBrain: () => {},
       notePersonInteraction: (named: string) => noted.push(named),
+      libraryOffers: undefined,
     },
   };
 }

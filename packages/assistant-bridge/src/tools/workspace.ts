@@ -8,6 +8,7 @@ import { BrainCommandHistory, BrainDef } from "@wendoo/core/brain/model";
 import { CatalogScope } from "../catalog/scope.js";
 import type { TargetAdapter } from "../target/adapter.js";
 import type { CatalogFeaturing } from "./featuring.js";
+import type { LibraryShelfEntry } from "./read-libraries.js";
 import { sessionTileDocs } from "./tile-descriptions.js";
 import type { RuleSideName } from "./tool-schemas.js";
 
@@ -88,6 +89,12 @@ export interface AuthoringWorkspace {
    * documentation withheld.
    */
   readonly featuring?: CatalogFeaturing;
+  /**
+   * The libraries the host approves for the project being edited, called as
+   * each tool call reads them, so a project switched to since the last call is
+   * the one the answer describes. Absent leaves the shelf empty.
+   */
+  readonly libraryShelf?: () => readonly LibraryShelfEntry[];
   readonly adapter: TargetAdapter;
   /**
    * Called as each accepted edit lands in the document, once per editor command

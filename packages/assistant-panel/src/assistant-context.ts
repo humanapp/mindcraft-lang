@@ -16,6 +16,13 @@ export interface AssistantContextValue {
   readonly doing: TurnDoing | undefined;
   /** Start a turn on the active brain from what the person said. */
   readonly send: (text: string) => void;
+  /**
+   * Tell `brainId`'s session that the person added the library at `coordinate`,
+   * which opens a turn carrying that news. An add made while a turn of that
+   * brain's is running takes its turn once that one ends; an add to a brain
+   * holding no session tells nobody.
+   */
+  readonly libraryAdded: (brainId: string, coordinate: string) => void;
   /** Ask the running turn to stop. */
   readonly stop: () => void;
   /**

@@ -46,9 +46,9 @@ interface InlinePattern {
  *
  * This table and `renderSpan` in `SafeMarkdown.tsx` are the two places a new
  * inline form is added: a pattern here, and the element its span kind draws as
- * there. A reference takes the backticked `tile:` / `rule:` / `page:` form, and
- * stands ahead of the plain code form so a backticked reference is never read as
- * code.
+ * there. A reference takes the backticked form of one of the words
+ * {@link MarkdownReferenceForm} names, and stands ahead of the plain code form
+ * so a backticked reference is never read as code.
  */
 const inlinePatterns: readonly InlinePattern[] = [
   {

@@ -8,8 +8,10 @@
  * stands, what marks a turn that did not simply finish, when the assistant's
  * presence stands at the live edge and what it says it is doing there, which
  * control the intent box stands beside, what a lost
- * session offers, which lines read markup in what they carry, and which opens
- * of the panel land the keyboard in the intent box.
+ * session offers, which lines read markup in what they carry, which opens
+ * of the panel land the keyboard in the intent box, how a library the
+ * assistant offers is drawn against the shelf standing behind it, and that a
+ * library it merely names in its words offers nothing.
  *
  * It pins too how what the assistant said reads against the work it stands beside:
  * which of its runs stand on cards of their own and which in its bubble, which
@@ -22,6 +24,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
+import type { LibraryShelfEntry } from "@wendoo/assistant-bridge";
+import { LibraryOfferUnknownCode, LibraryOfferVerdict } from "@wendoo/assistant-bridge";
 import type {
   ConversationEntry,
   ConversationRecord,
@@ -41,6 +45,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { ConversationViewProps } from "./ConversationView";
 import { ConversationView, intentKeyAction, landKeyboardInIntent } from "./ConversationView";
 import type { BrainPlaces } from "./conversation/brain-places";
+import type { LibraryOffers } from "./conversation/library-offers";
 import type { BrainSurface } from "./conversation/tile-visuals";
 import { AssistantStatus } from "./session/machine";
 
@@ -2142,5 +2147,221 @@ describe("the things the assistant names", () => {
 
     assert.match(markup, /data-assistant-reference-word[^>]*>rule 2</);
     assert.match(/<(?:button|span)[^>]*data-assistant-reference="rule"[^>]*>/.exec(markup)?.[0] ?? "", /^<span/);
+  });
+});
+
+describe("the libraries the assistant offers", () => {
+  /** The coordinates the shelf in this block holds. */
+  const position = "example-org/lib-position";
+  const flock = "example-org/lib-flock";
+  const bundled = "example-org/lib-bundled";
+
+  /** The shelf the host stands: two libraries published at a page of their own, and one bundled with the app. */
+  const shelf: readonly LibraryShelfEntry[] = [
+    {
+      coordinate: position,
+      name: "Position",
+      version: "1.3.0",
+      description: "Position sensing.",
+      installed: false,
+      sourceUrl: `https://github.com/${position}`,
+    },
+    {
+      coordinate: flock,
+      name: "Flock",
+      version: "2.0.1",
+      description: "Flocking.",
+      installed: true,
+      sourceUrl: `https://github.com/${flock}`,
+    },
+    { coordinate: bundled, name: "Bundled", version: "1.0.0", description: "Comes with the app.", installed: false },
+  ];
+
+  /** Offers over {@link shelf}, whose install answers that the project holds what it was asked for. */
+  function offering(): LibraryOffers {
+    return {
+      entryFor: (coordinate) => shelf.find((entry) => entry.coordinate === coordinate),
+      install: async () => true,
+    };
+  }
+
+  /** A coordinate no shelf in this block holds. */
+  const gone = "example-org/lib-gone";
+
+  /** One call offering `coordinates`, answered listed for each of `listed` and unknown for the rest. */
+  function offerCall(coordinates: readonly string[], listed: readonly string[]): ConversationToolCall {
+    return {
+      name: "offer_libraries",
+      input: { coordinates },
+      outcome: {
+        kind: "ok",
+        payload: {
+          offers: coordinates.map((coordinate) =>
+            listed.includes(coordinate)
+              ? { coordinate, verdict: LibraryOfferVerdict.Listed }
+              : {
+                  coordinate,
+                  verdict: LibraryOfferVerdict.Unknown,
+                  code: LibraryOfferUnknownCode.NotShelved,
+                  message: `nothing is shelved at "${coordinate}"`,
+                }
+          ),
+        },
+      },
+    };
+  }
+
+  /** A record whose one turn offered `coordinates`, answered as the shelf standing behind it holds them. */
+  function offered(coordinates: readonly string[]): ConversationRecord {
+    const listed = coordinates.filter((coordinate) => shelf.some((entry) => entry.coordinate === coordinate));
+    return record([{ kind: "assistant", steps: [{ kind: "toolCall", call: offerCall(coordinates, listed) }] }]);
+  }
+
+  /** A record whose one turn was answered that each of `coordinates` is listed, whatever a shelf holds now. */
+  function offeredAsListed(coordinates: readonly string[]): ConversationRecord {
+    return record([{ kind: "assistant", steps: [{ kind: "toolCall", call: offerCall(coordinates, coordinates) }] }]);
+  }
+
+  test("draws a library the assistant offered as the card offering it", () => {
+    const markup = render({ record: offered([position]), libraryOffers: offering() });
+
+    assert.deepEqual(valuesOf(markup, "data-assistant-library"), [position]);
+    assert.deepEqual(valuesOf(markup, "data-assistant-library-state"), ["offerable"]);
+    assert.match(markup, /data-assistant-library-version[^>]*>1\.3\.0</);
+    assert.match(markup, /data-assistant-library-add/);
+  });
+
+  test("draws one card per library an offer listed, in the order it offered them", () => {
+    const markup = render({ record: offered([bundled, position, flock]), libraryOffers: offering() });
+
+    assert.deepEqual(valuesOf(markup, "data-assistant-library"), [bundled, position, flock]);
+  });
+
+  test("draws nothing at all for a coordinate the offer came back unknown for", () => {
+    const markup = render({ record: offered([position, gone, flock]), libraryOffers: offering() });
+
+    assert.deepEqual(valuesOf(markup, "data-assistant-library"), [position, flock]);
+    assert.doesNotMatch(markup, new RegExp(gone));
+  });
+
+  test("draws one card for a library the same turn offered twice", () => {
+    const twice = record([
+      {
+        kind: "assistant",
+        steps: [
+          { kind: "toolCall", call: offerCall([position], [position]) },
+          { kind: "toolCall", call: offerCall([position, flock], [position, flock]) },
+        ],
+      },
+    ]);
+
+    assert.deepEqual(valuesOf(render({ record: twice, libraryOffers: offering() }), "data-assistant-library"), [
+      position,
+      flock,
+    ]);
+  });
+
+  test("reads the shelf as it draws, so every card of a library just added stands added", () => {
+    const twice = record([
+      { kind: "assistant", steps: [{ kind: "toolCall", call: offerCall([position], [position]) }] },
+      { kind: "user", text: "what else is there?" },
+      { kind: "assistant", steps: [{ kind: "toolCall", call: offerCall([position], [position]) }] },
+    ]);
+    /** The same shelf once the project holds {@link position}, as an install leaves it. */
+    const held: LibraryOffers = {
+      entryFor: (coordinate) =>
+        shelf
+          .map((entry) => (entry.coordinate === position ? { ...entry, installed: true } : entry))
+          .find((entry) => entry.coordinate === coordinate),
+      install: async () => false,
+    };
+
+    assert.deepEqual(valuesOf(render({ record: twice, libraryOffers: offering() }), "data-assistant-library-state"), [
+      "offerable",
+      "offerable",
+    ]);
+    const after = render({ record: twice, libraryOffers: held });
+    assert.deepEqual(valuesOf(after, "data-assistant-library-state"), ["installed", "installed"]);
+    assert.doesNotMatch(after, /data-assistant-library-add/);
+  });
+
+  test("stands the offered cards at the end of the turn, under everything it said", () => {
+    const answered = record([
+      {
+        kind: "assistant",
+        steps: [
+          { kind: "narration", text: "Nothing here senses that." },
+          { kind: "toolCall", call: offerCall([position], [position]) },
+          { kind: "narration", text: "This one does." },
+        ],
+      },
+    ]);
+
+    const markup = render({ record: answered, libraryOffers: offering() });
+
+    assert.ok(
+      markup.indexOf('data-assistant-library="') > markup.lastIndexOf("data-assistant-narration"),
+      "the cards stand after the last thing the turn said"
+    );
+  });
+
+  test("keeps a turn's offers standing once a later turn folds it", () => {
+    const later = record([
+      { kind: "assistant", steps: [{ kind: "toolCall", call: offerCall([position], [position]) }] },
+      { kind: "user", text: "add it" },
+      { kind: "assistant", steps: [{ kind: "narration", text: "It is in." }] },
+    ]);
+
+    const markup = render({ record: later, libraryOffers: offering() });
+
+    assert.deepEqual(valuesOf(markup, "data-assistant-library"), [position]);
+    assert.equal(markup, render({ record: later, libraryOffers: offering() }), "a second draw stands the same offer");
+  });
+
+  test("leaves a library named in the assistant's own words as plain text, offering nothing", () => {
+    const named = record([
+      { kind: "assistant", steps: [{ kind: "narration", text: `Something like \`library:${position}\` would.` }] },
+    ]);
+
+    const markup = render({ record: named, libraryOffers: offering() });
+
+    assert.deepEqual(valuesOf(markup, "data-assistant-library"), []);
+    assert.doesNotMatch(markup, /data-assistant-library-add/);
+    assert.match(markup, new RegExp(`library:${position}`));
+  });
+
+  test("stands an offer the shelf no longer holds inert, with nothing to tap", () => {
+    const markup = render({ record: offeredAsListed([gone]), libraryOffers: offering() });
+
+    assert.deepEqual(valuesOf(markup, "data-assistant-library-state"), ["stale"]);
+    assert.doesNotMatch(markup, /data-assistant-library-add/);
+  });
+
+  test("stands every offer inert while the host stands no shelf", () => {
+    const markup = render({ record: offered([position]) });
+
+    assert.deepEqual(valuesOf(markup, "data-assistant-library-state"), ["stale"]);
+    assert.doesNotMatch(markup, /data-assistant-library-add/);
+  });
+
+  test("stands a library the project already holds as added, with nothing left to tap", () => {
+    const markup = render({ record: offered([flock]), libraryOffers: offering() });
+
+    assert.deepEqual(valuesOf(markup, "data-assistant-library-state"), ["installed"]);
+    assert.doesNotMatch(markup, /data-assistant-library-add/);
+  });
+
+  test("opens the page of a library published at one in a tab of its own", () => {
+    const markup = render({ record: offered([position]), libraryOffers: offering() });
+
+    assert.match(markup, new RegExp(`data-assistant-library-open[^>]*href="https://github.com/${position}"`));
+    assert.match(markup, /data-assistant-library-open[^>]*target="_blank"/);
+  });
+
+  test("leaves the reading of a library published nowhere of its own opening nothing", () => {
+    const markup = render({ record: offered([bundled]), libraryOffers: offering() });
+
+    assert.deepEqual(valuesOf(markup, "data-assistant-library"), [bundled]);
+    assert.doesNotMatch(markup, /data-assistant-library-open/);
   });
 });

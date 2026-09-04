@@ -12,6 +12,7 @@ export type { AssistantContextValue } from "./assistant-context";
 export { useAssistant } from "./assistant-context";
 export type { BrainPlaces, RulePlace } from "./conversation/brain-places";
 export { brainPlacesOf } from "./conversation/brain-places";
+export type { LibraryOffers } from "./conversation/library-offers";
 export type { BrainSurface, TileLook } from "./conversation/tile-visuals";
 export { brainSurfaceOf } from "./conversation/tile-visuals";
 export type { AssistantChannel, AssistantConnect } from "./session/channel";

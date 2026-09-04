@@ -8,7 +8,16 @@ import { createRelayLoopback } from "./testing/index.js";
 
 const manifest: RelayToolManifest = {
   target: "example-org/trg-fake",
-  tools: ["compile", "propose_edit", "read_catalog", "read_project", "simulate", "suggest_tiles"],
+  tools: [
+    "compile",
+    "offer_libraries",
+    "propose_edit",
+    "read_catalog",
+    "read_libraries",
+    "read_project",
+    "simulate",
+    "suggest_tiles",
+  ],
   morphology: false,
   catalogDigest: "9f2c41ab",
 };

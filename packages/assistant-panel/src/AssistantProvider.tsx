@@ -27,6 +27,7 @@ export function AssistantProvider({ children, ...options }: AssistantProviderPro
   const actions = useMemo(
     () => ({
       send: (text: string) => machine.send(text),
+      libraryAdded: (brainId: string, coordinate: string) => machine.libraryAdded(brainId, coordinate),
       stop: () => machine.stop(),
       stopAll: () => machine.stopAll(),
       setActiveBrain: (brainId: string) => machine.setActiveBrain(brainId),

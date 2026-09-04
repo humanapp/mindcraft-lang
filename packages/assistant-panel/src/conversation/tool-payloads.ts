@@ -1,4 +1,5 @@
 import type { EditOutcome, ProjectPageRef, ProjectRule, ProjectTile } from "@wendoo/assistant-bridge";
+import { LibraryOfferVerdict } from "@wendoo/assistant-bridge";
 import type { ConversationToolCall } from "@wendoo/assistant-relay";
 import { RuleTriggerMode } from "@wendoo/core/brain";
 
@@ -125,6 +126,27 @@ export function refusedProposal(call: ConversationToolCall): RefusedProposal | u
   if (!payload || payload.ok !== false || typeof payload.code !== "number") return undefined;
   const params = asObject(payload.params) ?? {};
   return { code: payload.code, params: params as RefusedProposal["params"] };
+}
+
+/**
+ * The libraries one `offer_libraries` call presented, as the `<owner>/<repo>`
+ * coordinate of each, in the order the call offered them. A coordinate the
+ * shelf did not hold presented nothing and is left out, and a call of another
+ * tool, or one the bridge could not serve, comes back `undefined`.
+ */
+export function offeredLibraries(call: ConversationToolCall): readonly string[] | undefined {
+  if (call.name !== "offer_libraries") return undefined;
+  const { outcome } = call;
+  if (outcome.kind !== "ok" || outcome.isError === true) return undefined;
+  const offers = asObject(outcome.payload)?.offers;
+  if (!Array.isArray(offers)) return undefined;
+  const presented: string[] = [];
+  for (const entry of offers) {
+    const offer = asObject(entry);
+    if (offer?.verdict !== LibraryOfferVerdict.Listed || typeof offer.coordinate !== "string") continue;
+    presented.push(offer.coordinate);
+  }
+  return presented;
 }
 
 /** Whether `call` is a `compile` that reported a brain building all the way through. */

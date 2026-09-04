@@ -6,6 +6,7 @@ import type { EmbeddedExtension, FetchedExtensionContentMap } from "@wendoo/brid
 import {
   buildEcosimCatalogOffers,
   buildEcosimExtensionEntries,
+  buildEcosimLibraryShelf,
   loadSimLibraryCatalog,
 } from "./ecosim-extension-browser";
 import { ECOSIM_LIB_COORDINATE, ECOSIM_LIB_REFERENCE } from "./ecosim-extension-coordinates";
@@ -101,6 +102,31 @@ describe("buildEcosimCatalogOffers -- compatibility-filtered against the sim sta
     assert.deepEqual(
       offers.map((offer) => offer.coordinate),
       [DETECT]
+    );
+  });
+
+  test("the shelf lists the seeded libraries of a fresh project, none of them installed", () => {
+    const shelf = buildEcosimLibraryShelf(project, embedRecord);
+
+    assert.deepEqual(shelf.map((entry) => entry.coordinate).sort(), [TELEPORT, DETECT].sort());
+    assert.deepEqual(
+      shelf.map((entry) => entry.installed),
+      [false, false]
+    );
+    for (const entry of shelf) {
+      assert.ok(entry.description.length > 0, `${entry.coordinate} carries what it adds`);
+    }
+  });
+
+  test("installing a library keeps it on the shelf and flips it to installed", () => {
+    const shelf = buildEcosimLibraryShelf({ ...project, [TELEPORT]: `embedded:${TELEPORT}` }, embedRecord);
+
+    assert.deepEqual(
+      shelf.map((entry) => [entry.coordinate, entry.installed]).sort(),
+      [
+        [DETECT, false],
+        [TELEPORT, true],
+      ].sort()
     );
   });
 });

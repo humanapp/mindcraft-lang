@@ -93,8 +93,9 @@ async function playTurn(service: ServiceEnd, turn: ScriptedTurn, at: number): Pr
 
 /**
  * Answer the client's session from the service's end of `loopback`, playing one
- * scripted turn per user message. Resolves once the script runs out or either
- * end closes the pairing; rejects on anything else the loopback throws.
+ * scripted turn per message that opens one -- what the person said, and a
+ * library they added. Resolves once the script runs out or either end closes
+ * the pairing; rejects on anything else the loopback throws.
  */
 export async function runScriptedService(loopback: RelayLoopback, script: ScriptedService): Promise<void> {
   const service = loopback.service;
@@ -120,7 +121,7 @@ export async function runScriptedService(loopback: RelayLoopback, script: Script
         }
         continue;
       }
-      if (message.type !== "session:userMessage") continue;
+      if (message.type !== "session:userMessage" && message.type !== "session:libraryAdded") continue;
       const turn = turns[played];
       if (!turn) return;
       const result = await playTurn(service, turn, played);

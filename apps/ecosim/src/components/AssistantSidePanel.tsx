@@ -53,6 +53,7 @@ export function AssistantSidePanel({ isOpen, fallbackName, workspaces, opensByPe
       opensByPerson={opensByPerson}
       brainSurface={brainSurface}
       brainPlaces={brainPlaces}
+      libraryOffers={workspaces.libraryOffers}
     />
   );
 }

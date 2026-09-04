@@ -28,10 +28,14 @@ export function namedToolActivity(name: string): ToolActivity {
   switch (name) {
     case "read_catalog":
       return { kind: ToolActivityKind.Read, text: "checking tiles" };
+    case "read_libraries":
+      return { kind: ToolActivityKind.Read, text: "checking libraries" };
     case "read_project":
       return { kind: ToolActivityKind.Read, text: "reading brain" };
     case "suggest_tiles":
       return { kind: ToolActivityKind.Read, text: "finding tiles" };
+    case "offer_libraries":
+      return { kind: ToolActivityKind.Read, text: "offering libraries" };
     case "compile":
       return { kind: ToolActivityKind.Ran, text: "validating" };
     case "simulate":

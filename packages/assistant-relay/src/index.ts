@@ -16,6 +16,7 @@ export {
 } from "./conversation.js";
 export type {
   RelayDownstreamMessage,
+  RelayLibraryAdded,
   RelayNarrationDelta,
   RelayStop,
   RelayToolCallBatch,

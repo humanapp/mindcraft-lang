@@ -13,9 +13,10 @@ export interface SafeMarkdownProps {
   /** The markdown source, read under the safe subset and rendered in the type scale it stands in. */
   text: string;
   /**
-   * Draws each `tile:` / `rule:` / `page:` reference the text names. A reference
-   * this does not draw, and every reference when this is not given, reads as the
-   * id it names, marked as one nothing was found for.
+   * Draws each reference the text names, in any of the forms
+   * {@link MarkdownReferenceForm} lists. A reference this does not draw, and
+   * every reference when this is not given, reads as the id it names, marked as
+   * one nothing was found for.
    */
   renderReference?: RenderMarkdownReference | undefined;
 }
@@ -107,9 +108,9 @@ function renderBlock(
 /**
  * Draws `text` as a conservative markdown subset: blank-line separated
  * paragraphs, bold, italic, inline code, single-level bulleted and numbered
- * lists, headers read as emphasized paragraphs, and backticked `tile:` /
- * `rule:` / `page:` references drawn by `renderReference`. A link keeps its
- * label as plain text and loses its address, and every form outside the
+ * lists, headers read as emphasized paragraphs, and the backticked references
+ * {@link MarkdownReferenceForm} lists, drawn by `renderReference`. A link keeps
+ * its label as plain text and loses its address, and every form outside the
  * subset -- raw HTML included -- reads as literal text. The output is React
  * elements and text nodes only, so nothing in `text` can become live markup.
  *

@@ -11,6 +11,7 @@ import type {
   RelayConnect,
   RelayToolManifest,
   RelayToolOutcome,
+  RelayUpstreamMessage,
 } from "@wendoo/assistant-relay";
 import {
   CONVERSATION_RECORD_VERSION,
@@ -24,7 +25,7 @@ import type { RelayLoopback } from "@wendoo/assistant-relay/testing";
 import { createRelayLoopback } from "@wendoo/assistant-relay/testing";
 import { createPersonActivity } from "../app/person-activity";
 import { recordFor } from "../conversation/store";
-import type { ScriptedCall, ScriptedService } from "../testing/scripted-service";
+import type { ScriptedCall, ScriptedService, ScriptedTurn } from "../testing/scripted-service";
 import { runScriptedService } from "../testing/scripted-service";
 import type { AssistantChannel } from "./channel";
 import type { AssistantMachineOptions, AssistantMachineState, TurnDoing } from "./machine";
@@ -68,7 +69,16 @@ const firstTurnCalls = {
 /** What the client declares it serves. */
 const manifest: RelayToolManifest = {
   target: FAKE_TARGET_IDENTITY,
-  tools: ["compile", "propose_edit", "read_catalog", "read_project", "simulate", "suggest_tiles"],
+  tools: [
+    "compile",
+    "offer_libraries",
+    "propose_edit",
+    "read_catalog",
+    "read_libraries",
+    "read_project",
+    "simulate",
+    "suggest_tiles",
+  ],
   morphology: false,
   catalogDigest: "0f3a19c2",
 };
@@ -87,6 +97,8 @@ interface Harness {
   closed(): number;
   /** The handshake of every session the machine opened, in the order it opened them. */
   handshakes(): readonly RelayConnect[];
+  /** Every message the machine sent the service, across every session, in the order it sent them. */
+  sent(): readonly RelayUpstreamMessage[];
   /** Close the session opened at `at` from the service's end, as the service dropping it. */
   drop(at: number): void;
   /** Resolves once every session's scripted service has played out its script. */
@@ -128,6 +140,7 @@ function harness(script: ScriptedService | ((at: number) => ScriptedService), op
   const services: Promise<void>[] = [];
   const loopbacks: RelayLoopback[] = [];
   const handshakes: RelayConnect[] = [];
+  const sent: RelayUpstreamMessage[] = [];
   let connects = 0;
 
   const workspace = (brainId: string): AuthoringWorkspace => {
@@ -156,6 +169,7 @@ function harness(script: ScriptedService | ((at: number) => ScriptedService), op
     services.push(runScriptedService(loopback, typeof script === "function" ? script(services.length) : script));
     const channel: AssistantChannel = {
       send: (message) => {
+        sent.push(message);
         if (message.type === "session:connect") handshakes.push(message);
         loopback.toolServer.send(message);
       },
@@ -183,6 +197,7 @@ function harness(script: ScriptedService | ((at: number) => ScriptedService), op
     connects: () => connects,
     closed: () => closes.length,
     handshakes: () => handshakes,
+    sent: () => sent,
     drop: (at: number) => {
       const loopback = loopbacks[at];
       if (!loopback) throw new Error(`no session was opened at ${at}`);
@@ -442,6 +457,208 @@ describe("opening the session", () => {
 
     assert.equal(stand.machine.getState().status, AssistantStatus.Failed);
     assert.equal(stand.closed(), 1);
+    await stand.served;
+  });
+});
+
+describe("a library the person added", () => {
+  /** The coordinate every add in this block names. */
+  const added = "example-org/lib-position";
+
+  /** The coordinate a second add names, where a test makes two. */
+  const alsoAdded = "example-org/lib-flock";
+
+  /** A turn the service leaves running until the client asks it to stop. */
+  const heldTurn: ScriptedTurn = { steps: [{ kind: "awaitStop" }] };
+
+  /** A turn that narrates and completes, as an add's own turn plays out. */
+  const quietTurn: ScriptedTurn = { steps: [{ kind: "narration", text: "looking at it" }] };
+
+  /** Every add the machine told the service about, in the order it told it. */
+  function addsIn(stand: Harness): readonly RelayUpstreamMessage[] {
+    return stand.sent().filter((message) => message.type === "session:libraryAdded");
+  }
+
+  /** The add message for `coordinate`, as the machine sends it. */
+  function addOf(coordinate: string): RelayUpstreamMessage {
+    return { type: "session:libraryAdded", coordinate };
+  }
+
+  /** Resolve once `brainId`'s conversation holds `count` entries. */
+  function holds(machine: AssistantMachine, brainId: string, count: number): Promise<void> {
+    return until(machine, (state) => recordFor(state.store, brainId).entries.length === count);
+  }
+
+  test("opens a turn on the session standing, carrying the coordinate and nothing of the person's own", async () => {
+    const stand = harness(oneQuietTurn);
+    stand.machine.setActiveBrain("brain-a");
+    stand.machine.openSession("brain-a");
+    await standsAt(stand.machine, "brain-a", AssistantStatus.Ready);
+
+    stand.machine.libraryAdded("brain-a", added);
+    await settled(stand.machine);
+
+    assert.deepEqual(addsIn(stand), [addOf(added)]);
+    const entries = conversation(stand.machine, "brain-a").entries;
+    assert.deepEqual(
+      entries.map((entry) => entry.kind),
+      ["assistant"],
+      "the add opened a turn and left nothing standing as the person's"
+    );
+    assert.equal(saidIn(entries[0]!), "looking at it");
+    await stand.served;
+  });
+
+  test("stands the brain turn-active from the add that opened the turn", async () => {
+    const stand = harness(oneQuietTurn);
+    stand.machine.setActiveBrain("brain-a");
+    stand.machine.openSession("brain-a");
+    await standsAt(stand.machine, "brain-a", AssistantStatus.Ready);
+
+    stand.machine.libraryAdded("brain-a", added);
+
+    assert.equal(stand.machine.getState().status, AssistantStatus.TurnActive);
+    await settled(stand.machine);
+    await stand.served;
+  });
+
+  test("holds nothing back from a session standing ready, whatever turns follow", async () => {
+    const stand = harness({ turns: [quietTurn, quietTurn] });
+    stand.machine.setActiveBrain("brain-a");
+    stand.machine.openSession("brain-a");
+    await standsAt(stand.machine, "brain-a", AssistantStatus.Ready);
+
+    stand.machine.libraryAdded("brain-a", added);
+    await settled(stand.machine);
+    stand.machine.send("and now hide");
+    await settled(stand.machine);
+
+    assert.deepEqual(addsIn(stand), [addOf(added)], "the add was told once, not told again at a later turn's end");
+    await stand.served;
+  });
+
+  test("tells nobody while the brain holds no session, holding the add for no session to come", async () => {
+    // The page stands out of view, so nothing dials for the brain and it holds
+    // no session to tell.
+    const stand = harness(oneQuietTurn, { presence: pageIn(false).presence });
+    stand.machine.setActiveBrain("brain-a");
+
+    stand.machine.libraryAdded("brain-a", added);
+    await flush();
+
+    assert.equal(stand.connects(), 0);
+    assert.deepEqual(addsIn(stand), []);
+    assert.notEqual(stand.machine.getState().status, AssistantStatus.TurnActive);
+    assert.deepEqual(conversation(stand.machine, "brain-a").entries, []);
+
+    stand.machine.openSession("brain-a");
+    await standsAt(stand.machine, "brain-a", AssistantStatus.Ready);
+
+    assert.deepEqual(addsIn(stand), [], "the session that opened afterwards was told nothing of the add");
+    assert.deepEqual(conversation(stand.machine, "brain-a").entries, []);
+  });
+
+  test("tells nobody for a brain the machine holds nothing of", async () => {
+    const stand = harness(oneQuietTurn);
+
+    stand.machine.libraryAdded("brain-a", added);
+    await flush();
+
+    assert.equal(stand.connects(), 0);
+    assert.deepEqual(addsIn(stand), []);
+  });
+
+  test("waits for the turn running, and takes a turn of its own once it ends", async () => {
+    const stand = harness({ turns: [heldTurn, quietTurn] });
+    const seen: string[] = [stand.machine.getState().status];
+    stand.machine.subscribe(() => {
+      const status = stand.machine.getState().status;
+      if (seen[seen.length - 1] !== status) seen.push(status);
+    });
+    stand.machine.setActiveBrain("brain-a");
+
+    stand.machine.send("make it hide");
+    await until(stand.machine, (state) => state.status === AssistantStatus.TurnActive);
+    stand.machine.libraryAdded("brain-a", added);
+    assert.deepEqual(addsIn(stand), [], "nothing is told while the turn the add arrived during still runs");
+
+    stand.machine.stop();
+    await holds(stand.machine, "brain-a", 3);
+    await settledFor(stand.machine, "brain-a");
+
+    assert.deepEqual(addsIn(stand), [addOf(added)]);
+    assert.deepEqual(
+      conversation(stand.machine, "brain-a").entries.map((entry) => entry.kind),
+      ["user", "assistant", "assistant"],
+      "the add took a turn of its own, after the one it waited for"
+    );
+    assert.deepEqual(seen, [
+      AssistantStatus.Idle,
+      AssistantStatus.TurnActive,
+      AssistantStatus.Ready,
+      AssistantStatus.TurnActive,
+      AssistantStatus.Ready,
+    ]);
+    await stand.served;
+  });
+
+  test("takes a turn for each of two adds made during one turn, in the order they were made", async () => {
+    const stand = harness({ turns: [heldTurn, quietTurn, quietTurn] });
+    stand.machine.setActiveBrain("brain-a");
+
+    stand.machine.send("make it hide");
+    await until(stand.machine, (state) => state.status === AssistantStatus.TurnActive);
+    stand.machine.libraryAdded("brain-a", added);
+    stand.machine.libraryAdded("brain-a", alsoAdded);
+    stand.machine.stop();
+    await holds(stand.machine, "brain-a", 4);
+
+    assert.deepEqual(addsIn(stand), [addOf(added), addOf(alsoAdded)]);
+    assert.deepEqual(
+      conversation(stand.machine, "brain-a").entries.map((entry) => entry.kind),
+      ["user", "assistant", "assistant", "assistant"],
+      "each add took a turn of its own, rather than sharing one"
+    );
+    await stand.served;
+  });
+
+  test("takes its turn on the session opened after the one it was made on was lost", async () => {
+    const stand = harness((at) => (at === 0 ? { turns: [heldTurn] } : { turns: [quietTurn] }));
+    stand.machine.setActiveBrain("brain-a");
+
+    stand.machine.send("make it hide");
+    await until(stand.machine, (state) => state.status === AssistantStatus.TurnActive);
+    stand.machine.libraryAdded("brain-a", added);
+    stand.drop(0);
+    await holds(stand.machine, "brain-a", 3);
+
+    assert.equal(stand.connects(), 2, "the session the add waited on was lost and another was opened");
+    assert.deepEqual(addsIn(stand), [addOf(added)]);
+    assert.equal(
+      endingOf(conversation(stand.machine, "brain-a").entries[1]!)?.kind,
+      "failure",
+      "the turn the add waited for went with the session"
+    );
+    assert.equal(saidIn(conversation(stand.machine, "brain-a").entries[2]!), "looking at it");
+    await stand.served;
+  });
+
+  test("takes its turn on the brain it was added to, whatever brain is being shown by then", async () => {
+    // The page stands out of view, so nothing dials for the brain shown second.
+    const stand = harness({ turns: [heldTurn, quietTurn] }, { presence: pageIn(false).presence });
+    stand.machine.setActiveBrain("brain-a");
+
+    stand.machine.send("make it hide");
+    await until(stand.machine, (state) => state.status === AssistantStatus.TurnActive);
+    stand.machine.libraryAdded("brain-a", added);
+    stand.machine.setActiveBrain("brain-b");
+    stand.machine.stopAll();
+    await holds(stand.machine, "brain-a", 3);
+
+    assert.deepEqual(addsIn(stand), [addOf(added)]);
+    assert.equal(stand.connects(), 1, "the brain shown by then was told nothing and opened no session");
+    assert.deepEqual(conversation(stand.machine, "brain-b").entries, []);
+    assert.equal(sessionStatus(stand.machine.getState().sessions, "brain-b"), AssistantStatus.Idle);
     await stand.served;
   });
 });

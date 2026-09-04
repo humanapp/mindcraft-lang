@@ -1,9 +1,16 @@
-import type { AuthoringWorkspace, BrainEditHistory, CatalogFeaturing, TargetAdapter } from "@wendoo/assistant-bridge";
+import type {
+  AuthoringWorkspace,
+  BrainEditHistory,
+  CatalogFeaturing,
+  LibraryShelfEntry,
+  TargetAdapter,
+} from "@wendoo/assistant-bridge";
 import { scopedCatalogs, sessionTileDocs } from "@wendoo/assistant-bridge";
 import type { WendooEnvironment } from "@wendoo/core/app";
 import type { BrainCommandHistory } from "@wendoo/core/brain/model";
 import { BrainEditOrigin } from "@wendoo/core/brain/model";
 import type { EditedBrain } from "@wendoo/ui/brain-editor/EditedBrainContext";
+import type { LibraryOffers } from "../conversation/library-offers";
 import type { PersonActivity } from "./person-activity";
 import { watchPersonInteraction } from "./person-activity";
 
@@ -47,6 +54,21 @@ export interface EditedBrainWorkspacesOptions {
    */
   readonly featuring?: () => CatalogFeaturing;
   /**
+   * The libraries the app approves for the project being edited. Carried onto
+   * every workspace handed out and called by the tool that reads the shelf, so
+   * a project switched to since the last call is the one it answers from.
+   * Absent leaves the shelf empty.
+   */
+  readonly libraryShelf?: () => readonly LibraryShelfEntry[];
+  /**
+   * Add the library at `coordinate` to the project through the app's own
+   * install, called once per tap on a library the assistant offered. The app
+   * reports the outcome itself and answers whether this attempt put the library
+   * in the project, which a refusal, a failure, and a library the project
+   * already held all answer `false`. Absent leaves every offer inert.
+   */
+  readonly installLibrary?: (coordinate: string) => Promise<boolean>;
+  /**
    * Where the person's own acting on the edited brain is recorded, and read
    * from to leave the view alone while they are working. Absent leaves every
    * landed edit bringing its rule into view and records nothing.
@@ -84,6 +106,12 @@ export interface EditedBrainWorkspaces {
    * acting on it does. Changes no document, so a turn keeps running.
    */
   readonly notePersonInteraction: (brainId: string) => void;
+  /**
+   * The shelf the libraries the assistant offers are drawn against, and the
+   * app's own install a tap on one runs. `undefined` where the app carried no
+   * shelf or no install, which leaves every offer inert.
+   */
+  readonly libraryOffers: LibraryOffers | undefined;
 }
 
 /**
@@ -113,7 +141,7 @@ function toolEditHistory(history: BrainCommandHistory): BrainEditHistory {
  * the call.
  */
 export function createEditedBrainWorkspaces(options: EditedBrainWorkspacesOptions): EditedBrainWorkspaces {
-  const { environment, adapter, activity, featuring } = options;
+  const { environment, adapter, activity, featuring, libraryShelf, installLibrary } = options;
   const doc = options.doc ?? (typeof document === "undefined" ? undefined : document);
   const docs = sessionTileDocs(adapter.tileDocs());
   let edited: EditedBrain | undefined;
@@ -149,6 +177,7 @@ export function createEditedBrainWorkspaces(options: EditedBrainWorkspacesOption
         descriptions: docs.descriptions,
         assistantSections: docs.assistantSections,
         ...(featuring ? { featuring: featuring() } : {}),
+        ...(libraryShelf ? { libraryShelf } : {}),
         adapter,
         onEditLanded: (landed) => {
           if (activity?.isInteracting(brainId) === true) return;
@@ -163,5 +192,12 @@ export function createEditedBrainWorkspaces(options: EditedBrainWorkspacesOption
     notePersonInteraction: (brainId: string): void => {
       activity?.noteInteraction(brainId);
     },
+    libraryOffers:
+      libraryShelf === undefined || installLibrary === undefined
+        ? undefined
+        : {
+            entryFor: (coordinate: string) => libraryShelf().find((entry) => entry.coordinate === coordinate),
+            install: installLibrary,
+          },
   };
 }

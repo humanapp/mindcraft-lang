@@ -3,9 +3,11 @@ import type { ToolCallMediator } from "@wendoo/assistant-bridge/relay";
 import { serveToolCalls, unservedToolResults } from "@wendoo/assistant-bridge/relay";
 import type {
   ConversationTurnEnding,
+  RelayLibraryAdded,
   RelayToolCallBatch,
   RelayToolManifest,
   RelayToolResultBatch,
+  RelayUserMessage,
 } from "@wendoo/assistant-relay";
 import {
   ASSISTANT_RELAY_PROTOCOL_VERSION,
@@ -157,6 +159,11 @@ export class AssistantMachine {
   private readonly stopRequested = new Set<string>();
   /** What the person had changed of a brain's document when its running turn started. */
   private readonly changesAtTurnStart = new Map<string, number>();
+  /**
+   * Libraries added to a brain while a turn of its was running, in the order
+   * they were added, each waiting for a turn of its own.
+   */
+  private readonly pendingAdded = new Map<string, string[]>();
   private readonly listeners = new Set<() => void>();
   private readonly presence: SessionPresence;
   private readonly random: () => number;
@@ -220,6 +227,54 @@ export class AssistantMachine {
   }
 
   /**
+   * Tell `brainId`'s session that the person added the library at `coordinate`,
+   * which opens a turn carrying that news and nothing of the person's own. An
+   * add made while a turn of that brain's is running waits for it, and takes a
+   * turn of its own once it ends; adds waiting together are told in the order
+   * they were made. An add to a brain holding no session tells nobody and waits
+   * for nothing.
+   */
+  libraryAdded(brainId: string, coordinate: string): void {
+    if (sessionStatus(this.current.sessions, brainId) === AssistantStatus.TurnActive) {
+      const waiting = this.pendingAdded.get(brainId);
+      if (waiting === undefined) this.pendingAdded.set(brainId, [coordinate]);
+      else waiting.push(coordinate);
+      return;
+    }
+    const channel = this.channels.get(brainId);
+    if (channel === undefined) return;
+    this.startAdded(brainId, channel, coordinate);
+  }
+
+  /**
+   * Open a turn on `channel` carrying the news that the person added the library
+   * at `coordinate` to `brainId`.
+   */
+  private startAdded(brainId: string, channel: AssistantChannel, coordinate: string): void {
+    this.changesAtTurnStart.set(brainId, this.options.activity?.mutations(brainId) ?? 0);
+    this.commit({ sessions: withSessionStatus(this.current.sessions, brainId, AssistantStatus.TurnActive) });
+    this.beginDoing(brainId, { kind: "planning" });
+    void this.carryTurn(brainId, channel, { type: "session:libraryAdded", coordinate });
+  }
+
+  /**
+   * Open the turn of the library `brainId` has been holding longest, once it
+   * holds a session and no turn of its is running. Does nothing when the brain
+   * holds no waiting library.
+   */
+  private drainPending(brainId: string): void {
+    const waiting = this.pendingAdded.get(brainId);
+    if (waiting === undefined) return;
+    if (sessionStatus(this.current.sessions, brainId) === AssistantStatus.TurnActive) return;
+    const channel = this.channels.get(brainId);
+    if (channel === undefined) return;
+    const coordinate = waiting.shift();
+    if (waiting.length === 0) this.pendingAdded.delete(brainId);
+    if (coordinate === undefined) return;
+    this.startAdded(brainId, channel, coordinate);
+  }
+
+  /**
    * Ask the active brain's running turn to stop. Does nothing when no turn of
    * its is running. A turn still waiting for its session is asked as soon as
    * the session opens.
@@ -257,6 +312,7 @@ export class AssistantMachine {
     this.refused.clear();
     this.stopRequested.clear();
     this.changesAtTurnStart.clear();
+    this.pendingAdded.clear();
     this.commit({ sessions: emptySessions(), doing: new Map() });
   }
 
@@ -319,6 +375,18 @@ export class AssistantMachine {
     this.channels.delete(brainId);
   }
 
+  /**
+   * Hold `channel` as `brainId`'s session: it is given up the moment the channel
+   * closes, the brain stands ready on it, and a library the brain has been
+   * holding takes its turn on it.
+   */
+  private hold(brainId: string, channel: AssistantChannel): void {
+    this.channels.set(brainId, channel);
+    this.dropWhenClosed(brainId, channel);
+    this.settle(brainId, AssistantStatus.Ready);
+    this.drainPending(brainId);
+  }
+
   /** Stand `brainId`'s session at `status`, leaving a turn of its own running untouched. */
   private settle(brainId: string, status: AssistantStatus): void {
     if (sessionStatus(this.current.sessions, brainId) === AssistantStatus.TurnActive) return;
@@ -344,6 +412,7 @@ export class AssistantMachine {
       ),
     });
     if (!held) void this.reopen(brainId);
+    this.drainPending(brainId);
   }
 
   /**
@@ -373,9 +442,7 @@ export class AssistantMachine {
         this.giveUp(brainId, outcome.kind);
         return undefined;
       }
-      this.channels.set(brainId, outcome.channel);
-      this.dropWhenClosed(brainId, outcome.channel);
-      this.settle(brainId, AssistantStatus.Ready);
+      this.hold(brainId, outcome.channel);
       return outcome.channel;
     });
     this.opening.set(brainId, attempt);
@@ -448,9 +515,7 @@ export class AssistantMachine {
           return;
         }
         if (outcome.kind === "opened") {
-          this.channels.set(brainId, outcome.channel);
-          this.dropWhenClosed(brainId, outcome.channel);
-          this.settle(brainId, AssistantStatus.Ready);
+          this.hold(brainId, outcome.channel);
           return;
         }
         if (outcome.kind === "refused") {
@@ -550,16 +615,28 @@ export class AssistantMachine {
     }
   }
 
-  /** Run one turn end to end on `brainId`'s record. */
+  /** Run one turn end to end on `brainId`'s record, opening its session when it holds none. */
   private async runTurn(brainId: string, text: string): Promise<void> {
     const channel = await this.openChannel(brainId);
     if (channel === undefined) {
       this.finish(brainId, { kind: "failure", code: ConversationTurnFailureCode.NotConnected });
       return;
     }
+    await this.carryTurn(brainId, channel, { type: "session:userMessage", text });
+  }
 
+  /**
+   * Send `opening` on `channel` and fill `brainId`'s record from the turn it
+   * starts, until that turn ends. A session that goes while the turn runs
+   * finishes it as disconnected.
+   */
+  private async carryTurn(
+    brainId: string,
+    channel: AssistantChannel,
+    opening: RelayUserMessage | RelayLibraryAdded
+  ): Promise<void> {
     try {
-      channel.send({ type: "session:userMessage", text });
+      channel.send(opening);
       if (this.stopRequested.delete(brainId)) channel.send({ type: "turn:stop" });
       await this.follow(brainId, channel);
     } catch {
