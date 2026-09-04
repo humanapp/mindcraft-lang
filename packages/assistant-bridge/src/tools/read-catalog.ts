@@ -297,7 +297,8 @@ function matches(tile: CatalogTile, needle: string): boolean {
     tile.tileId.toLowerCase().includes(needle) ||
     tile.label.toLowerCase().includes(needle) ||
     tile.kind.toLowerCase().includes(needle) ||
-    (tile.description?.toLowerCase().includes(needle) ?? false)
+    (tile.description?.toLowerCase().includes(needle) ?? false) ||
+    (tile.assistant?.toLowerCase().includes(needle) ?? false)
   );
 }
 

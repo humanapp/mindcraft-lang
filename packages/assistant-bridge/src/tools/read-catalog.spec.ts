@@ -256,6 +256,25 @@ describe("the assistant section read_catalog serves a tile", () => {
     assert.equal(bundledTile({ ...documented, ...baked }).assistant, bundleTileTeaching);
     assert.equal(bundledTile({ ...undocumented, ...baked }).assistant, undefined);
   });
+
+  test("filters on the teaching of a tile that serves it, and not once featuring withholds it", () => {
+    const ws = bundledWorkspace(bundleTileDocWithSection);
+    const featured = { ...ws, featuring: featuring(USER_TILE_NAMESPACE) };
+    const withheld = { ...ws, featuring: featuring() };
+
+    const found = catalogTiles(readCatalog(featured, { filter: "the moment the rehearsal" }));
+    assert.equal(
+      found.some((tile) => tile.tileId === USER_TILE_ID),
+      true,
+      "the teaching text is searchable"
+    );
+    const missed = catalogTiles(readCatalog(withheld, { filter: "the moment the rehearsal" }));
+    assert.equal(
+      missed.some((tile) => tile.tileId === USER_TILE_ID),
+      false,
+      "withheld teaching matches nothing"
+    );
+  });
 });
 
 describe("what the featuring of a session moves in the catalog it serves", () => {
