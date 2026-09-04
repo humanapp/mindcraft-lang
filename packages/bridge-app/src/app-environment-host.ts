@@ -1,4 +1,5 @@
 import type {
+  ApprovedCatalogEntryLookup,
   ExtensionAddInputResolution,
   ExtensionCatalogMoves,
   ExtensionFetchResult,
@@ -172,6 +173,13 @@ export interface AppEnvironmentHostOptions {
   catalogMoves?: ExtensionCatalogMoves;
 
   /**
+   * Resolves a coordinate to the approved pin the host's catalog entry offers.
+   * An update check for a listed coordinate offers that pin and does not read
+   * the source. When omitted, every update check reads the source.
+   */
+  approvedCatalogEntry?: ApprovedCatalogEntryLookup;
+
+  /**
    * Host-supplied RNG. The bridge app forwards this to
    * {@link createWendooEnvironment} so brains pull randomness from the host
    * (e.g. the simulator's seeded RNG). When omitted, the environment falls back
@@ -222,6 +230,7 @@ export class AppEnvironmentHost {
   private readonly embeddedExtensions: readonly EmbeddedExtension[];
   private readonly extensionFetchTransport: ExtensionFetchTransport | undefined;
   private readonly catalogMoves: ExtensionCatalogMoves;
+  private readonly approvedCatalogEntry: ApprovedCatalogEntryLookup | undefined;
   private readonly onDidCompileCallback?: (
     result: WorkspaceCompileResult,
     tileResult: UserTileApplyResult | undefined
@@ -303,6 +312,7 @@ export class AppEnvironmentHost {
     this.embeddedExtensions = options.embeddedExtensions ?? [];
     this.extensionFetchTransport = options.extensionFetchTransport;
     this.catalogMoves = options.catalogMoves ?? {};
+    this.approvedCatalogEntry = options.approvedCatalogEntry;
     this.onDidCompileCallback = options.onDidCompile;
     this._bridgeUrl = options.bridgeUrl;
     this._loadBindingToken = options.loadBindingToken ?? (() => undefined);
@@ -1381,11 +1391,12 @@ export class AppEnvironmentHost {
   }
 
   /**
-   * Check one installed fetched dependency of the active project for a newer
-   * version at its source: a `@<pin>` reference against the source's published
-   * versions, a `#<branch>` reference against the branch's head commit. The
-   * check runs on request, reaches the source through the host's transport,
-   * and changes nothing.
+   * Check one installed fetched dependency of the active project for newer
+   * content: a `@<pin>` reference against the host catalog's approved pin when
+   * the catalog lists the coordinate and against the source's published
+   * versions when it does not, a `#<branch>` reference against the branch's
+   * head commit. The check runs on request, reaches the source through the
+   * host's transport, and changes nothing.
    *
    * @param coordinate - The dependency's `<owner>/<repo>` coordinate in the project's extensions map.
    */
@@ -1420,6 +1431,7 @@ export class AppEnvironmentHost {
       installedSpecifier: record.specifier,
       installedVersion: parsed?.ok ? parsed.manifest.version : "0.0.0",
       transport: this.extensionFetchTransport,
+      ...(this.approvedCatalogEntry !== undefined ? { approvedEntry: this.approvedCatalogEntry } : {}),
     });
   }
 

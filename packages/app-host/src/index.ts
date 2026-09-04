@@ -30,6 +30,7 @@ export type {
   ExtensionCatalogDocumentError,
   ExtensionCatalogDocumentParseResult,
   ExtensionCatalogDocumentWarning,
+  ExtensionCatalogEntryPrior,
   ExtensionCatalogMoveEntry,
   ExtensionCatalogMoveObjectSelector,
   ExtensionCatalogMoveSelector,
@@ -38,6 +39,7 @@ export type {
 } from "./extension-catalog-document.js";
 export {
   applyCatalogMove,
+  buildApprovedCatalogEntryLookup,
   CATALOG_ENTRY_KIND_EXTENSION,
   CATALOG_ENTRY_KIND_TARGET,
   CatalogMoveApplyErrorCode,
@@ -77,7 +79,11 @@ export {
   githubRemoteUrlForCoordinate,
   publishExtensionVersion,
 } from "./extension-publish.js";
-export type { ExtensionUpdateApplication, ExtensionUpdateCheck } from "./extension-update.js";
+export type {
+  ApprovedCatalogEntryLookup,
+  ExtensionUpdateApplication,
+  ExtensionUpdateCheck,
+} from "./extension-update.js";
 export { checkExtensionReferenceUpdate, highestListedRelease } from "./extension-update.js";
 export { createIdbProjectStore } from "./idb-project-store.js";
 export type { InMemoryProjectFileSystemOptions } from "./in-memory-project-file-system.js";

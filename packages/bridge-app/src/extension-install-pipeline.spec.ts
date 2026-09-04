@@ -6,6 +6,7 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import type {
   ActiveProject,
+  ApprovedCatalogEntryLookup,
   ExtensionCatalogMoves,
   ExtensionFetchTransport,
   ProjectCollection,
@@ -195,6 +196,7 @@ function createHost(
     hostFiles?: Record<string, string>;
     embeddedExtensions?: readonly EmbeddedExtension[];
     catalogMoves?: ExtensionCatalogMoves;
+    approvedCatalogEntry?: ApprovedCatalogEntryLookup;
   }
 ): AppEnvironmentHost {
   const filesystem = createInMemoryProjectFileSystem();
@@ -208,6 +210,7 @@ function createHost(
     extensionFetchTransport: options?.transport,
     ...(options?.embeddedExtensions ? { embeddedExtensions: options.embeddedExtensions } : {}),
     ...(options?.catalogMoves ? { catalogMoves: options.catalogMoves } : {}),
+    ...(options?.approvedCatalogEntry ? { approvedCatalogEntry: options.approvedCatalogEntry } : {}),
   });
 }
 
@@ -693,6 +696,61 @@ describe("extension update flows", () => {
       assert.ok(last?.kind === "install" && last.specifier === "0.2.0");
 
       // An immediate re-check reports the project current.
+      const recheck = await host.checkExtensionUpdate(POSITION_COORDINATE);
+      assert.deepStrictEqual(recheck, { ok: true, updateAvailable: false });
+    } finally {
+      host.dispose();
+      restoreLocalStorage();
+    }
+  });
+
+  it("offers the catalog's approved pin to a project installed at an earlier approved SHA pin, and applies it", async () => {
+    const restoreLocalStorage = installEmptyLocalStorage();
+    const world: ProjectWorld = { appData: new Map(), extensions: {} };
+    // An earlier approved SHA pin of the coordinate, distinct from any version tag.
+    const priorPinReference = `gh:${POSITION_COORDINATE}@${SHA_A}`;
+    const approvedReference = `gh:${POSITION_COORDINATE}@${SHA_B}`;
+    const transport = createTestTransport({
+      content: {
+        [`${POSITION_COORDINATE}@${SHA_A}`]: POSITION_CONTENT,
+        [`${POSITION_COORDINATE}@${SHA_B}`]: {
+          "wendoo.json": JSON.stringify({ name: "Position", version: "0.2.0", files: ["index.ts"] }),
+          "index.ts": "export const position = 43;\n",
+        },
+        [`${POSITION_COORDINATE}@0.3.0`]: {
+          "wendoo.json": JSON.stringify({ name: "Position", version: "0.3.0", files: ["index.ts"] }),
+          "index.ts": "export const position = 44;\n",
+        },
+      },
+      // A newer unapproved tag stands at the source; the catalog outranks it.
+      versions: { [POSITION_COORDINATE]: ["0.1.0", "0.3.0"] },
+    });
+    const host = createHost(world, {
+      transport,
+      hostFiles: { "main.ts": HOST_IMPORTS_POSITION },
+      approvedCatalogEntry: (coordinate) =>
+        coordinate === POSITION_COORDINATE ? { ref: approvedReference, version: "0.2.0" } : undefined,
+    });
+
+    try {
+      await host.initialize(PROJECT_ID);
+      const install = await host.updateProjectExtensions({ [POSITION_COORDINATE]: priorPinReference });
+      assert.ok(install.committed);
+
+      const check = await host.checkExtensionUpdate(POSITION_COORDINATE);
+      assert.ok(check.ok && check.updateAvailable);
+      assert.deepStrictEqual(check.update, {
+        coordinate: POSITION_COORDINATE,
+        reference: approvedReference,
+        latestVersion: "0.2.0",
+      });
+
+      const report = await host.applyExtensionUpdates([check.update]);
+      assert.ok(report.committed);
+      assert.equal(world.extensions[POSITION_COORDINATE], approvedReference);
+      const stored = parseInstalledExtensionSnapshots(world.appData.get("installed-extensions"));
+      assert.equal(stored[POSITION_COORDINATE]?.specifier, SHA_B);
+
       const recheck = await host.checkExtensionUpdate(POSITION_COORDINATE);
       assert.deepStrictEqual(recheck, { ok: true, updateAvailable: false });
     } finally {

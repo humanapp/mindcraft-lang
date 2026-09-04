@@ -5,7 +5,11 @@ import type {
   ExtensionFetchErrorCode,
   ExtensionUpdateApplication,
 } from "@wendoo/app-host";
-import { parseExtensionReference, validateExtensionCatalogDocument } from "@wendoo/app-host";
+import {
+  buildApprovedCatalogEntryLookup,
+  parseExtensionReference,
+  validateExtensionCatalogDocument,
+} from "@wendoo/app-host";
 import {
   type AppEnvironmentHost,
   buildExtensionCatalog,
@@ -119,6 +123,9 @@ export const ecosimLibraryCatalog: ExtensionCatalogDocument = loadSimLibraryCata
 
 /** The curated catalog moves the bundled sim catalog declares, keyed by source coordinate. */
 export const ecosimLibraryCatalogMoves = ecosimLibraryCatalog.moves;
+
+/** Resolves a coordinate to the approved pin the bundled sim catalog's entry for it offers. */
+export const ecosimApprovedCatalogEntry = buildApprovedCatalogEntryLookup(ecosimLibraryCatalog);
 
 /** The bundled catalog's coordinates in document order; anchors the library browser's stable list order. */
 export const ecosimCatalogCoordinateOrder: readonly string[] = ecosimLibraryCatalog.entries.map(

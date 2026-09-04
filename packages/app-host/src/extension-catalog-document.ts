@@ -1,3 +1,4 @@
+import type { ApprovedCatalogEntryLookup } from "./extension-update.js";
 import type { ExtensionTarget } from "./project-content-manifest.js";
 import { isExtensionCoordinate, parseExtensionReference, validateProjectTargets } from "./project-content-manifest.js";
 import { isSupportedVersionRange, satisfiesRange } from "./semver-range.js";
@@ -14,6 +15,22 @@ export const CATALOG_ENTRY_KIND_TARGET = "target";
 const FULL_COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/i;
 
 const CATALOG_ALIAS_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+
+/**
+ * One earlier approved version of a catalog entry: the reference that version
+ * was approved at, paired with the version string it was offered as. A prior
+ * stays approved and resolvable after the entry's own `ref` moves on.
+ */
+export interface ExtensionCatalogEntryPrior {
+  /**
+   * The reference the version was approved at: either
+   * `gh:<coordinate>@<full 40-character commit SHA>` or
+   * `embedded:<coordinate>`. Always pinned; never a branch reference.
+   */
+  readonly ref: string;
+  /** Version the prior was offered as, as a display string. */
+  readonly version: string;
+}
 
 /**
  * One entry of an extension catalog document: an approved extension pinned to
@@ -51,6 +68,13 @@ export interface ExtensionCatalogDocumentEntry {
   readonly targets?: Readonly<Record<string, ExtensionTarget>>;
   /** Thumbnail URL or data URI; present only when the entry declares one. */
   readonly thumbnail?: string;
+  /**
+   * Earlier approved versions of this entry, listed newest first as authored.
+   * Each names this entry's `coordinate` and is distinct from the others and
+   * from the entry's own `ref`. Present only when the entry declares them; an
+   * entry without them has no earlier approved version.
+   */
+  readonly priors?: readonly ExtensionCatalogEntryPrior[];
 }
 
 /** Transport a catalog move selector matches: the reference's delivery scheme. */
@@ -134,6 +158,9 @@ export const ExtensionCatalogDocumentErrorCode = {
   INVALID_ALIAS: "CATALOG_DOCUMENT_INVALID_ALIAS",
   DUPLICATE_ALIAS: "CATALOG_DOCUMENT_DUPLICATE_ALIAS",
   ALIAS_NOT_ALLOWED: "CATALOG_DOCUMENT_ALIAS_NOT_ALLOWED",
+  INVALID_PRIORS: "CATALOG_DOCUMENT_INVALID_PRIORS",
+  INVALID_PRIOR_REF: "CATALOG_DOCUMENT_INVALID_PRIOR_REF",
+  DUPLICATE_PRIOR_REF: "CATALOG_DOCUMENT_DUPLICATE_PRIOR_REF",
   INVALID_MOVES: "CATALOG_DOCUMENT_INVALID_MOVES",
   INVALID_MOVE_REF: "CATALOG_DOCUMENT_INVALID_MOVE_REF",
   INVALID_MOVE_FROM: "CATALOG_DOCUMENT_INVALID_MOVE_FROM",
@@ -199,6 +226,132 @@ export type ExtensionCatalogDocumentParseResult =
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** The comparable parts of a pinned catalog reference. */
+interface PinnedCatalogReferenceParts {
+  /**
+   * Canonical key, equal for two references naming the same pinned content.
+   * Coordinates compare case-insensitively; pins compare exactly.
+   */
+  readonly key: string;
+  /** The reference's `<owner>/<repo>` coordinate, as written. */
+  readonly coordinate: string;
+}
+
+/**
+ * Parse a pinned catalog reference -- a `gh:` reference at a full 40-character
+ * commit SHA, or an `embedded:` reference -- into its comparable parts.
+ * Returns `undefined` for any other form, including a branch reference.
+ *
+ * @param reference - The reference string to parse.
+ */
+function pinnedCatalogReferenceParts(reference: string): PinnedCatalogReferenceParts | undefined {
+  const parsed = parseExtensionReference(reference);
+  if (parsed === undefined) {
+    return undefined;
+  }
+  if (parsed.transport === "embedded") {
+    return {
+      key: canonicalMoveShapeKey({ transport: "embedded", coordinate: parsed.coordinate }),
+      coordinate: parsed.coordinate,
+    };
+  }
+  if (parsed.routing.kind !== "pin" || !FULL_COMMIT_SHA_PATTERN.test(parsed.routing.pin)) {
+    return undefined;
+  }
+  const coordinate = `${parsed.owner}/${parsed.repo}`;
+  return {
+    key: canonicalMoveShapeKey({
+      transport: "gh",
+      coordinate,
+      component: { kind: "pin", value: parsed.routing.pin },
+    }),
+    coordinate,
+  };
+}
+
+/**
+ * Validate an entry's `priors` list: each element a `{ ref, version }` pair
+ * whose `ref` is pinned, names the entry's own coordinate, and is distinct from
+ * every other prior's and from the entry's own reference. Returns the parsed
+ * priors, or `undefined` when any element was rejected; rejections are appended
+ * to `errors`.
+ *
+ * @param rawPriors - The entry's `priors` array as authored.
+ * @param entryRef - The entry's own reference; `undefined` when it is not a string.
+ * @param entryCoordinate - The entry's coordinate; `undefined` when it is not a coordinate.
+ * @param path - JSON path of the entry, which error paths extend.
+ * @param errors - Error list the rejections are appended to.
+ */
+function validateEntryPriors(
+  rawPriors: readonly unknown[],
+  entryRef: string | undefined,
+  entryCoordinate: string | undefined,
+  path: string,
+  errors: ExtensionCatalogDocumentError[]
+): readonly ExtensionCatalogEntryPrior[] | undefined {
+  const priors: ExtensionCatalogEntryPrior[] = [];
+  const firstIndexByKey = new Map<string, number>();
+  const entryKey = entryRef === undefined ? undefined : pinnedCatalogReferenceParts(entryRef)?.key;
+  let rejected = false;
+  for (const [index, raw] of rawPriors.entries()) {
+    const priorPath = `${path}.priors[${index}]`;
+    if (!isRecord(raw) || typeof raw.version !== "string") {
+      errors.push({
+        code: ExtensionCatalogDocumentErrorCode.INVALID_PRIORS,
+        path: priorPath,
+        message: 'Catalog entry prior must be an object with a string "ref" and a string "version".',
+      });
+      rejected = true;
+      continue;
+    }
+    const ref = typeof raw.ref === "string" ? raw.ref : undefined;
+    const parts = ref === undefined ? undefined : pinnedCatalogReferenceParts(ref);
+    if (ref === undefined || parts === undefined) {
+      errors.push({
+        code: ExtensionCatalogDocumentErrorCode.INVALID_PRIOR_REF,
+        path: `${priorPath}.ref`,
+        message:
+          'Catalog entry prior ref must be "gh:<owner>/<repo>@<full 40-character commit SHA>" or ' +
+          '"embedded:<owner>/<repo>".',
+      });
+      rejected = true;
+      continue;
+    }
+    const key = parts.key;
+    if (entryCoordinate !== undefined && !sameCoordinate(parts.coordinate, entryCoordinate)) {
+      errors.push({
+        code: ExtensionCatalogDocumentErrorCode.INVALID_PRIOR_REF,
+        path: `${priorPath}.ref`,
+        message: `Catalog entry prior ref names "${parts.coordinate}", not the entry coordinate "${entryCoordinate}".`,
+      });
+      rejected = true;
+      continue;
+    }
+    if (key === entryKey) {
+      errors.push({
+        code: ExtensionCatalogDocumentErrorCode.DUPLICATE_PRIOR_REF,
+        path: `${priorPath}.ref`,
+        message: `Catalog entry prior ref "${ref}" is the entry's own ref.`,
+      });
+      rejected = true;
+      continue;
+    }
+    const firstIndex = firstIndexByKey.get(key);
+    if (firstIndex !== undefined) {
+      errors.push({
+        code: ExtensionCatalogDocumentErrorCode.DUPLICATE_PRIOR_REF,
+        path: `${priorPath}.ref`,
+        message: `Catalog entry prior ref "${ref}" duplicates the prior at ${path}.priors[${firstIndex}].`,
+      });
+      rejected = true;
+      continue;
+    }
+    firstIndexByKey.set(key, index);
+    priors.push({ ref, version: raw.version });
+  }
+  return rejected ? undefined : priors;
 }
 
 /**
@@ -271,7 +424,10 @@ function validateEntry(
         path: `${path}.ref`,
         message: 'Catalog entry "gh:" ref must be pinned to a full 40-character commit SHA.',
       });
-    } else if (isExtensionCoordinate(value.coordinate) && `${parsedRef.owner}/${parsedRef.repo}` !== value.coordinate) {
+    } else if (
+      isExtensionCoordinate(value.coordinate) &&
+      !sameCoordinate(`${parsedRef.owner}/${parsedRef.repo}`, value.coordinate)
+    ) {
       errors.push({
         code: ExtensionCatalogDocumentErrorCode.INVALID_REF,
         path: `${path}.ref`,
@@ -279,7 +435,7 @@ function validateEntry(
       });
     }
   } else if (parsedRef.transport === "embedded") {
-    if (isExtensionCoordinate(value.coordinate) && parsedRef.coordinate !== value.coordinate) {
+    if (isExtensionCoordinate(value.coordinate) && !sameCoordinate(parsedRef.coordinate, value.coordinate)) {
       errors.push({
         code: ExtensionCatalogDocumentErrorCode.INVALID_REF,
         path: `${path}.ref`,
@@ -351,6 +507,28 @@ function validateEntry(
     });
   }
 
+  let priors: readonly ExtensionCatalogEntryPrior[] | undefined;
+  if (value.priors !== undefined) {
+    if (!Array.isArray(value.priors)) {
+      errors.push({
+        code: ExtensionCatalogDocumentErrorCode.INVALID_PRIORS,
+        path: `${path}.priors`,
+        message: "Catalog entry priors must be an array when present.",
+      });
+    } else {
+      const validated = validateEntryPriors(
+        value.priors as readonly unknown[],
+        typeof value.ref === "string" ? value.ref : undefined,
+        isExtensionCoordinate(value.coordinate) ? value.coordinate : undefined,
+        path,
+        errors
+      );
+      if (validated !== undefined && validated.length > 0) {
+        priors = validated;
+      }
+    }
+  }
+
   if (errors.length > 0) {
     return { errors };
   }
@@ -366,6 +544,7 @@ function validateEntry(
       ...(typeof value.alias === "string" ? { alias: value.alias } : {}),
       ...(targets !== undefined ? { targets } : {}),
       ...(typeof value.thumbnail === "string" ? { thumbnail: value.thumbnail } : {}),
+      ...(priors !== undefined ? { priors } : {}),
     },
   };
 }
@@ -1012,6 +1191,25 @@ export function validateExtensionCatalogDocument(value: unknown): ExtensionCatal
     return { ok: false, errors };
   }
   return { ok: true, document: { format: WENDOO_CATALOG_FORMAT, entries, moves }, warnings, errors: [] };
+}
+
+/**
+ * Build a document's approved-pin lookup: each entry's coordinate resolves to
+ * that entry's own `ref` and `version`, matched case-insensitively. A
+ * coordinate the document does not list resolves to `undefined`. Where two
+ * entries share a coordinate, the first in document order wins.
+ *
+ * @param document - A validated catalog document.
+ */
+export function buildApprovedCatalogEntryLookup(document: ExtensionCatalogDocument): ApprovedCatalogEntryLookup {
+  const byCoordinate = new Map<string, { ref: string; version: string }>();
+  for (const entry of document.entries) {
+    const key = entry.coordinate.toLowerCase();
+    if (!byCoordinate.has(key)) {
+      byCoordinate.set(key, { ref: entry.ref, version: entry.version });
+    }
+  }
+  return (coordinate) => byCoordinate.get(coordinate.toLowerCase());
 }
 
 /**

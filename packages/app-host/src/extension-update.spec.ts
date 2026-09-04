@@ -132,6 +132,115 @@ describe("checkExtensionReferenceUpdate for #branch references", () => {
   });
 });
 
+describe("checkExtensionReferenceUpdate for coordinates an approved catalog lists", () => {
+  const COORDINATE = "example-org/position-ext";
+  const APPROVED_REF = `gh:${COORDINATE}@${SHA_B}`;
+
+  /** A transport that answers every source read and records how many it was asked. */
+  function countingTransport(): ExtensionFetchTransport & { calls: number } {
+    const transport = {
+      calls: 0,
+      async fetchFile() {
+        transport.calls++;
+        return { ok: false, kind: "not-found" } as const;
+      },
+      async resolveBranch() {
+        transport.calls++;
+        return { ok: true, sha: SHA_A } as const;
+      },
+      async listVersionTags() {
+        transport.calls++;
+        return { ok: true, versions: ["0.1.0", "0.9.0"] } as const;
+      },
+    };
+    return transport;
+  }
+
+  const approvedEntry = (coordinate: string): { ref: string; version: string } | undefined =>
+    coordinate === COORDINATE ? { ref: APPROVED_REF, version: "0.2.0" } : undefined;
+
+  const cases: ReadonlyArray<{
+    name: string;
+    installedSpecifier: string;
+    installedVersion: string;
+    expected: Awaited<ReturnType<typeof checkExtensionReferenceUpdate>>;
+  }> = [
+    {
+      name: "offers the entry's approved pin to an install at an earlier approved pin",
+      installedSpecifier: SHA_A,
+      installedVersion: "0.1.0",
+      expected: {
+        ok: true,
+        updateAvailable: true,
+        update: { coordinate: COORDINATE, reference: APPROVED_REF, latestVersion: "0.2.0" },
+      },
+    },
+    {
+      name: "reports no update for an install already at the entry's approved version",
+      installedSpecifier: SHA_B,
+      installedVersion: "0.2.0",
+      expected: { ok: true, updateAvailable: false },
+    },
+    {
+      name: "reports no update for an install newer than the entry's approved version",
+      installedSpecifier: SHA_A,
+      installedVersion: "0.3.0",
+      expected: { ok: true, updateAvailable: false },
+    },
+  ];
+
+  for (const testCase of cases) {
+    it(testCase.name, async () => {
+      const transport = countingTransport();
+      const result = await checkExtensionReferenceUpdate({
+        reference: `gh:${COORDINATE}@${testCase.installedSpecifier}`,
+        installedSpecifier: testCase.installedSpecifier,
+        installedVersion: testCase.installedVersion,
+        transport,
+        approvedEntry,
+      });
+
+      assert.deepStrictEqual(result, testCase.expected);
+      assert.equal(transport.calls, 0);
+    });
+  }
+
+  it("keeps the published-tag path for a coordinate the catalog does not list", async () => {
+    const transport = countingTransport();
+    const result = await checkExtensionReferenceUpdate({
+      reference: "gh:example-org/unlisted-ext@v0.1.0",
+      installedSpecifier: "v0.1.0",
+      installedVersion: "0.1.0",
+      transport,
+      approvedEntry,
+    });
+
+    assert.ok(result.ok && result.updateAvailable);
+    assert.deepStrictEqual(result.update, {
+      coordinate: "example-org/unlisted-ext",
+      reference: "gh:example-org/unlisted-ext@0.9.0",
+      latestVersion: "0.9.0",
+    });
+    assert.equal(transport.calls, 1);
+  });
+
+  it("keeps branch semantics for an approved coordinate referenced by branch", async () => {
+    const transport = countingTransport();
+    const reference = `gh:${COORDINATE}#main`;
+    const result = await checkExtensionReferenceUpdate({
+      reference,
+      installedSpecifier: SHA_B,
+      installedVersion: "0.1.0",
+      transport,
+      approvedEntry,
+    });
+
+    assert.ok(result.ok && result.updateAvailable);
+    assert.deepStrictEqual(result.update, { coordinate: COORDINATE, reference, resolvedSha: SHA_A });
+    assert.equal(transport.calls, 1);
+  });
+});
+
 describe("checkExtensionReferenceUpdate reference validation", () => {
   it("fails with INVALID_REFERENCE for non-gh references", async () => {
     for (const reference of ["embedded:a/b", "nonsense"]) {

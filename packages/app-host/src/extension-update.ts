@@ -7,12 +7,17 @@ export interface ExtensionUpdateApplication {
   /** The dependency's `<owner>/<repo>` coordinate. */
   readonly coordinate: string;
   /**
-   * The manifest reference to install: a `@` reference rewritten to the newest
-   * published version, or a `#branch` reference unchanged (the branch content
-   * is refetched at its new head commit).
+   * The manifest reference to install: for a `@` reference, the approved pin of
+   * the coordinate's catalog entry, or the newest published version's pin when
+   * no catalog entry lists it; for a `#branch` reference, the reference
+   * unchanged (the branch content is refetched at its new head commit).
    */
   readonly reference: string;
-  /** Newest published version for a pin update; absent for a branch update. */
+  /**
+   * The version a pin update installs: the catalog entry's approved version, or
+   * the newest published release when no catalog entry lists the coordinate.
+   * Absent for a branch update.
+   */
   readonly latestVersion?: string;
   /** The branch head's commit SHA for a branch update; absent for a pin update. */
   readonly resolvedSha?: string;
@@ -88,26 +93,40 @@ function checkFailure(code: ExtensionFetchErrorCode, reference: string, message:
 }
 
 /**
- * Check one installed `gh:` dependency for a newer version at its source. A
- * `@<pin>` reference lists the repository's published versions and offers the
- * highest plain `x.y.z` release above the installed manifest version,
- * rewriting the reference to that version's pin; prerelease and non-semver
- * version strings are ignored. A `#<branch>` reference re-resolves the branch
- * head and offers a refetch when the head commit differs from the installed
- * specifier, leaving the reference text unchanged. The check reads the source
- * on request and changes nothing; applying the returned update is an ordinary
- * install transaction.
+ * Resolves an `<owner>/<repo>` coordinate to the approved content its catalog
+ * entry offers: `ref` is the entry's pinned reference and `version` is the
+ * version the entry offers that pin as. Returns `undefined` for a coordinate
+ * the catalog does not list.
+ */
+export type ApprovedCatalogEntryLookup = (coordinate: string) => { ref: string; version: string } | undefined;
+
+/**
+ * Check one installed `gh:` dependency for newer content. For a `@<pin>`
+ * reference whose coordinate `approvedEntry` lists, the entry's approved
+ * version is compared against the installed manifest version and, when it is
+ * newer, the entry's own pinned reference is offered. Such a check never reads
+ * the source. For a `@<pin>` reference on an unlisted coordinate, the
+ * repository's published versions are listed and the highest plain `x.y.z`
+ * release above the installed version is offered, rewriting the reference to
+ * that version's pin; prerelease and non-semver version strings are ignored. A
+ * `#<branch>` reference re-resolves the branch head and offers a refetch when
+ * the head commit differs from the installed specifier, leaving the reference
+ * text unchanged. The check changes nothing; applying the returned update is an
+ * ordinary install transaction.
  *
  * @param options.reference - The dependency's manifest reference, as written.
  * @param options.installedSpecifier - The immutable specifier the installed content was fetched at.
  * @param options.installedVersion - The installed snapshot's manifest version.
  * @param options.transport - The transport the source is read through.
+ * @param options.approvedEntry - Resolves a coordinate to its catalog entry's
+ *   approved pin. When omitted, every coordinate is checked against its source.
  */
 export async function checkExtensionReferenceUpdate(options: {
   reference: string;
   installedSpecifier: string;
   installedVersion: string;
   transport: ExtensionFetchTransport;
+  approvedEntry?: ApprovedCatalogEntryLookup;
 }): Promise<ExtensionUpdateCheck> {
   const { reference, transport } = options;
   const parsed = parseExtensionReference(reference);
@@ -161,6 +180,21 @@ export async function checkExtensionReferenceUpdate(options: {
     };
   }
 
+  const installed = parseReleaseVersion(options.installedVersion) ?? ([0, 0, 0] as const);
+
+  const approved = options.approvedEntry?.(coordinate);
+  if (approved !== undefined) {
+    const approvedTriple = parseReleaseVersion(approved.version);
+    if (approvedTriple === undefined || compareReleaseTriple(approvedTriple, installed) <= 0) {
+      return { ok: true, updateAvailable: false };
+    }
+    return {
+      ok: true,
+      updateAvailable: true,
+      update: { coordinate, reference: approved.ref, latestVersion: approved.version },
+    };
+  }
+
   const listed = await transport.listVersionTags(owner, repo);
   if (!listed.ok) {
     switch (listed.kind) {
@@ -185,7 +219,6 @@ export async function checkExtensionReferenceUpdate(options: {
     }
   }
 
-  const installed = parseReleaseVersion(options.installedVersion) ?? ([0, 0, 0] as const);
   const latestVersion = highestListedRelease(listed.versions);
   if (latestVersion === undefined) {
     return { ok: true, updateAvailable: false };

@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import type { CatalogMoveVersionLookup, ExtensionCatalogMoves } from "@wendoo/app-host";
 import {
   applyCatalogMove,
+  buildApprovedCatalogEntryLookup,
   CatalogMoveApplyErrorCode,
   ExtensionCatalogDocumentErrorCode,
   ExtensionCatalogDocumentWarningCode,
@@ -240,6 +241,17 @@ describe("validateExtensionCatalogDocument", () => {
     assert.match(result.errors[0].message, /other-org\/lib-codal-position/);
   });
 
+  it("accepts a ref whose coordinate differs from the entry coordinate only in case", () => {
+    const entries = [
+      { ...VALID_ENTRY, ref: `gh:Wendoo-Lang/Lib-Codal-Position@${PIN_SHA}` },
+      { ...EMBEDDED_ENTRY, ref: "embedded:Wendoo-Lang/Lib-Microbit-Cutebot" },
+    ];
+    const result = validateExtensionCatalogDocument({ format: WENDOO_CATALOG_FORMAT, entries });
+
+    assert.ok(result.ok);
+    assert.deepStrictEqual(result.document.entries, entries);
+  });
+
   it("rejects missing display metadata with entry paths", () => {
     const { description, ...withoutDescription } = VALID_ENTRY;
     const result = validateExtensionCatalogDocument({
@@ -249,6 +261,142 @@ describe("validateExtensionCatalogDocument", () => {
     assert.ok(!result.ok);
     assert.equal(result.errors[0].code, ExtensionCatalogDocumentErrorCode.INVALID_ENTRY);
     assert.equal(result.errors[0].path, "$.entries[0].description");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Entry priors -- earlier approved versions
+// ---------------------------------------------------------------------------
+
+const PRIOR_SHA = "5f0d0e1c3b2a49586d7c8b9a0f1e2d3c4b5a6978";
+const OLDER_PRIOR_SHA = "0123456789abcdef0123456789abcdef01234567";
+
+/** Assert a single-entry document is rejected and one of its errors carries the code. */
+function assertEntryFatal(entry: unknown, code: ExtensionCatalogDocumentErrorCode): void {
+  const result = validateExtensionCatalogDocument({ format: WENDOO_CATALOG_FORMAT, entries: [entry] });
+  assert.ok(!result.ok, `Expected rejection for entry ${JSON.stringify(entry)}`);
+  assert.ok(
+    result.errors.some((error) => error.code === code),
+    `Expected ${code}; got ${result.errors.map((error) => error.code).join(", ")}`
+  );
+}
+
+describe("validateExtensionCatalogDocument -- entry priors", () => {
+  const PRIORS = [
+    { ref: `gh:wendoo-lang/lib-codal-position@${PRIOR_SHA}`, version: "0.0.9" },
+    { ref: `gh:wendoo-lang/lib-codal-position@${OLDER_PRIOR_SHA}`, version: "0.0.8" },
+  ];
+
+  it("carries a newest-first priors list onto the parsed entry", () => {
+    const result = validateExtensionCatalogDocument({
+      format: WENDOO_CATALOG_FORMAT,
+      entries: [{ ...VALID_ENTRY, priors: PRIORS }],
+    });
+
+    assert.ok(result.ok);
+    assert.deepStrictEqual(result.warnings, []);
+    assert.deepStrictEqual(result.document.entries[0].priors, PRIORS);
+  });
+
+  it("accepts an embedded prior ref", () => {
+    const priors = [{ ref: "embedded:wendoo-lang/lib-codal-position", version: "0.0.9" }];
+    const result = validateExtensionCatalogDocument({
+      format: WENDOO_CATALOG_FORMAT,
+      entries: [{ ...VALID_ENTRY, priors }],
+    });
+
+    assert.ok(result.ok);
+    assert.deepStrictEqual(result.document.entries[0].priors, priors);
+  });
+
+  it("accepts priors on a target entry", () => {
+    const priors = [{ ref: `gh:wendoo-lang/trg-widget@${PRIOR_SHA}`, version: "0.0.9" }];
+    const result = validateExtensionCatalogDocument({
+      format: WENDOO_CATALOG_FORMAT,
+      entries: [{ ...TARGET_ENTRY, priors }],
+    });
+
+    assert.ok(result.ok);
+    assert.deepStrictEqual(result.document.entries[0].priors, priors);
+  });
+
+  it("leaves an entry that declares no priors without the field", () => {
+    const result = validateExtensionCatalogDocument({ format: WENDOO_CATALOG_FORMAT, entries: [VALID_ENTRY] });
+
+    assert.ok(result.ok);
+    assert.equal(result.document.entries[0].priors, undefined);
+    assert.deepStrictEqual(result.document.entries, [VALID_ENTRY]);
+  });
+
+  it("rejects an unpinned prior ref with INVALID_PRIOR_REF", () => {
+    const badRefs = [
+      "gh:wendoo-lang/lib-codal-position#main",
+      "gh:wendoo-lang/lib-codal-position@v0.0.9",
+      `gh:wendoo-lang/lib-codal-position@${PRIOR_SHA.slice(0, 7)}`,
+      "gh:wendoo-lang/lib-codal-position",
+      42,
+    ];
+    for (const ref of badRefs) {
+      assertEntryFatal(
+        { ...VALID_ENTRY, priors: [{ ref, version: "0.0.9" }] },
+        ExtensionCatalogDocumentErrorCode.INVALID_PRIOR_REF
+      );
+    }
+  });
+
+  it("rejects a prior ref naming another coordinate with INVALID_PRIOR_REF", () => {
+    const foreignRefs = [
+      `gh:wendoo-lang/lib-microbit-cutebot@${PRIOR_SHA}`,
+      "embedded:wendoo-lang/lib-microbit-cutebot",
+    ];
+    for (const ref of foreignRefs) {
+      assertEntryFatal(
+        { ...VALID_ENTRY, priors: [{ ref, version: "0.0.9" }] },
+        ExtensionCatalogDocumentErrorCode.INVALID_PRIOR_REF
+      );
+    }
+  });
+
+  it("accepts a prior ref whose coordinate differs only in case", () => {
+    const priors = [{ ref: `gh:Wendoo-Lang/Lib-Codal-Position@${PRIOR_SHA}`, version: "0.0.9" }];
+    const result = validateExtensionCatalogDocument({
+      format: WENDOO_CATALOG_FORMAT,
+      entries: [{ ...VALID_ENTRY, priors }],
+    });
+
+    assert.ok(result.ok);
+    assert.deepStrictEqual(result.document.entries[0].priors, priors);
+  });
+
+  it("rejects a prior that duplicates another prior with DUPLICATE_PRIOR_REF", () => {
+    assertEntryFatal(
+      { ...VALID_ENTRY, priors: [PRIORS[0], { ...PRIORS[0], version: "0.0.7" }] },
+      ExtensionCatalogDocumentErrorCode.DUPLICATE_PRIOR_REF
+    );
+  });
+
+  it("rejects a prior equal to the entry's own ref with DUPLICATE_PRIOR_REF", () => {
+    assertEntryFatal(
+      { ...VALID_ENTRY, priors: [{ ref: VALID_ENTRY.ref, version: VALID_ENTRY.version }] },
+      ExtensionCatalogDocumentErrorCode.DUPLICATE_PRIOR_REF
+    );
+  });
+
+  it("rejects a non-array priors field and a prior without a version with INVALID_PRIORS", () => {
+    assertEntryFatal({ ...VALID_ENTRY, priors: {} }, ExtensionCatalogDocumentErrorCode.INVALID_PRIORS);
+    assertEntryFatal(
+      { ...VALID_ENTRY, priors: [{ ref: `gh:wendoo-lang/lib-codal-position@${PRIOR_SHA}` }] },
+      ExtensionCatalogDocumentErrorCode.INVALID_PRIORS
+    );
+  });
+
+  it("round-trips priors through the document's JSON text form", () => {
+    const result = parseExtensionCatalogDocument(
+      JSON.stringify({ format: WENDOO_CATALOG_FORMAT, entries: [{ ...VALID_ENTRY, priors: PRIORS }] })
+    );
+
+    assert.ok(result.ok);
+    assert.deepStrictEqual(result.document.entries[0].priors, PRIORS);
   });
 });
 
@@ -270,6 +418,37 @@ function assertMovesFatal(moves: unknown, code: ExtensionCatalogDocumentErrorCod
     `Expected ${code}; got ${result.errors.map((error) => error.code).join(", ")}`
   );
 }
+
+describe("buildApprovedCatalogEntryLookup", () => {
+  const PRIOR = { ref: `gh:wendoo-lang/lib-codal-position@${PRIOR_SHA}`, version: "0.0.9" };
+
+  function lookupOf(entries: readonly unknown[]): ReturnType<typeof buildApprovedCatalogEntryLookup> {
+    const result = validateExtensionCatalogDocument({ format: WENDOO_CATALOG_FORMAT, entries });
+    assert.ok(result.ok);
+    return buildApprovedCatalogEntryLookup(result.document);
+  }
+
+  it("resolves a listed coordinate to the entry's own ref and version, case-insensitively", () => {
+    const lookup = lookupOf([{ ...VALID_ENTRY, priors: [PRIOR] }, EMBEDDED_ENTRY]);
+
+    assert.deepStrictEqual(lookup("wendoo-lang/lib-codal-position"), {
+      ref: VALID_ENTRY.ref,
+      version: VALID_ENTRY.version,
+    });
+    assert.deepStrictEqual(lookup("Wendoo-Lang/Lib-Codal-Position"), {
+      ref: VALID_ENTRY.ref,
+      version: VALID_ENTRY.version,
+    });
+    assert.deepStrictEqual(lookup("wendoo-lang/lib-microbit-cutebot"), {
+      ref: EMBEDDED_ENTRY.ref,
+      version: EMBEDDED_ENTRY.version,
+    });
+  });
+
+  it("resolves a coordinate the document does not list to undefined", () => {
+    assert.equal(lookupOf([VALID_ENTRY])("other-org/lib-unlisted"), undefined);
+  });
+});
 
 describe("validateExtensionCatalogDocument -- moves", () => {
   const MOVE_COORDINATE = "wendoo-lang/lib-codal-position";

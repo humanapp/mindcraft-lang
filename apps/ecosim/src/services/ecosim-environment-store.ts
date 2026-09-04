@@ -43,7 +43,7 @@ import { name as simName } from "../../package.json";
 import { type AppSettings, loadAppSettings, normalizeAppSettings, persistAppSettings } from "./app-settings";
 import { loadBindingToken, saveBindingToken } from "./binding-token-persistence";
 import { ecosimDefaultExtensions, ecosimEmbeddedExtensions } from "./ecosim-embedded-extensions";
-import { ecosimLibraryCatalogMoves } from "./ecosim-extension-browser";
+import { ecosimApprovedCatalogEntry, ecosimLibraryCatalogMoves } from "./ecosim-extension-browser";
 import { buildEcosimExportDocument } from "./project-io";
 
 /**
@@ -320,6 +320,7 @@ export class EcosimEnvironmentStore {
       embeddedExtensions: ecosimEmbeddedExtensions,
       extensionFetchTransport: createJsDelivrExtensionTransport(),
       catalogMoves: ecosimLibraryCatalogMoves,
+      approvedCatalogEntry: ecosimApprovedCatalogEntry,
       bridgeUrl: appSettings.vscodeBridgeUrl,
       loadBindingToken,
       saveBindingToken,
