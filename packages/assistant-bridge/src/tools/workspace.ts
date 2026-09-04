@@ -8,7 +8,7 @@ import { BrainCommandHistory, BrainDef } from "@wendoo/core/brain/model";
 import { CatalogScope } from "../catalog/scope.js";
 import type { TargetAdapter } from "../target/adapter.js";
 import type { CatalogFeaturing } from "./featuring.js";
-import { sessionTileDescriptions } from "./tile-descriptions.js";
+import { sessionTileDocs } from "./tile-descriptions.js";
 import type { RuleSideName } from "./tool-schemas.js";
 
 /**
@@ -65,8 +65,8 @@ export interface ScopedTileCatalog {
 /**
  * The live objects one authoring session edits: a real environment, the brain
  * document under authoring, the command history every edit runs through, the
- * catalogs the oracle and parser resolve tiles against, the author descriptions
- * that reach the model, and the target the session authors for.
+ * catalogs the oracle and parser resolve tiles against, the author text that
+ * reaches the model, and the target the session authors for.
  */
 export interface AuthoringWorkspace {
   readonly environment: WendooEnvironment;
@@ -76,6 +76,12 @@ export interface AuthoringWorkspace {
   readonly catalogs: ReadonlyList<ScopedTileCatalog>;
   /** Author description text keyed by tile id; a tile with no documented description is absent. */
   readonly descriptions: ReadonlyMap<string, string>;
+  /**
+   * Author assistant-section text keyed by tile id; a tile whose documentation
+   * carries no assistant section is absent. Serving a tile's entry is gated by
+   * {@link AuthoringWorkspace.featuring}.
+   */
+  readonly assistantSections: ReadonlyMap<string, string>;
   /**
    * Which libraries this session may show the model the long-form documentation
    * of. Absent features none, which leaves every bundle tile's long-form
@@ -120,8 +126,8 @@ export function scopedCatalogs(environment: WendooEnvironment, brainDef: BrainDe
 
 /**
  * Build a session workspace over a fresh environment carrying core's modules
- * and the target's, with the environment's catalogs and the descriptions core
- * and the target document their tiles with. The document is
+ * and the target's, with the environment's catalogs and the text core and the
+ * target document their tiles with. The document is
  * `options.brainJson` when one is given, and an empty brain named `brainName`
  * otherwise.
  */
@@ -137,12 +143,14 @@ export function createAuthoringWorkspace(
   const brainDef = options?.brainJson
     ? (environment.deserializeBrainJson(options.brainJson) as BrainDef)
     : BrainDef.emptyBrainDef(environment.brainServices, brainName);
+  const docs = sessionTileDocs(adapter.tileDocs());
   return {
     environment,
     brainDef,
     history: new BrainCommandHistory(),
     catalogs: scopedCatalogs(environment, brainDef),
-    descriptions: sessionTileDescriptions(adapter.tileDocs()),
+    descriptions: docs.descriptions,
+    assistantSections: docs.assistantSections,
     ...(options?.featuring ? { featuring: options.featuring } : {}),
     adapter,
   };

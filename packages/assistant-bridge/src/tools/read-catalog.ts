@@ -9,7 +9,8 @@ import type { BrainActionCallArgSpec, BrainActionCallSpec } from "@wendoo/core/r
 import { CATALOG_TEXT_LIMITS, sanitizeArgsText, sanitizeCatalogTile } from "../catalog/sanitize.js";
 import type { CatalogScope } from "../catalog/scope.js";
 import { createValueLabeler, renderValue } from "../kit/value-text.js";
-import { descriptionFromMarkdown } from "./tile-descriptions.js";
+import { admitsLongFormDocs } from "./featuring.js";
+import { assistantSectionFromMarkdown, descriptionFromMarkdown } from "./tile-descriptions.js";
 import type { ToolInput } from "./tool-schemas.js";
 import { type AuthoringWorkspace, tileCatalogsOf, tilesByScope } from "./workspace.js";
 
@@ -22,6 +23,12 @@ export interface CatalogTile {
   readonly kind: string;
   /** The author's description of what the tile senses or does; absent when undocumented. */
   readonly description?: string;
+  /**
+   * The tile's model-facing teaching prose, taken from the assistant section of
+   * its documentation. Absent for a tile documenting none, and for one whose
+   * long-form documentation this session withholds.
+   */
+  readonly assistant?: string;
   /** Value type the tile produces; absent for tiles that produce none. */
   readonly outputType?: string;
   /** Compact rendering of the tile's argument grammar; absent for tiles that take no arguments. */
@@ -214,17 +221,34 @@ function outputKeys(tile: IBrainTileDef): string[] {
 }
 
 /**
- * The author's description of `tile`. A tile a compiled bundle registered takes
- * the opening prose of the documentation it ships and never reads
- * `descriptions`, whatever its tile id; a tile the environment's modules
- * registered takes the text `descriptions` holds for its tile id, and its own
- * documentation when that map holds none. `undefined` when neither carries one.
+ * Where one `read_catalog` call reads the author text of each tile it
+ * describes, and which tiles it may show long-form documentation of.
  */
-function tileDescription(tile: IBrainTileDef, descriptions: ReadonlyMap<string, string>): string | undefined {
+interface TileTextSource {
+  /** Author descriptions keyed by tile id, for tiles the environment's modules registered. */
+  readonly descriptions: ReadonlyMap<string, string>;
+  /** Author assistant sections keyed by tile id, for tiles the environment's modules registered. */
+  readonly assistantSections: ReadonlyMap<string, string>;
+  /** Whether `tile` may show the model its long-form documentation. */
+  readonly admitsLongForm: (tile: IBrainTileDef) => boolean;
+}
+
+/**
+ * The text `extract` reads out of `tile`'s documentation. A tile a compiled
+ * bundle registered takes it from the documentation it ships and never reads
+ * `baked`, whatever its tile id; a tile the environment's modules registered
+ * takes the text `baked` holds for its tile id, and its own documentation when
+ * that map holds none. `undefined` when neither carries one.
+ */
+function tileDocText(
+  tile: IBrainTileDef,
+  baked: ReadonlyMap<string, string>,
+  extract: (markdown: string) => string | undefined
+): string | undefined {
   const markdown = tile.metadata?.docsMarkdown;
-  const documented = markdown === undefined ? undefined : descriptionFromMarkdown(markdown);
+  const documented = markdown === undefined ? undefined : extract(markdown);
   if (tile.provenance !== undefined) return documented;
-  return descriptions.get(tile.tileId) ?? documented;
+  return baked.get(tile.tileId) ?? documented;
 }
 
 /**
@@ -234,12 +258,15 @@ function tileDescription(tile: IBrainTileDef, descriptions: ReadonlyMap<string, 
  */
 function describeTile(
   tile: IBrainTileDef,
-  descriptions: ReadonlyMap<string, string>,
+  text: TileTextSource,
   localizer: Localizer,
   slotType: (tileId: string) => string | undefined,
   values: ValueRendering
 ): CatalogTile {
-  const description = tileDescription(tile, descriptions);
+  const description = tileDocText(tile, text.descriptions, descriptionFromMarkdown);
+  const assistant = text.admitsLongForm(tile)
+    ? tileDocText(tile, text.assistantSections, assistantSectionFromMarkdown)
+    : undefined;
   const action = isActionTileDef(tile) ? tile.action : undefined;
   const args =
     action && action.callDef.argSlots.size() > 0
@@ -251,6 +278,7 @@ function describeTile(
     label: tileSentenceWord(tile, localizer),
     kind: tile.kind,
     ...(description ? { description } : {}),
+    ...(assistant ? { assistant } : {}),
     ...(action?.outputType ? { outputType: action.outputType } : {}),
     ...(args ? { args } : {}),
     placement: placementNames(tile),
@@ -299,13 +327,17 @@ export function readCatalog(workspace: AuthoringWorkspace, input: ToolInput<"rea
   const listed = (tile: IBrainTileDef) =>
     (tile.kind !== "parameter" && tile.kind !== "modifier") || namedAsTile.has(tile.tileId);
   const needle = input.filter?.trim().toLowerCase();
+  const roots = workspace.environment.appliedActionBundle()?.roots ?? [];
+  const text: TileTextSource = {
+    descriptions: workspace.descriptions,
+    assistantSections: workspace.assistantSections,
+    admitsLongForm: (tile) => admitsLongFormDocs(tile.provenance, roots, workspace.featuring),
+  };
 
   const groups: CatalogGroup[] = [];
   let total = 0;
   for (const group of scoped) {
-    const described = group.tiles
-      .filter(listed)
-      .map((tile) => describeTile(tile, workspace.descriptions, localizer, slotType, values));
+    const described = group.tiles.filter(listed).map((tile) => describeTile(tile, text, localizer, slotType, values));
     total += described.length;
     const tiles = needle ? described.filter((tile) => matches(tile, needle)) : described;
     if (tiles.length > 0) groups.push({ scope: group.scope, tiles });

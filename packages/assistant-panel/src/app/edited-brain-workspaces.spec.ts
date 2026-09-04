@@ -1,7 +1,8 @@
 /**
  * Pins how the workspaces a host serves tool calls through carry its featuring:
  * read as each workspace is handed out, so the project the person switched to
- * is the one the next tool call reads by.
+ * is the one the next tool call reads by. Also pins that they carry the
+ * assistant sections the target documents its tiles with.
  */
 
 import assert from "node:assert/strict";
@@ -16,9 +17,26 @@ import { createEditedBrainWorkspaces } from "./edited-brain-workspaces";
 /** The library an app's catalog lists. */
 const chassis = "acme/lib-chassis";
 
+/** A tile the target below documents. */
+const documentedTile = "tile.sensor->sensor.fake.signal";
+
+/** The teaching that tile's documentation reserves for the model. */
+const teaching = "Read the signal once a think.";
+
+/** The fake target, documenting {@link documentedTile} with an assistant section. */
+function documentingTarget(): TargetAdapter {
+  const docs = new Map([
+    [documentedTile, `# Signal\n\nReads the fake signal.\n\n\`\`\`assistant\n${teaching}\n\`\`\`\n`],
+  ]);
+  return { ...createTargetAdapter(), tileDocs: () => docs };
+}
+
 /** Workspaces standing one editor's working copy, featuring what `featuring` reports when asked. */
-function standing(featuring?: () => CatalogFeaturing): { workspaces: EditedBrainWorkspaces; brainId: string } {
-  const adapter: TargetAdapter = createTargetAdapter();
+function standing(
+  featuring?: () => CatalogFeaturing,
+  target?: TargetAdapter
+): { workspaces: EditedBrainWorkspaces; brainId: string } {
+  const adapter: TargetAdapter = target ?? createTargetAdapter();
   const seed = createAuthoringWorkspace(adapter, "fake brain");
   const workspaces = createEditedBrainWorkspaces({
     environment: seed.environment,
@@ -67,5 +85,22 @@ describe("the featuring a served workspace carries", () => {
     assert.deepEqual([...(fromSecond?.featured ?? [])], []);
     assert.equal(fromSecond?.hostNamespace, "acme/second-project");
     assert.equal(bare.workspaces.workspaceFor(bare.brainId).featuring, undefined);
+  });
+});
+
+describe("the tile documentation a served workspace carries", () => {
+  test("carries the assistant section the target documents a tile with", () => {
+    const { workspaces, brainId } = standing(undefined, documentingTarget());
+
+    const served = workspaces.workspaceFor(brainId);
+
+    assert.equal(served.assistantSections.get(documentedTile), teaching);
+    assert.equal(served.descriptions.get(documentedTile), "Reads the fake signal.");
+  });
+
+  test("carries none for a target documenting no tile with one", () => {
+    const { workspaces, brainId } = standing();
+
+    assert.equal(workspaces.workspaceFor(brainId).assistantSections.get(documentedTile), undefined);
   });
 });

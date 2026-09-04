@@ -95,7 +95,6 @@ function buildRevision(contributions: BundleContributions): string {
 class ContributionLedger {
   private readonly ownersByTile = new Map<string, Set<string>>();
 
-  /** Record that `namespace` contributed `tile`. */
   record(tile: IBrainTileDef, namespace: string): void {
     let owners = this.ownersByTile.get(tile.tileId);
     if (!owners) {

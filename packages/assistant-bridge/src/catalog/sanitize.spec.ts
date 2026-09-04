@@ -81,11 +81,18 @@ describe("catalog text sanitation", () => {
         tileId: "a",
         label: "L".repeat(500),
         description: "D".repeat(5000),
+        assistant: "A".repeat(5000),
       })
     );
 
     assert.equal(sanitized.label.length, CATALOG_TEXT_LIMITS.label);
     assert.equal(sanitized.description?.length, CATALOG_TEXT_LIMITS.description);
+    assert.equal(sanitized.assistant?.length, CATALOG_TEXT_LIMITS.assistant);
+    assert.ok(sanitized.assistant?.endsWith(TRUNCATION_MARKER), sanitized.assistant);
+  });
+
+  test("leaves a tile carrying no assistant section carrying none", () => {
+    assert.ok(!("assistant" in sanitizeCatalogTile(tile({ tileId: "a" }))), "no assistant section is added");
   });
 });
 

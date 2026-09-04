@@ -85,7 +85,8 @@ export type {
 export { simulate } from "./tools/simulate.js";
 export type { SuggestedTile, SuggestionError, SuggestionView } from "./tools/suggest-tiles.js";
 export { suggestTiles } from "./tools/suggest-tiles.js";
-export { descriptionFromMarkdown, sessionTileDescriptions } from "./tools/tile-descriptions.js";
+export type { SessionTileDocs } from "./tools/tile-descriptions.js";
+export { descriptionFromMarkdown, sessionTileDocs } from "./tools/tile-descriptions.js";
 export type {
   ProposeEditBatchInput,
   ProposeEditInput,

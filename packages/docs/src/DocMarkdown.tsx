@@ -1,6 +1,7 @@
 import type { IBrainTileDef } from "@wendoo/core/brain";
 import type { Element } from "hast";
 import type { ReactNode } from "react";
+import { useState } from "react";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { BrainCodeBlock } from "./BrainCodeBlock";
@@ -100,6 +101,36 @@ function fenceLanguage(node: Element | undefined): string {
 }
 
 // ---------------------------------------------------------------------------
+// Assistant section
+// ---------------------------------------------------------------------------
+
+/**
+ * The assistant section of a document, closed until the reader opens it: while
+ * it is closed `text` is not rendered at all. The button reports its state on
+ * `aria-expanded`.
+ */
+function AssistantSection({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="my-2">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        className="text-xs text-muted-foreground underline hover:text-foreground transition-colors"
+      >
+        Notes for the assistant
+      </button>
+      {open ? (
+        <div className="border-l-2 border-border pl-3 mt-1 text-sm text-muted-foreground whitespace-pre-wrap">
+          {text}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Stable components map -- defined at module level so the object reference
 // never changes between renders. react-markdown uses component references
 // to determine whether to remount subtrees; inline definitions would create
@@ -107,10 +138,12 @@ function fenceLanguage(node: Element | undefined): string {
 // ---------------------------------------------------------------------------
 
 const MD_COMPONENTS: Components = {
-  // A brain fence draws its own container, so the <pre> around it is dropped;
-  // every other fence keeps a real block wrapper.
+  // A brain fence and an assistant section each draw their own container, so
+  // the <pre> around them is dropped; every other fence keeps a real block
+  // wrapper.
   pre({ children: preChildren, node }) {
-    if (fenceLanguage(fencedCodeElement(node)) === "brain") {
+    const language = fenceLanguage(fencedCodeElement(node));
+    if (language === "brain" || language === "assistant") {
       return <>{preChildren}</>;
     }
     return <pre className="bg-muted border border-border rounded p-3 my-2 overflow-x-auto">{preChildren}</pre>;
@@ -218,6 +251,10 @@ function MarkdownCode({ className, children, node }: { className?: string; child
     return <BrainCodeBlock content={String(children).trimEnd()} meta={meta} />;
   }
 
+  if (lang === "assistant") {
+    return <AssistantSection text={String(children).trimEnd()} />;
+  }
+
   if (!className) {
     const text = String(children);
     if (text.startsWith("tile:")) {
@@ -249,7 +286,8 @@ interface DocMarkdownProps {
 
 /**
  * Render a markdown string with the docs-package custom components: ```brain```
- * fences are rendered via {@link BrainCodeBlock} and `tile:xxx` references via
+ * fences are rendered via {@link BrainCodeBlock}, ```assistant``` fences via
+ * {@link AssistantSection}, and `tile:xxx` references via
  * {@link InlineTileIcon}.
  */
 export function DocMarkdown({ children }: DocMarkdownProps) {

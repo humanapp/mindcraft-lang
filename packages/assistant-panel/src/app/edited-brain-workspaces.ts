@@ -1,5 +1,5 @@
 import type { AuthoringWorkspace, BrainEditHistory, CatalogFeaturing, TargetAdapter } from "@wendoo/assistant-bridge";
-import { scopedCatalogs, sessionTileDescriptions } from "@wendoo/assistant-bridge";
+import { scopedCatalogs, sessionTileDocs } from "@wendoo/assistant-bridge";
 import type { WendooEnvironment } from "@wendoo/core/app";
 import type { BrainCommandHistory } from "@wendoo/core/brain/model";
 import { BrainEditOrigin } from "@wendoo/core/brain/model";
@@ -115,7 +115,7 @@ function toolEditHistory(history: BrainCommandHistory): BrainEditHistory {
 export function createEditedBrainWorkspaces(options: EditedBrainWorkspacesOptions): EditedBrainWorkspaces {
   const { environment, adapter, activity, featuring } = options;
   const doc = options.doc ?? (typeof document === "undefined" ? undefined : document);
-  const descriptions = sessionTileDescriptions(adapter.tileDocs());
+  const docs = sessionTileDocs(adapter.tileDocs());
   let edited: EditedBrain | undefined;
   // What the brain standing right now is being watched through, released as
   // soon as another brain stands or none does.
@@ -146,7 +146,8 @@ export function createEditedBrainWorkspaces(options: EditedBrainWorkspacesOption
         brainDef,
         history: toolEditHistory(history),
         catalogs: scopedCatalogs(environment, brainDef),
-        descriptions,
+        descriptions: docs.descriptions,
+        assistantSections: docs.assistantSections,
         ...(featuring ? { featuring: featuring() } : {}),
         adapter,
         onEditLanded: (landed) => {
