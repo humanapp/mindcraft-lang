@@ -1,6 +1,6 @@
 {
   "name": "@wendoo/bridge-client",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "Client SDK for the Wendoo Lang VSCode bridge",
   "license": "MIT",
   "type": "module",
