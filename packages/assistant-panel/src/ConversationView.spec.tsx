@@ -1132,43 +1132,43 @@ describe("a session that is not simply ready", () => {
 
 describe("a key pressed in the intent box", () => {
   test("plain Enter sends what is typed", () => {
-    assert.equal(intentKeyAction("Enter", false, false, false, "make a heart"), "send");
+    assert.equal(intentKeyAction("Enter", false, false, "make a heart"), "send");
   });
 
   test("Shift+Enter falls through to the newline it types", () => {
-    assert.equal(intentKeyAction("Enter", true, false, false, "make a heart"), "pass");
+    assert.equal(intentKeyAction("Enter", true, false, "make a heart"), "pass");
   });
 
   test("an Enter mid-composition belongs to the composition", () => {
-    assert.equal(intentKeyAction("Enter", false, true, false, "make a heart"), "pass");
+    assert.equal(intentKeyAction("Enter", false, true, "make a heart"), "pass");
   });
 
-  test("Enter during a running turn is swallowed, not sent", () => {
-    assert.equal(intentKeyAction("Enter", false, false, true, "make a heart"), "swallow");
+  test("Enter during a running turn still sends, queueing the ask for its own turn", () => {
+    assert.equal(intentKeyAction("Enter", false, false, "make a heart"), "send");
   });
 
   test("Enter over whitespace is swallowed, not sent", () => {
-    assert.equal(intentKeyAction("Enter", false, false, false, "   "), "swallow");
+    assert.equal(intentKeyAction("Enter", false, false, "   "), "swallow");
   });
 
   test("any other key falls through to typing", () => {
-    assert.equal(intentKeyAction("a", false, false, false, "make a heart"), "pass");
+    assert.equal(intentKeyAction("a", false, false, "make a heart"), "pass");
   });
 
   test("Escape leaves the box rather than closing anything", () => {
-    assert.equal(intentKeyAction("Escape", false, false, false, "make a heart"), "leave");
+    assert.equal(intentKeyAction("Escape", false, false, "make a heart"), "leave");
   });
 
   test("Escape leaves an empty box just the same", () => {
-    assert.equal(intentKeyAction("Escape", false, false, false, ""), "leave");
+    assert.equal(intentKeyAction("Escape", false, false, ""), "leave");
   });
 
   test("Escape leaves the box while a turn is running too", () => {
-    assert.equal(intentKeyAction("Escape", false, false, true, "make a heart"), "leave");
+    assert.equal(intentKeyAction("Escape", false, false, "make a heart"), "leave");
   });
 
   test("an Escape mid-composition belongs to the composition", () => {
-    assert.equal(intentKeyAction("Escape", false, true, false, "make a heart"), "pass");
+    assert.equal(intentKeyAction("Escape", false, true, "make a heart"), "pass");
   });
 });
 

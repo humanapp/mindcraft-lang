@@ -1017,26 +1017,20 @@ function BlockView({ block, context }: { block: ConversationBlock; context: Tran
 export type IntentKeyAction = "send" | "leave" | "swallow" | "pass";
 
 /**
- * Resolve a keydown in the intent box. Enter sends; Shift+Enter falls through
- * to the newline it types; an Enter mid-IME-composition belongs to the
- * composition. A plain Enter that cannot send -- a turn already running (the
- * control beside the box is Stop), or nothing but whitespace to send -- is
- * swallowed, keeping Shift+Enter the one newline gesture.
+ * Resolve a keydown in the intent box. Enter sends -- while a turn is running
+ * the send queues, waiting its own turn -- and Shift+Enter falls through to
+ * the newline it types; an Enter mid-IME-composition belongs to the
+ * composition. A plain Enter with nothing but whitespace to send is swallowed,
+ * keeping Shift+Enter the one newline gesture.
  *
  * Escape leaves the box, keeping what is typed in it; an Escape
  * mid-IME-composition belongs to the composition, which cancels on it.
  */
-export function intentKeyAction(
-  key: string,
-  shiftKey: boolean,
-  isComposing: boolean,
-  running: boolean,
-  intent: string
-): IntentKeyAction {
+export function intentKeyAction(key: string, shiftKey: boolean, isComposing: boolean, intent: string): IntentKeyAction {
   if (isComposing) return "pass";
   if (key === "Escape") return "leave";
   if (key !== "Enter" || shiftKey) return "pass";
-  if (running || intent.trim().length === 0) return "swallow";
+  if (intent.trim().length === 0) return "swallow";
   return "send";
 }
 
@@ -1474,7 +1468,7 @@ export function ConversationView(props: ConversationViewProps) {
       const box = intentBox.current;
       if (box === null || event.target !== box) return;
       const held = latest.current;
-      const action = intentKeyAction(event.key, event.shiftKey, event.isComposing, held.running, held.intent);
+      const action = intentKeyAction(event.key, event.shiftKey, event.isComposing, held.intent);
       if (action === "pass") return;
       event.preventDefault();
       if (action === "send") held.onSend();
