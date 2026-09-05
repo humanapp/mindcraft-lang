@@ -42,11 +42,6 @@ jobs:
             (cd "$dir" && npm ci)
           done
 
-      - name: Verify Marketplace token
-        run: npx vsce verify-pat wendoo
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-
       - name: Build local packages
         run: npm run build:deps
 
@@ -70,6 +65,11 @@ jobs:
       - name: Package
         run: npx vsce package --no-dependencies --out release.vsix
 
+      - name: Publish to VS Code Marketplace
+        run: npx vsce publish --packagePath release.vsix
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
       - name: Commit, tag & push
         run: |
           git config user.name "github-actions[bot]"
@@ -79,11 +79,6 @@ jobs:
           git tag "$RELEASE_TAG"
           git push origin "HEAD:${{ github.ref_name }}"
           git push origin "refs/tags/$RELEASE_TAG"
-
-      - name: Publish to VS Code Marketplace
-        run: npx vsce publish --packagePath release.vsix
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
 
       - name: Create GitHub Release
         run: |
