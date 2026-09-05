@@ -27,9 +27,20 @@ filesystem, and displays TypeScript diagnostics from the remote compiler.
 ```
 npm run dev        # esbuild watch (incremental rebuild)
 npm run build      # esbuild production (minified, no sourcemaps)
+npm run build:deps # build local @wendoo package deps in dependency order
 npm run typecheck  # tsc --noEmit
 npm run check      # biome check --write
 ```
+
+## Release
+
+Releases run entirely in GitHub Actions: the `release-vscode-extension.yml`
+workflow (workflow_dispatch, `bump` input) builds the local `@wendoo` deps
+from source via `scripts/build-packages.js`, runs lint/typecheck/tests,
+bumps the version, commits and tags `wendoo-vscode-extension-v<version>`,
+publishes to the Marketplace with the `VSCE_PAT` secret, and creates a
+GitHub release. Trigger it with `npm run release:patch` (or from the
+Actions tab). Nothing is published to npm for an extension release.
 
 ## Source Layout
 

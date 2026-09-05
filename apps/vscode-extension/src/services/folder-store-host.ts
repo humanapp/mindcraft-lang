@@ -1,10 +1,5 @@
 import type { FileContent } from "@wendoo/app-host";
-import {
-  fileContentFromBytes,
-  fileContentFromWire,
-  fileContentToBytes,
-  fileContentToWire,
-} from "@wendoo/app-host";
+import { fileContentFromBytes, fileContentFromWire, fileContentToBytes, fileContentToWire } from "@wendoo/app-host";
 import type {
   FileContentPayload,
   FileSystemNotification,
