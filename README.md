@@ -42,7 +42,7 @@ Wendoo draws inspiration from other tile-based programming systems past and pres
 |-----|-------------|
 | [Ecosystem Sim](apps/ecosim/) | Demo: carnivores, herbivores, and plants driven by user-editable Wendoo brains |
 | [Ecosystem Sim for Roblox](apps/ecosim-rbx/) | Roblox projection of the Ecosystem Sim, built on the core library's Luau target |
-| [VS Code Extension](apps/vscode-extension/) | Author Wendoo sensors and actuators in TypeScript using VS Code Web ([Marketplace](https://marketplace.visualstudio.com/items?itemName=wendoo-lang.wendoo-lang-vscode-extension)) |
+| [VS Code Extension](apps/vscode-extension/) | Author Wendoo sensors and actuators in TypeScript using VS Code Web ([Marketplace](https://marketplace.visualstudio.com/items?itemName=wendoo.wendoo-vscode-extension)) |
 | [VS Code Bridge](apps/vscode-bridge/) | Bridge server that relays between the VS Code extension and Wendoo apps |
 
 ## Getting Started

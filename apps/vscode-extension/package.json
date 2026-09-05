@@ -1,5 +1,5 @@
 {
-  "name": "wendoo-lang-vscode-extension",
+  "name": "wendoo-vscode-extension",
   "displayName": "Wendoo",
   "description": "Program sensors and actuators for Wendoo apps in TypeScript using VS Code",
   "keywords": [
@@ -12,7 +12,7 @@
   ],
   "version": "0.2.2",
   "private": true,
-  "publisher": "wendoo-lang",
+  "publisher": "wendoo",
   "license": "MIT",
   "author": "wendoo-lang",
   "repository": {

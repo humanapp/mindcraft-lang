@@ -448,7 +448,7 @@ if (result.bundle) {
 ### VS Code Bridge
 
 The VS Code bridge allows users to author Wendoo sensors and actuators in TypeScript
-using the [Wendoo VS Code Web extension](https://marketplace.visualstudio.com/items?itemName=wendoo-lang.wendoo-lang-vscode-extension).
+using the [Wendoo VS Code Web extension](https://marketplace.visualstudio.com/items?itemName=wendoo.wendoo-vscode-extension).
 
 ```bash
 npm install @wendoo/core @wendoo/ts-compiler @wendoo/bridge-app
