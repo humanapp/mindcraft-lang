@@ -3,7 +3,7 @@ import type { AssistantContextValue } from "./assistant-context";
 import { AssistantContext } from "./assistant-context";
 import { activeRecord } from "./conversation/store";
 import type { AssistantMachineOptions } from "./session/machine";
-import { AssistantMachine, doingFor } from "./session/machine";
+import { AssistantMachine, doingFor, pendingFor } from "./session/machine";
 
 /** What the provider is built over, plus the tree it wraps. */
 export interface AssistantProviderProps extends AssistantMachineOptions {
@@ -27,6 +27,8 @@ export function AssistantProvider({ children, ...options }: AssistantProviderPro
   const actions = useMemo(
     () => ({
       send: (text: string) => machine.send(text),
+      cancelAsk: (id: string) => machine.cancelAsk(id),
+      sendNow: (id: string) => machine.sendNow(id),
       libraryAdded: (brainId: string, coordinate: string) => machine.libraryAdded(brainId, coordinate),
       stop: () => machine.stop(),
       stopAll: () => machine.stopAll(),
@@ -41,6 +43,7 @@ export function AssistantProvider({ children, ...options }: AssistantProviderPro
       status: state.status,
       record: activeRecord(state.store),
       doing: doingFor(state.doing, state.store.activeBrainId),
+      pending: pendingFor(state.pending, state.store.activeBrainId),
       ...actions,
     }),
     [actions, state]

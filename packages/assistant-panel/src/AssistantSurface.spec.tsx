@@ -1,7 +1,9 @@
 /**
  * Pins what the bound surface stands: the entity the host named, an intent box
- * that takes the keyboard from nobody it was not handed to, and a mount that
- * costs the session nothing.
+ * that takes the keyboard from nobody it was not handed to, where a waiting ask
+ * the person takes back lands and how it stands against what was already typed,
+ * that a waiting ask can be hurried to the front, and a mount that costs the
+ * session nothing.
  */
 
 import assert from "node:assert/strict";
@@ -13,7 +15,7 @@ import { FAKE_TARGET_IDENTITY } from "@wendoo/assistant-bridge/testing";
 import type { RelayToolManifest } from "@wendoo/assistant-relay";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AssistantProvider } from "./AssistantProvider";
-import { AssistantSurface } from "./AssistantSurface";
+import { AssistantSurface, draftWithTakenBack } from "./AssistantSurface";
 import type { AssistantChannel } from "./session/channel";
 
 /** What the client declares it serves. */
@@ -73,7 +75,37 @@ describe("the bound conversation surface", () => {
     assert.match(source, /libraryAdded\(brainId, coordinate\)/);
   });
 
+  test("puts a waiting ask the person takes back into the intent box", () => {
+    const source = readFileSync(fileURLToPath(new URL("./AssistantSurface.tsx", import.meta.url)), "utf8");
+
+    assert.match(source, /const text = cancelAsk\(id\)/);
+    assert.match(source, /draftWithTakenBack\(text, draft\)/);
+    assert.match(source, /onCancelAsk=\{takeBack\}/);
+  });
+
+  test("hurries a waiting ask to the front from the bubble it waits in", () => {
+    const source = readFileSync(fileURLToPath(new URL("./AssistantSurface.tsx", import.meta.url)), "utf8");
+
+    assert.match(source, /onSendNow=\{sendNow\}/);
+  });
+
+  test("stands the asks waiting their turn in the view holding the transcript", () => {
+    const source = readFileSync(fileURLToPath(new URL("./AssistantSurface.tsx", import.meta.url)), "utf8");
+
+    assert.match(source, /pending=\{pending\}/);
+  });
+
   test("opens no session by standing under a provider", () => {
     assert.equal(renderBound().connects, 0);
+  });
+});
+
+describe("what a taken-back ask leaves in the intent box", () => {
+  test("stands the ask on its own where nothing was typed", () => {
+    assert.equal(draftWithTakenBack("and jump", ""), "and jump");
+  });
+
+  test("stands the ask above what was already typed, a line apart", () => {
+    assert.equal(draftWithTakenBack("and jump", "then stop"), "and jump\nthen stop");
   });
 });

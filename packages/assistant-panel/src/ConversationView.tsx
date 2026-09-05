@@ -39,7 +39,7 @@ import { answerless, standingHolds, standingState } from "./conversation/standin
 import { ReferenceChip, TileChip } from "./conversation/TileChip";
 import type { BrainSurface, TileLook } from "./conversation/tile-visuals";
 import { BrainSurfaceProvider, unresolvedTileLook, useCallLooks, useTileLooks } from "./conversation/tile-visuals";
-import type { TurnDoing } from "./session/machine";
+import type { PendingAsk, TurnDoing } from "./session/machine";
 import { AssistantStatus } from "./session/machine";
 
 /** What the conversation surface shows, and the controls it hands back. */
@@ -54,6 +54,22 @@ export interface ConversationViewProps {
   onIntentChange: (text: string) => void;
   /** Send {@link ConversationViewProps.intent}. Called only while the box holds something and no turn runs. */
   onSend: () => void;
+  /**
+   * What the person has typed while the running turn holds the floor, waiting
+   * its turn, in the order they typed it. Absent stands nothing waiting.
+   */
+  pending?: readonly PendingAsk[] | undefined;
+  /**
+   * Take the waiting ask `id` names back, called when the person taps the
+   * bubble it stands in. Absent leaves every waiting bubble untappable.
+   */
+  onCancelAsk?: ((id: string) => void) | undefined;
+  /**
+   * Take the waiting ask `id` names now, called when the person taps the control
+   * standing beside its bubble: it jumps the queue and the running turn is
+   * stopped for it. Absent leaves every waiting bubble's control unavailable.
+   */
+  onSendNow?: ((id: string) => void) | undefined;
   /** Ask the running turn to stop. */
   onStop: () => void;
   /** Open the session again after it failed; the retry control stands only when given. */
@@ -119,6 +135,9 @@ const assistantBubbleClasses = "max-w-[85%] self-start rounded-[14px] rounded-bl
 
 /** The bubble what the person asked is drawn in, standing at the side of the transcript they speak from. */
 const askBubbleClasses = "max-w-[85%] self-end rounded-[14px] rounded-br-[4px] bg-primary/20 px-3 py-2";
+
+/** How much of itself an ask still waiting for its turn keeps on screen. */
+const waitingAskClasses = "opacity-60";
 
 /** The surface every block that is not the assistant's own voice is drawn on. */
 const cardClasses = "w-full self-start rounded-[14px] border border-border bg-brain-ink/5 px-3 py-2";
@@ -1269,6 +1288,69 @@ function EntryView({
   return <TurnView entry={entry} context={context} standing={standing} folded={folded} onAskAgain={onAskAgain} />;
 }
 
+/** The mark the send-now control carries: an arrow running past the line it jumps. */
+function SendNowGlyph() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="h-4 w-4"
+    >
+      <path d="M2.5 8h8" />
+      <path d="M7.5 4.5 11 8l-3.5 3.5" />
+      <path d="M13.5 3.5v9" />
+    </svg>
+  );
+}
+
+/**
+ * One ask waiting its turn, drawn in the bubble the person speaks from and
+ * dimmed for as long as it waits, with the control that takes it now standing
+ * beside it. Tapping the bubble takes the ask back and tapping the control sends
+ * it ahead of everything else waiting; each takes no tap where the host takes
+ * none.
+ */
+function WaitingAskView({
+  ask,
+  onCancelAsk,
+  onSendNow,
+}: {
+  ask: PendingAsk;
+  onCancelAsk?: ((id: string) => void) | undefined;
+  onSendNow?: ((id: string) => void) | undefined;
+}) {
+  return (
+    <div className="flex w-full items-end justify-end gap-1">
+      <button
+        type="button"
+        data-assistant-send-now={ask.id}
+        disabled={onSendNow === undefined}
+        onClick={onSendNow === undefined ? undefined : () => onSendNow(ask.id)}
+        aria-label="Send this one now"
+        title="Send this one now"
+        className="flex shrink-0 items-center justify-center rounded-md border border-border p-1.5 text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+      >
+        <SendNowGlyph />
+      </button>
+      <button
+        type="button"
+        data-assistant-pending={ask.id}
+        data-assistant-bubble="ask"
+        disabled={onCancelAsk === undefined}
+        onClick={onCancelAsk === undefined ? undefined : () => onCancelAsk(ask.id)}
+        className={`${askBubbleClasses} ${waitingAskClasses} text-left text-sm text-foreground pointer-coarse:min-h-11`}
+      >
+        {ask.text}
+      </button>
+    </div>
+  );
+}
+
 /** The mark the export control carries: two leaves standing one behind the other, and a tick once taken. */
 function ExportGlyph({ copied }: { copied: boolean }) {
   return (
@@ -1351,6 +1433,9 @@ export function ConversationView(props: ConversationViewProps) {
     intent,
     onIntentChange,
     onSend,
+    pending,
+    onCancelAsk,
+    onSendNow,
     onStop,
     onRetry,
     onAskAgain,
@@ -1363,6 +1448,7 @@ export function ConversationView(props: ConversationViewProps) {
     doing,
   } = props;
   const entries = record?.entries ?? [];
+  const waiting = pending ?? [];
   const context = useMemo(() => transcriptContext(record), [record]);
   const standing = useMemo(() => standingState(record, context), [record, context]);
   const newestTurn = entries.reduce((at, entry, index) => (entry.kind === "assistant" ? index : at), -1);
@@ -1441,7 +1527,7 @@ export function ConversationView(props: ConversationViewProps) {
                 onScroll={noteScroll}
                 className="flex min-h-0 grow flex-col gap-3 overflow-y-auto px-3 py-4"
               >
-                {entries.length === 0 ? (
+                {entries.length === 0 && waiting.length === 0 ? (
                   <p data-assistant-resting className="text-sm text-muted-foreground">
                     Hi! What should we build?
                   </p>
@@ -1459,6 +1545,9 @@ export function ConversationView(props: ConversationViewProps) {
                   ))
                 )}
                 {running && <PresenceMark doing={doing} />}
+                {waiting.map((ask) => (
+                  <WaitingAskView key={ask.id} ask={ask} onCancelAsk={onCancelAsk} onSendNow={onSendNow} />
+                ))}
               </div>
               {connection && (
                 <div className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-1.5">

@@ -16,7 +16,7 @@ export type { LibraryOffers } from "./conversation/library-offers";
 export type { BrainSurface, TileLook } from "./conversation/tile-visuals";
 export { brainSurfaceOf } from "./conversation/tile-visuals";
 export type { AssistantChannel, AssistantConnect } from "./session/channel";
-export type { AssistantMachineOptions } from "./session/machine";
+export type { AssistantMachineOptions, PendingAsk } from "./session/machine";
 export { AssistantStatus } from "./session/machine";
 export type { SessionPresence } from "./session/presence";
 export { createWebSocketConnect } from "./session/websocket-channel";

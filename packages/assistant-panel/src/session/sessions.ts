@@ -6,7 +6,7 @@ export const AssistantStatus = {
   Connecting: "connecting",
   /** A session is open and no turn is running. */
   Ready: "ready",
-  /** A turn is running, which may still be waiting for its session; sends are ignored until it finishes. */
+  /** A turn is running, which may still be waiting for its session; sends wait for it to finish. */
   TurnActive: "turn_active",
   /** The session could not be opened or was lost; the next open or send tries again. */
   Failed: "failed",

@@ -1,6 +1,6 @@
 import type { ConversationRecord } from "@wendoo/assistant-relay";
 import { createContext, useContext } from "react";
-import type { AssistantStatus, TurnDoing } from "./session/machine";
+import type { AssistantStatus, PendingAsk, TurnDoing } from "./session/machine";
 
 /** The assistant session, as anything under the provider reads and drives it. */
 export interface AssistantContextValue {
@@ -14,13 +14,34 @@ export interface AssistantContextValue {
    * is over; never recorded in the conversation.
    */
   readonly doing: TurnDoing | undefined;
-  /** Start a turn on the active brain from what the person said. */
+  /**
+   * What the active brain has waiting of the person's own asks, in the order
+   * they were typed; empty while nothing waits.
+   */
+  readonly pending: readonly PendingAsk[];
+  /**
+   * Start a turn on the active brain from what the person said. An ask made
+   * while a turn of that brain's is running waits for it, and the asks waiting
+   * one after another take one turn together once it ends.
+   */
   readonly send: (text: string) => void;
+  /**
+   * Take back the waiting ask `id` names, answering with the text it held and
+   * `undefined` when no ask of that name waits.
+   */
+  readonly cancelAsk: (id: string) => string | undefined;
+  /**
+   * Take the waiting ask `id` names to the front of the queue and open its turn
+   * as soon as the floor is free, stopping a turn still running for it. The ask
+   * takes that turn alone, and everything else waits on in the order it arrived.
+   */
+  readonly sendNow: (id: string) => void;
   /**
    * Tell `brainId`'s session that the person added the library at `coordinate`,
    * which opens a turn carrying that news. An add made while a turn of that
-   * brain's is running takes its turn once that one ends; an add to a brain
-   * holding no session tells nobody.
+   * brain's is running takes its turn once that one ends, and an add of a
+   * coordinate already waiting tells nobody twice; an add to a brain holding no
+   * session tells nobody.
    */
   readonly libraryAdded: (brainId: string, coordinate: string) => void;
   /** Ask the running turn to stop. */

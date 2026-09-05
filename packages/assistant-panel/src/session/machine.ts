@@ -70,6 +70,37 @@ export function doingFor(doing: TurnActivities, brainId: string | undefined): Tu
   return brainId === undefined ? undefined : doing.get(brainId);
 }
 
+/** One ask the person typed while a turn was running, waiting its turn. */
+export interface PendingAsk {
+  /** Names the ask for as long as it waits, so it can be taken back. */
+  readonly id: string;
+  /** What the person typed. */
+  readonly text: string;
+}
+
+/**
+ * What each brain has waiting of the person's own asks, keyed by brain id, in
+ * the order they were typed. A brain waiting on none is absent.
+ */
+export type PendingAsks = ReadonlyMap<string, readonly PendingAsk[]>;
+
+/** What a brain waiting on nothing has waiting. */
+const nothingWaiting: readonly PendingAsk[] = [];
+
+/** What `brainId` has waiting, empty for a brain waiting on nothing and for no brain at all. */
+export function pendingFor(pending: PendingAsks, brainId: string | undefined): readonly PendingAsk[] {
+  return (brainId === undefined ? undefined : pending.get(brainId)) ?? nothingWaiting;
+}
+
+/** One thing waiting for a brain's running turn to end. */
+type PendingEntry =
+  | { readonly kind: "added"; readonly coordinate: string }
+  | ({
+      readonly kind: "typed";
+      /** Takes its turn carrying its own words alone, joining with nothing waiting behind it. */
+      readonly solo?: boolean;
+    } & PendingAsk);
+
 /** What the machine exposes to whatever renders it. */
 export interface AssistantMachineState {
   /** Where the active brain's session stands; idle while the host has named no brain. */
@@ -83,6 +114,12 @@ export interface AssistantMachineState {
    * {@link doingFor}.
    */
   readonly doing: TurnActivities;
+  /**
+   * What each brain has waiting of the person's own asks, in the order they
+   * were typed, until the running turn ends and they take a turn. Read one
+   * brain's with {@link pendingFor}.
+   */
+  readonly pending: PendingAsks;
   readonly store: ConversationStore;
 }
 
@@ -147,6 +184,7 @@ export class AssistantMachine {
     status: AssistantStatus.Idle,
     sessions: emptySessions(),
     doing: new Map(),
+    pending: new Map(),
     store: emptyConversationStore(),
   };
   private readonly channels = new Map<string, AssistantChannel>();
@@ -160,10 +198,12 @@ export class AssistantMachine {
   /** What the person had changed of a brain's document when its running turn started. */
   private readonly changesAtTurnStart = new Map<string, number>();
   /**
-   * Libraries added to a brain while a turn of its was running, in the order
-   * they were added, each waiting for a turn of its own.
+   * What each brain has waiting for its running turn to end -- libraries the
+   * person added and asks they typed -- in the order they arrived.
    */
-  private readonly pendingAdded = new Map<string, string[]>();
+  private readonly queued = new Map<string, PendingEntry[]>();
+  /** How many asks the machine has held back so far, which names each of them. */
+  private asksHeld = 0;
   private readonly listeners = new Set<() => void>();
   private readonly presence: SessionPresence;
   private readonly random: () => number;
@@ -208,22 +248,60 @@ export class AssistantMachine {
   }
 
   /**
-   * Start a turn on the active brain from what the person said. Does nothing
-   * while that brain's turn is running or before the host has named an active
-   * brain. A brain holding no session opens one for the turn.
+   * Start a turn on the active brain from what the person said. An ask typed
+   * while that brain's turn is running waits for it, and the asks waiting one
+   * after another take one turn together once it ends. Does nothing before the
+   * host has named an active brain. A brain holding no session opens one for
+   * the turn.
    */
   send(text: string): void {
-    const { sessions, store } = this.current;
-    const brainId = store.activeBrainId;
+    const brainId = this.current.store.activeBrainId;
     if (brainId === undefined) return;
-    if (sessionStatus(sessions, brainId) === AssistantStatus.TurnActive) return;
-    this.changesAtTurnStart.set(brainId, this.options.activity?.mutations(brainId) ?? 0);
-    this.commit({
-      sessions: withSessionStatus(sessions, brainId, AssistantStatus.TurnActive),
-      store: withUpdate(store, brainId, { kind: "user", text }),
-    });
-    this.beginDoing(brainId, { kind: "planning" });
-    void this.runTurn(brainId, text);
+    if (sessionStatus(this.current.sessions, brainId) === AssistantStatus.TurnActive) {
+      this.queue(brainId, { kind: "typed", id: this.nextAskId(), text });
+      return;
+    }
+    this.startAsk(brainId, text);
+  }
+
+  /**
+   * Take back the ask `id` names from what the active brain has waiting,
+   * answering with the text it held. Answers `undefined` when no ask of that
+   * name waits, and leaves everything else waiting in the order it arrived.
+   */
+  cancelAsk(id: string): string | undefined {
+    const brainId = this.current.store.activeBrainId;
+    const waiting = brainId === undefined ? undefined : this.queued.get(brainId);
+    if (waiting === undefined) return undefined;
+    for (const [at, entry] of waiting.entries()) {
+      if (entry.kind !== "typed" || entry.id !== id) continue;
+      waiting.splice(at, 1);
+      this.commit({ pending: this.waitingAsks() });
+      return entry.text;
+    }
+    return undefined;
+  }
+
+  /**
+   * Take the ask `id` names to the front of what the active brain has waiting,
+   * and open its turn as soon as the floor is free: a turn of that brain's still
+   * running is asked to stop first. The ask then takes a turn carrying its own
+   * words alone, and everything else waits on behind it in the order it arrived.
+   * Does nothing when no ask of that name waits.
+   */
+  sendNow(id: string): void {
+    const brainId = this.current.store.activeBrainId;
+    const waiting = brainId === undefined ? undefined : this.queued.get(brainId);
+    if (brainId === undefined || waiting === undefined) return;
+    for (const [at, entry] of waiting.entries()) {
+      if (entry.kind !== "typed" || entry.id !== id) continue;
+      waiting.splice(at, 1);
+      waiting.unshift({ ...entry, solo: true });
+      this.commit({ pending: this.waitingAsks() });
+      if (sessionStatus(this.current.sessions, brainId) === AssistantStatus.TurnActive) this.askToStop(brainId);
+      else this.drainPending(brainId);
+      return;
+    }
   }
 
   /**
@@ -231,19 +309,60 @@ export class AssistantMachine {
    * which opens a turn carrying that news and nothing of the person's own. An
    * add made while a turn of that brain's is running waits for it, and takes a
    * turn of its own once it ends; adds waiting together are told in the order
-   * they were made. An add to a brain holding no session tells nobody and waits
-   * for nothing.
+   * they were made, and an add of a coordinate already waiting tells nobody
+   * twice. An add to a brain holding no session tells nobody and waits for
+   * nothing.
    */
   libraryAdded(brainId: string, coordinate: string): void {
     if (sessionStatus(this.current.sessions, brainId) === AssistantStatus.TurnActive) {
-      const waiting = this.pendingAdded.get(brainId);
-      if (waiting === undefined) this.pendingAdded.set(brainId, [coordinate]);
-      else waiting.push(coordinate);
+      const held = this.queued.get(brainId);
+      if (held?.some((entry) => entry.kind === "added" && entry.coordinate === coordinate)) return;
+      this.queue(brainId, { kind: "added", coordinate });
       return;
     }
     const channel = this.channels.get(brainId);
     if (channel === undefined) return;
     this.startAdded(brainId, channel, coordinate);
+  }
+
+  /** A name for the next ask held back, which no other ask this machine holds carries. */
+  private nextAskId(): string {
+    this.asksHeld++;
+    return `ask-${this.asksHeld}`;
+  }
+
+  /** Hold `entry` for `brainId` behind everything already waiting for its running turn to end. */
+  private queue(brainId: string, entry: PendingEntry): void {
+    const waiting = this.queued.get(brainId);
+    if (waiting === undefined) this.queued.set(brainId, [entry]);
+    else waiting.push(entry);
+    this.commit({ pending: this.waitingAsks() });
+  }
+
+  /** What each brain has waiting of the person's own asks, as the machine's state carries it. */
+  private waitingAsks(): PendingAsks {
+    const asks = new Map<string, readonly PendingAsk[]>();
+    for (const [brainId, waiting] of this.queued) {
+      const typed = waiting.flatMap((entry) => (entry.kind === "typed" ? [{ id: entry.id, text: entry.text }] : []));
+      if (typed.length > 0) asks.set(brainId, typed);
+    }
+    return asks;
+  }
+
+  /**
+   * Open a turn on `brainId` carrying `text` as the person's own ask, opening a
+   * session for it when the brain holds none. No ask ever stands both waiting
+   * and asked.
+   */
+  private startAsk(brainId: string, text: string): void {
+    this.changesAtTurnStart.set(brainId, this.options.activity?.mutations(brainId) ?? 0);
+    this.commit({
+      sessions: withSessionStatus(this.current.sessions, brainId, AssistantStatus.TurnActive),
+      store: withUpdate(this.current.store, brainId, { kind: "user", text }),
+      pending: this.waitingAsks(),
+    });
+    this.beginDoing(brainId, { kind: "planning" });
+    void this.runTurn(brainId, text);
   }
 
   /**
@@ -258,20 +377,33 @@ export class AssistantMachine {
   }
 
   /**
-   * Open the turn of the library `brainId` has been holding longest, once it
-   * holds a session and no turn of its is running. Does nothing when the brain
-   * holds no waiting library.
+   * Open the turn of whatever `brainId` has been waiting longest, once it holds
+   * a session and no turn of its is running: a library takes a turn of its own,
+   * and the asks the person typed one after another take one turn together,
+   * their texts joined in the order they were typed. An ask hurried to the front
+   * takes its turn on its own words alone, leaving the rest waiting. Does nothing
+   * when the brain has nothing waiting.
    */
   private drainPending(brainId: string): void {
-    const waiting = this.pendingAdded.get(brainId);
-    if (waiting === undefined) return;
+    const waiting = this.queued.get(brainId);
+    if (waiting === undefined || waiting.length === 0) return;
     if (sessionStatus(this.current.sessions, brainId) === AssistantStatus.TurnActive) return;
     const channel = this.channels.get(brainId);
     if (channel === undefined) return;
-    const coordinate = waiting.shift();
-    if (waiting.length === 0) this.pendingAdded.delete(brainId);
-    if (coordinate === undefined) return;
-    this.startAdded(brainId, channel, coordinate);
+    const head = waiting[0]!;
+    if (head.kind === "added") {
+      waiting.shift();
+      this.startAdded(brainId, channel, head.coordinate);
+      return;
+    }
+    const asked: string[] = [];
+    for (const entry of waiting) {
+      if (entry.kind !== "typed") break;
+      asked.push(entry.text);
+      if (entry.solo) break;
+    }
+    waiting.splice(0, asked.length);
+    this.startAsk(brainId, asked.join("\n"));
   }
 
   /**
@@ -312,8 +444,8 @@ export class AssistantMachine {
     this.refused.clear();
     this.stopRequested.clear();
     this.changesAtTurnStart.clear();
-    this.pendingAdded.clear();
-    this.commit({ sessions: emptySessions(), doing: new Map() });
+    this.queued.clear();
+    this.commit({ sessions: emptySessions(), doing: new Map(), pending: new Map() });
   }
 
   /**
@@ -377,8 +509,8 @@ export class AssistantMachine {
 
   /**
    * Hold `channel` as `brainId`'s session: it is given up the moment the channel
-   * closes, the brain stands ready on it, and a library the brain has been
-   * holding takes its turn on it.
+   * closes, the brain stands ready on it, and whatever the brain has been
+   * waiting with takes its turn on it.
    */
   private hold(brainId: string, channel: AssistantChannel): void {
     this.channels.set(brainId, channel);

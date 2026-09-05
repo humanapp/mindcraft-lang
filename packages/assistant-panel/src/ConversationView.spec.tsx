@@ -7,7 +7,9 @@
  * stand folded to their header, where the account of what a conversation kept
  * stands, what marks a turn that did not simply finish, when the assistant's
  * presence stands at the live edge and what it says it is doing there, which
- * control the intent box stands beside, what a lost
+ * asks stand waiting their turn below it, which of them take a tap back and
+ * which take a tap that hurries them to the front,
+ * which control the intent box stands beside, what a lost
  * session offers, which lines read markup in what they carry, which opens
  * of the panel land the keyboard in the intent box, how a library the
  * assistant offers is drawn against the shelf standing behind it, and that a
@@ -988,6 +990,116 @@ describe("the assistant's presence while a turn runs", () => {
 
     assert.match(markup, /data-assistant-presence-doing="propose_edit"/);
     assert.match(markup, /data-assistant-presence-written="0"/);
+  });
+});
+
+describe("the asks waiting their turn", () => {
+  /** The conversation a waiting ask stands under: one ask answered by a turn still running. */
+  const running = record([
+    { kind: "user", text: "make me hide" },
+    { kind: "assistant", steps: [{ kind: "narration", text: "Looking." }] },
+  ]);
+
+  /** The asks waiting in the tests below, in the order they were typed. */
+  const waiting = [
+    { id: "ask-0", text: "and jump" },
+    { id: "ask-1", text: "then hide again" },
+  ];
+
+  test("stands each waiting ask after the running turn, in the order they were typed", () => {
+    const markup = render({ status: AssistantStatus.TurnActive, record: running, pending: waiting });
+    const bubbles = bubbleKinds(markup);
+
+    assert.deepEqual(valuesOf(markup, "data-assistant-pending"), ["ask-0", "ask-1"]);
+    assert.deepEqual(bubbles, ["ask", "entity", "entity", "ask", "ask"]);
+    assert.ok(
+      markup.indexOf("data-assistant-presence") < markup.indexOf('data-assistant-pending="ask-0"'),
+      "a waiting ask stands below the turn still running"
+    );
+  });
+
+  test("takes a tap where the host takes one back, and none where it does not", () => {
+    /** The control the ask `id` waits in. */
+    const bubble = (markup: string, id: string): string => {
+      const tag = new RegExp(`<button[^>]*data-assistant-pending="${id}"[^>]*>`).exec(markup)?.[0];
+      assert.ok(tag, `the view stands a control for ${id}`);
+      return tag;
+    };
+
+    const taken = render({
+      status: AssistantStatus.TurnActive,
+      record: running,
+      pending: waiting,
+      onCancelAsk: () => {},
+    });
+    const inert = render({ status: AssistantStatus.TurnActive, record: running, pending: waiting });
+
+    assert.doesNotMatch(bubble(taken, "ask-0"), /\sdisabled=""/);
+    assert.match(bubble(inert, "ask-0"), /\sdisabled=""/);
+  });
+
+  test("stands nothing waiting where the host stands none", () => {
+    for (const markup of [render({ status: AssistantStatus.TurnActive, record: running }), render()]) {
+      assert.doesNotMatch(markup, /data-assistant-pending/);
+      assert.doesNotMatch(markup, /data-assistant-send-now/);
+    }
+  });
+
+  test("stands the control that hurries an ask along with the bubble it belongs to", () => {
+    const markup = render({
+      status: AssistantStatus.TurnActive,
+      record: running,
+      pending: waiting,
+      onSendNow: () => {},
+    });
+    const marks = [...markup.matchAll(/data-assistant-(send-now|pending)="([^"]*)"/g)].map(
+      (match) => `${match[1]}:${match[2]}`
+    );
+
+    assert.deepEqual(marks, ["send-now:ask-0", "pending:ask-0", "send-now:ask-1", "pending:ask-1"]);
+  });
+
+  test("takes a tap that hurries an ask along where the host takes one, and none where it does not", () => {
+    /** The control standing beside the ask `id`. */
+    const control = (markup: string, id: string): string => {
+      const tag = new RegExp(`<button[^>]*data-assistant-send-now="${id}"[^>]*>`).exec(markup)?.[0];
+      assert.ok(tag, `the view stands a control for ${id}`);
+      return tag;
+    };
+
+    const taken = render({
+      status: AssistantStatus.TurnActive,
+      record: running,
+      pending: waiting,
+      onSendNow: () => {},
+    });
+    const inert = render({ status: AssistantStatus.TurnActive, record: running, pending: waiting });
+
+    assert.doesNotMatch(control(taken, "ask-0"), /\sdisabled=""/);
+    assert.match(control(inert, "ask-0"), /\sdisabled=""/);
+  });
+
+  test("stands the ask once across the handoff from waiting to recorded", () => {
+    const held = render({ status: AssistantStatus.TurnActive, record: running, pending: [waiting[0]!] });
+    const recorded = render({
+      status: AssistantStatus.TurnActive,
+      record: record([...running.entries, { kind: "user", text: waiting[0]!.text }]),
+      pending: [],
+    });
+
+    assert.equal(countOf(held, /data-assistant-pending/), 1);
+    assert.equal(countOf(held, /data-assistant-entry="user"/), 1, "the waiting ask is in no record entry of its own");
+    assert.equal(countOf(recorded, /data-assistant-pending/), 0, "nothing waits once the record carries it");
+    assert.equal(countOf(recorded, /data-assistant-entry="user"/), 2);
+    assert.equal(countOf(held, new RegExp(waiting[0]!.text)), 1);
+    assert.equal(countOf(recorded, new RegExp(waiting[0]!.text)), 1, "the ask reads once, not twice");
+  });
+
+  test("says nothing about an empty conversation while an ask waits in it", () => {
+    const markup = render({ status: AssistantStatus.TurnActive, record: record([]), pending: [waiting[0]!] });
+
+    assert.doesNotMatch(markup, /data-assistant-resting/);
+    assert.equal(countOf(markup, /data-assistant-pending/), 1);
   });
 });
 

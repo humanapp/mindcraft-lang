@@ -56,9 +56,20 @@ function lastAsked(record: ConversationRecord | undefined): string | undefined {
 }
 
 /**
+ * What the intent box stands at once the ask `taken` is taken back out of the
+ * queue: `taken` above whatever `draft` was already typed there, the two a line
+ * apart. A box holding nothing stands at the ask alone.
+ */
+export function draftWithTakenBack(taken: string, draft: string): string {
+  return draft.length === 0 ? taken : `${taken}\n${draft}`;
+}
+
+/**
  * The conversation surface bound to the standing session: it shows the active
- * brain's conversation, sends what is typed, stops a running turn, and tells
- * the session of each library an offer's install added. Mounting it starts no
+ * brain's conversation and the asks waiting their turn in it, sends what is
+ * typed, puts a waiting ask the person takes back into the intent box, hurries a
+ * waiting ask to the front of the queue, stops a running turn, and tells the
+ * session of each library an offer's install added. Mounting it starts no
  * session, and it never takes the keyboard on its own.
  */
 export function AssistantSurface({
@@ -69,7 +80,7 @@ export function AssistantSurface({
   brainPlaces,
   libraryOffers,
 }: AssistantSurfaceProps) {
-  const { status, record, doing, send, stop, openSession, libraryAdded } = useAssistant();
+  const { status, record, doing, pending, send, cancelAsk, sendNow, stop, openSession, libraryAdded } = useAssistant();
   const [intent, setIntent] = useState("");
   const brainId = record?.brainId;
   const offers = useMemo(
@@ -87,6 +98,11 @@ export function AssistantSurface({
     send(text);
   };
 
+  const takeBack = (id: string): void => {
+    const text = cancelAsk(id);
+    if (text !== undefined) setIntent((draft) => draftWithTakenBack(text, draft));
+  };
+
   const retry = status === AssistantStatus.Failed && brainId !== undefined ? () => openSession(brainId) : undefined;
   const asked = lastAsked(record);
   const askAgain = asked === undefined ? undefined : () => send(asked);
@@ -99,6 +115,9 @@ export function AssistantSurface({
       intent={intent}
       onIntentChange={setIntent}
       onSend={submit}
+      pending={pending}
+      onCancelAsk={takeBack}
+      onSendNow={sendNow}
       onStop={stop}
       onRetry={retry}
       onAskAgain={askAgain}

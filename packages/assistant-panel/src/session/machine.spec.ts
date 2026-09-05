@@ -28,11 +28,12 @@ import { recordFor } from "../conversation/store";
 import type { ScriptedCall, ScriptedService, ScriptedTurn } from "../testing/scripted-service";
 import { runScriptedService } from "../testing/scripted-service";
 import type { AssistantChannel } from "./channel";
-import type { AssistantMachineOptions, AssistantMachineState, TurnDoing } from "./machine";
+import type { AssistantMachineOptions, AssistantMachineState, PendingAsk, TurnDoing } from "./machine";
 import {
   AssistantMachine,
   AssistantStatus,
   doingFor,
+  pendingFor,
   sessionOpenTimeoutMs,
   sessionReopenHeadDelaysMs,
   sessionReopenIntervalMs,
@@ -237,6 +238,11 @@ function settledFor(machine: AssistantMachine, brainId: string): Promise<void> {
   });
 }
 
+/** Resolve once `brainId`'s conversation holds `count` entries. */
+function holds(machine: AssistantMachine, brainId: string, count: number): Promise<void> {
+  return until(machine, (state) => recordFor(state.store, brainId).entries.length === count);
+}
+
 /** Resolve once everything already scheduled has run. */
 function flush(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
@@ -405,22 +411,6 @@ describe("opening the session", () => {
     assert.equal(stand.machine.getState().status, AssistantStatus.Idle);
   });
 
-  test("ignores a send while a turn is already running", async () => {
-    const stand = harness({ turns: [{ steps: [{ kind: "awaitStop" }] }] });
-    stand.machine.setActiveBrain("brain-a");
-
-    stand.machine.send("first");
-    await until(stand.machine, (state) => state.status === AssistantStatus.TurnActive);
-    stand.machine.send("second");
-    stand.machine.stop();
-    await settled(stand.machine);
-
-    const entries = conversation(stand.machine, "brain-a").entries;
-    assert.deepEqual(entries[0], { kind: "user", text: "first" });
-    assert.equal(entries.length, 2);
-    await stand.served;
-  });
-
   test("fails the turn that could not reach a service, and opens one on the next send", async () => {
     const unreachable = harness(oneQuietTurn, { unreachable: true });
     unreachable.machine.setActiveBrain("brain-a");
@@ -482,11 +472,6 @@ describe("a library the person added", () => {
   /** The add message for `coordinate`, as the machine sends it. */
   function addOf(coordinate: string): RelayUpstreamMessage {
     return { type: "session:libraryAdded", coordinate };
-  }
-
-  /** Resolve once `brainId`'s conversation holds `count` entries. */
-  function holds(machine: AssistantMachine, brainId: string, count: number): Promise<void> {
-    return until(machine, (state) => recordFor(state.store, brainId).entries.length === count);
   }
 
   test("opens a turn on the session standing, carrying the coordinate and nothing of the person's own", async () => {
@@ -660,6 +645,357 @@ describe("a library the person added", () => {
     assert.deepEqual(conversation(stand.machine, "brain-b").entries, []);
     assert.equal(sessionStatus(stand.machine.getState().sessions, "brain-b"), AssistantStatus.Idle);
     await stand.served;
+  });
+});
+
+describe("an ask the person typed while a turn was running", () => {
+  /** A turn the service leaves running until the client asks it to stop. */
+  const heldTurn: ScriptedTurn = { steps: [{ kind: "awaitStop" }] };
+
+  /** A turn that narrates and completes, as a waiting ask's turn plays out. */
+  const quietTurn: ScriptedTurn = { steps: [{ kind: "narration", text: "looking at it" }] };
+
+  /** The coordinate every add in this block names. */
+  const added = "example-org/lib-position";
+
+  /** What `brainId` has waiting of the person's own asks, in the order they were typed. */
+  function waitingFor(machine: AssistantMachine, brainId: string): readonly PendingAsk[] {
+    return pendingFor(machine.getState().pending, brainId);
+  }
+
+  /** What `brainId` has waiting, read by the words each ask carries. */
+  function waitingWords(machine: AssistantMachine, brainId: string): string[] {
+    return waitingFor(machine, brainId).map((ask) => ask.text);
+  }
+
+  /** What the machine opened each turn with, in the order it opened them. */
+  function openings(stand: Harness): string[] {
+    const opened: string[] = [];
+    for (const message of stand.sent()) {
+      if (message.type === "session:userMessage") opened.push(message.text);
+      if (message.type === "session:libraryAdded") opened.push(`added ${message.coordinate}`);
+    }
+    return opened;
+  }
+
+  test("holds the ask back while the turn runs, and takes a turn of its own once it ends", async () => {
+    const stand = harness({ turns: [heldTurn, quietTurn] });
+    stand.machine.setActiveBrain("brain-a");
+
+    stand.machine.send("make it hide");
+    await drain();
+    assert.equal(stand.machine.getState().status, AssistantStatus.TurnActive, "the first turn is under way");
+
+    stand.machine.send("and jump");
+
+    assert.deepEqual(openings(stand), ["make it hide"], "nothing of the ask crossed while the turn ran");
+    assert.deepEqual(waitingWords(stand.machine, "brain-a"), ["and jump"]);
+    assert.equal(conversation(stand.machine, "brain-a").entries.length, 1, "the waiting ask stands in no record yet");
+
+    stand.machine.stop();
+    await holds(stand.machine, "brain-a", 4);
+    await settledFor(stand.machine, "brain-a");
+
+    assert.deepEqual(openings(stand), ["make it hide", "and jump"]);
+    assert.deepEqual(conversation(stand.machine, "brain-a").entries.map(saidIn), [
+      "make it hide",
+      "",
+      "and jump",
+      "looking at it",
+    ]);
+    assert.deepEqual(waitingWords(stand.machine, "brain-a"), [], "nothing waits once it has taken its turn");
+    await stand.served;
+  });
+
+  test("takes one turn for the asks typed one after another, their words joined in order", async () => {
+    const stand = harness({ turns: [heldTurn, quietTurn] });
+    stand.machine.setActiveBrain("brain-a");
+
+    stand.machine.send("make it hide");
+    await until(stand.machine, (state) => state.status === AssistantStatus.TurnActive);
+    stand.machine.send("and jump");
+    stand.machine.send("then hide again");
+    stand.machine.send("then stop");
+    stand.machine.stop();
+    await holds(stand.machine, "brain-a", 4);
+    await settledFor(stand.machine, "brain-a");
+
+    assert.deepEqual(openings(stand), ["make it hide", "and jump\nthen hide again\nthen stop"]);
+    assert.deepEqual(
+      conversation(stand.machine, "brain-a").entries.map((entry) => entry.kind),
+      ["user", "assistant", "user", "assistant"],
+      "the three asks took one turn between them"
+    );
+    await stand.served;
+  });
+
+  test("takes what waits in the order it arrived, an add taking its own turn between the asks around it", async () => {
+    const stand = harness({ turns: [heldTurn, quietTurn, quietTurn, quietTurn] });
+    stand.machine.setActiveBrain("brain-a");
+
+    stand.machine.send("make it hide");
+    await until(stand.machine, (state) => state.status === AssistantStatus.TurnActive);
+    stand.machine.send("and jump");
+    stand.machine.libraryAdded("brain-a", added);
+    stand.machine.send("then hide again");
+    stand.machine.stop();
+    await holds(stand.machine, "brain-a", 7);
+    await settledFor(stand.machine, "brain-a");
+
+    assert.deepEqual(openings(stand), ["make it hide", "and jump", `added ${added}`, "then hide again"]);
+    assert.deepEqual(
+      conversation(stand.machine, "brain-a").entries.map((entry) => entry.kind),
+      ["user", "assistant", "user", "assistant", "assistant", "user", "assistant"],
+      "the add parted the asks around it rather than joining them"
+    );
+    await stand.served;
+  });
+
+  test("takes a waiting ask back, opening nothing for it and leaving the rest in the order they were typed", async () => {
+    const stand = harness({ turns: [heldTurn, quietTurn] });
+    stand.machine.setActiveBrain("brain-a");
+
+    stand.machine.send("make it hide");
+    await until(stand.machine, (state) => state.status === AssistantStatus.TurnActive);
+    stand.machine.send("and jump");
+    stand.machine.send("then hide again");
+    stand.machine.send("then stop");
+
+    const middle = waitingFor(stand.machine, "brain-a")[1]!;
+    assert.equal(stand.machine.cancelAsk(middle.id), "then hide again", "the ask came back with its words");
+    assert.deepEqual(waitingWords(stand.machine, "brain-a"), ["and jump", "then stop"]);
+    assert.equal(stand.machine.cancelAsk(middle.id), undefined, "an ask already taken back is not there to take again");
+
+    stand.machine.stop();
+    await holds(stand.machine, "brain-a", 4);
+    await settledFor(stand.machine, "brain-a");
+
+    assert.deepEqual(openings(stand), ["make it hide", "and jump\nthen stop"]);
+    await stand.served;
+  });
+
+  test("holds one turn for a library added twice while the turn ran", async () => {
+    const stand = harness({ turns: [heldTurn, quietTurn] });
+    stand.machine.setActiveBrain("brain-a");
+
+    stand.machine.send("make it hide");
+    await until(stand.machine, (state) => state.status === AssistantStatus.TurnActive);
+    stand.machine.libraryAdded("brain-a", added);
+    stand.machine.libraryAdded("brain-a", added);
+    stand.machine.stop();
+    await holds(stand.machine, "brain-a", 3);
+    await settledFor(stand.machine, "brain-a");
+
+    assert.deepEqual(openings(stand), ["make it hide", `added ${added}`]);
+    assert.deepEqual(
+      conversation(stand.machine, "brain-a").entries.map((entry) => entry.kind),
+      ["user", "assistant", "assistant"],
+      "the second add of the same library took no turn of its own"
+    );
+    await stand.served;
+  });
+
+  test("takes its turn on the session opened after the one it waited on was lost", async () => {
+    const stand = harness((at) => (at === 0 ? { turns: [heldTurn] } : { turns: [quietTurn] }));
+    stand.machine.setActiveBrain("brain-a");
+
+    stand.machine.send("make it hide");
+    await drain();
+    stand.machine.send("and jump");
+    stand.drop(0);
+    await holds(stand.machine, "brain-a", 4);
+
+    assert.equal(stand.connects(), 2, "the session the ask waited on was lost and another was opened");
+    assert.deepEqual(openings(stand), ["make it hide", "and jump"]);
+    assert.equal(
+      endingOf(conversation(stand.machine, "brain-a").entries[1]!)?.kind,
+      "failure",
+      "the turn the ask waited for went with the session"
+    );
+    assert.equal(saidIn(conversation(stand.machine, "brain-a").entries[3]!), "looking at it");
+    await stand.served;
+  });
+
+  test("keeps each brain's waiting asks its own, and takes back only the shown brain's", async () => {
+    // The page stands out of view, so nothing dials for either brain beyond the
+    // sessions the test asks for.
+    const stand = harness({ turns: [heldTurn, quietTurn] }, { presence: pageIn(false).presence });
+
+    stand.machine.setActiveBrain("brain-a");
+    stand.machine.send("make it hide");
+    await drain();
+    stand.machine.send("and jump");
+    stand.machine.setActiveBrain("brain-b");
+    stand.machine.send("make it seek");
+    await drain();
+    stand.machine.send("and flock");
+
+    assert.deepEqual(waitingWords(stand.machine, "brain-a"), ["and jump"]);
+    assert.deepEqual(waitingWords(stand.machine, "brain-b"), ["and flock"]);
+
+    const held = waitingFor(stand.machine, "brain-a")[0]!;
+    assert.equal(stand.machine.cancelAsk(held.id), undefined, "the brain behind the one shown keeps what it holds");
+    assert.deepEqual(waitingWords(stand.machine, "brain-a"), ["and jump"]);
+
+    stand.machine.stopAll();
+    await holds(stand.machine, "brain-a", 4);
+    await holds(stand.machine, "brain-b", 4);
+    await settledFor(stand.machine, "brain-a");
+    await settledFor(stand.machine, "brain-b");
+
+    assert.deepEqual(conversation(stand.machine, "brain-a").entries.map(saidIn), [
+      "make it hide",
+      "",
+      "and jump",
+      "looking at it",
+    ]);
+    assert.deepEqual(conversation(stand.machine, "brain-b").entries.map(saidIn), [
+      "make it seek",
+      "",
+      "and flock",
+      "looking at it",
+    ]);
+    await stand.served;
+  });
+
+  test("stands the ask either waiting or in the record, and never in both at once", async () => {
+    const stand = harness({ turns: [heldTurn, quietTurn] });
+    stand.machine.setActiveBrain("brain-a");
+    const asked = "and jump";
+    /** Whether the ask stood waiting and recorded at the same time, and how often. */
+    let doubled = 0;
+    /** How many of the states seen stood the ask waiting. */
+    let waited = 0;
+    stand.machine.subscribe(() => {
+      const state = stand.machine.getState();
+      const waiting = pendingFor(state.pending, "brain-a").some((ask) => ask.text === asked);
+      const recorded = recordFor(state.store, "brain-a").entries.some(
+        (entry) => entry.kind === "user" && entry.text === asked
+      );
+      if (waiting) waited++;
+      if (waiting && recorded) doubled++;
+    });
+
+    stand.machine.send("make it hide");
+    await until(stand.machine, (state) => state.status === AssistantStatus.TurnActive);
+    stand.machine.send(asked);
+    stand.machine.stop();
+    await holds(stand.machine, "brain-a", 4);
+    await settledFor(stand.machine, "brain-a");
+
+    assert.equal(doubled, 0, "no state ever stood the ask twice");
+    assert.ok(waited > 0, "the ask did stand waiting on the way");
+    assert.deepEqual(waitingWords(stand.machine, "brain-a"), []);
+    assert.deepEqual(
+      conversation(stand.machine, "brain-a").entries.map(saidIn),
+      ["make it hide", "", asked, "looking at it"],
+      "the ask stands in the record it drained into"
+    );
+    await stand.served;
+  });
+
+  describe("an ask the person hurries to the front", () => {
+    /** How many times the machine asked a running turn to stop. */
+    function stops(stand: Harness): number {
+      return stand.sent().filter((message) => message.type === "turn:stop").length;
+    }
+
+    test("stops the running turn and takes its own words alone, the rest joining behind it", async () => {
+      const stand = harness({ turns: [heldTurn, quietTurn, quietTurn] });
+      stand.machine.setActiveBrain("brain-a");
+
+      stand.machine.send("make it hide");
+      await drain();
+      stand.machine.send("and jump");
+      stand.machine.send("then hide again");
+      stand.machine.send("then stop");
+
+      const hurried = waitingFor(stand.machine, "brain-a")[2]!;
+      stand.machine.sendNow(hurried.id);
+
+      assert.deepEqual(waitingWords(stand.machine, "brain-a"), ["then stop", "and jump", "then hide again"]);
+      assert.equal(stops(stand), 1, "the running turn was asked to stop the once");
+
+      await holds(stand.machine, "brain-a", 6);
+      await settledFor(stand.machine, "brain-a");
+
+      assert.deepEqual(endingOf(conversation(stand.machine, "brain-a").entries[1]!), {
+        kind: "end",
+        code: "stopped",
+      });
+      assert.deepEqual(openings(stand), ["make it hide", "then stop", "and jump\nthen hide again"]);
+      assert.equal(stops(stand), 1, "nothing asked the turn it opened to stop as well");
+      assert.deepEqual(waitingWords(stand.machine, "brain-a"), []);
+      await stand.served;
+    });
+
+    test("takes its turn alone on the session opened after the one its brain had lost", async () => {
+      // The page stands out of view, so nothing dials for the brain beyond the
+      // sessions the test asks for.
+      const stand = harness((at) => (at === 0 ? { turns: [heldTurn] } : { turns: [quietTurn, quietTurn] }), {
+        presence: pageIn(false).presence,
+      });
+      stand.machine.setActiveBrain("brain-a");
+
+      stand.machine.send("make it hide");
+      await drain();
+      stand.machine.send("and jump");
+      stand.machine.send("then hide again");
+      const hurried = waitingFor(stand.machine, "brain-a")[1]!;
+
+      stand.drop(0);
+      await settledFor(stand.machine, "brain-a");
+      assert.equal(stand.machine.getState().status, AssistantStatus.Failed, "the turn went with the session it ran on");
+
+      stand.machine.sendNow(hurried.id);
+
+      assert.deepEqual(
+        waitingWords(stand.machine, "brain-a"),
+        ["then hide again", "and jump"],
+        "the hurried ask stands at the front, with nothing opened for it while the brain holds no session"
+      );
+
+      stand.machine.openSession("brain-a");
+      await holds(stand.machine, "brain-a", 6);
+      await settledFor(stand.machine, "brain-a");
+
+      assert.equal(stand.connects(), 2);
+      assert.deepEqual(openings(stand), ["make it hide", "then hide again", "and jump"]);
+      await stand.served;
+    });
+
+    test("hurries nothing along for a name waiting on nothing, or for a brain behind the one shown", async () => {
+      // The page stands out of view, so nothing dials for either brain beyond
+      // the one session the test asks for.
+      const stand = harness({ turns: [heldTurn, quietTurn] }, { presence: pageIn(false).presence });
+      stand.machine.setActiveBrain("brain-a");
+
+      stand.machine.send("make it hide");
+      await drain();
+      stand.machine.send("and jump");
+      stand.machine.send("then hide again");
+      const held = waitingFor(stand.machine, "brain-a")[1]!;
+
+      stand.machine.sendNow("ask-none");
+      assert.deepEqual(waitingWords(stand.machine, "brain-a"), ["and jump", "then hide again"]);
+
+      stand.machine.setActiveBrain("brain-b");
+      stand.machine.sendNow(held.id);
+      assert.deepEqual(
+        waitingWords(stand.machine, "brain-a"),
+        ["and jump", "then hide again"],
+        "the brain behind the one shown keeps what it holds in the order it holds it"
+      );
+
+      stand.machine.setActiveBrain("brain-a");
+      stand.machine.stop();
+      await holds(stand.machine, "brain-a", 4);
+      await settledFor(stand.machine, "brain-a");
+
+      assert.equal(stand.connects(), 1);
+      assert.deepEqual(openings(stand), ["make it hide", "and jump\nthen hide again"]);
+      await stand.served;
+    });
   });
 });
 
