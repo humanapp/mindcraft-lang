@@ -4,7 +4,7 @@
 
 A demo application built with the [Wendoo language](../../README.md). Carnivores, herbivores, and plants survive in a 2D physics world -- each driven by a brain you can program.
 
-**Live demo:** <https://sim.wendoo-lang.org> | **Language docs:** <https://sim.wendoo-lang.org/docs>
+**Live demo:** <https://ecosim.playwendoo.com> | **Language docs:** <https://ecosim.playwendoo.com/docs>
 
 <div align="center">
   <img src="./assets/2026-03-07_15-11-12.png" alt="Sim Screenshot 1" width="80%" />

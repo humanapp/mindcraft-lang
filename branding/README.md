@@ -8,6 +8,7 @@ typeface. Every app in this repository draws its Wendoo branding from here.
 | Path | What it is |
 | --- | --- |
 | `wendoo-brand.html` | The brand page: mark, logotype, palettes, and type on one self-contained page. Open it in a browser. |
+| `ecosim-og-image.svg` | Source for the Ecosystem Simulator social card, 1200 x 630: logotype, title, and description on ink. |
 | `logo/wendoo-mark.svg` | The mark, 24-unit master grid. Use at 24px and above. |
 | `logo/wendoo-mark-small.svg` | The mark, 16-unit small cut. Use at 20px and below. |
 | `logo/wendoo-logotype.svg` | The logotype, construction B (tile-native). The recommended wordmark. |
@@ -90,3 +91,23 @@ from Google Fonts, with `system-ui, sans-serif` as the fallback stack.
   geometry in step with `logo/wendoo-logotype.svg` and `logo/wendoo-mark.svg`.
 - `apps/ecosim/public/favicon.svg` is a copy of `logo/wendoo-app-icon.svg`,
   and `favicon.png` is that file rasterised at 256 x 256.
+- `apps/ecosim/public/og-image.png` is `ecosim-og-image.svg` rasterised at
+  1200 x 630.
+- `apps/vscode-extension/assets/wendoo_256.png` is `logo/wendoo-app-icon.svg`
+  rasterised at 256 x 256 for the Marketplace listing.
+
+## Rasterising on macOS
+
+Quick Look renders SVG to PNG without extra tools, but it always produces a
+square thumbnail, so wide images need a square canvas and a crop:
+
+```bash
+qlmanage -t -s 256 -o out/ branding/logo/wendoo-app-icon.svg
+```
+
+For the social card, wrap the 1200 x 630 content in a 1200 x 1200 canvas
+translated down by 285, render at 1200, then crop the centre band:
+
+```bash
+sips -c 630 1200 out/card.svg.png --out og-image.png
+```

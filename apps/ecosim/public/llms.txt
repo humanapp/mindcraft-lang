@@ -6,8 +6,8 @@ Wendoo programs are written by arranging tiles into rules. Each rule has a WHEN 
 
 ## Pages
 
-- [Ecosystem Simulator](https://sim.wendoo-lang.org/): Live simulation with editable brains for carnivores, herbivores, and plants
-- [Language Documentation](https://sim.wendoo-lang.org/docs): Full tile reference, sensors, actuators, and programming guide
+- [Ecosystem Simulator](https://ecosim.playwendoo.com/): Live simulation with editable brains for carnivores, herbivores, and plants
+- [Language Documentation](https://ecosim.playwendoo.com/docs): Full tile reference, sensors, actuators, and programming guide
 
 ## Language Features
 
@@ -39,5 +39,5 @@ Wendoo programs are written by arranging tiles into rules. Each rule has a WHEN 
 ## Links
 
 - Main product site: https://wendoo-lang.org
-- Language documentation: https://sim.wendoo-lang.org/docs
+- Language documentation: https://ecosim.playwendoo.com/docs
 - Open source on GitHub: https://github.com/wendoo-lang/wendoo-lang

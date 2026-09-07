@@ -16,8 +16,8 @@ Wendoo draws inspiration from other tile-based programming systems past and pres
 
 ## Demos
 
-- [Ecosystem Sim](https://sim.wendoo-lang.org) -- carnivores, herbivores, and plants driven by user-editable Wendoo brains
-- [Code a BBC micro:bit](https://microbit.wendoo-lang.org) -- program a micro:bit with Wendoo in your browser, then flash the brain to real hardware ([wendoo-mcu](https://github.com/wendoo-lang/wendoo-mcu))
+- [Ecosystem Demo](https://ecosim.playwendoo.com) -- carnivores, herbivores, and plants driven by user-editable Wendoo brains
+- [Code a BBC micro:bit](https://microbit.playwendoo.com) -- program a micro:bit with Wendoo in your browser, then flash the brain to real hardware ([wendoo-mcu](https://github.com/wendoo-lang/wendoo-mcu))
 
 ## Packages
 
@@ -66,7 +66,7 @@ For full setup instructions -- Vite config, TypeScript paths, Tailwind, and comp
 
 ## Documentation
 
-Documentation is a work in progress. Browse the sim demo's [language documentation](https://sim.wendoo-lang.org/docs) online. See also the [core package README](packages/core/README.md) for language architecture, the [ui package README](packages/ui/README.md) for the shared React components, and the [docs package README](packages/docs/README.md) for the documentation system.
+Documentation is a work in progress. Browse the sim demo's [language documentation](https://ecosim.playwendoo.com/docs) online. See also the [core package README](packages/core/README.md) for language architecture, the [ui package README](packages/ui/README.md) for the shared React components, and the [docs package README](packages/docs/README.md) for the documentation system.
 
 ## Contributing
 

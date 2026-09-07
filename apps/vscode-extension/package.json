@@ -36,9 +36,9 @@
     "onStartupFinished"
   ],
   "pricing": "Free",
-  "icon": "./assets/brain_256.png",
+  "icon": "./assets/wendoo_256.png",
   "galleryBanner": {
-    "color": "#2E3D6A",
+    "color": "#12161d",
     "theme": "dark"
   },
   "browser": "./dist/extension.js",

@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://sim.wendoo-lang.org/sitemap.xml
+Sitemap: https://ecosim.playwendoo.com/sitemap.xml
