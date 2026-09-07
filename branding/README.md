@@ -88,3 +88,5 @@ from Google Fonts, with `system-ui, sans-serif` as the fallback stack.
 - `apps/ecosim/src/components/WendooLogo.tsx` inlines the logotype and the
   mark as React components; the logotype is the canvas watermark. Keep its
   geometry in step with `logo/wendoo-logotype.svg` and `logo/wendoo-mark.svg`.
+- `apps/ecosim/public/favicon.svg` is a copy of `logo/wendoo-app-icon.svg`,
+  and `favicon.png` is that file rasterised at 256 x 256.
