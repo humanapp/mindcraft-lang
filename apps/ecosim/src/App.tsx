@@ -37,6 +37,7 @@ import { NewProjectDialog } from "./components/NewProjectDialog";
 import { NewWorkspaceDialog } from "./components/NewWorkspaceDialog";
 import { ProjectHeader } from "./components/ProjectHeader";
 import { Sidebar } from "./components/Sidebar";
+import { WendooLogotype } from "./components/WendooLogo";
 import { WorkspacePinInput } from "./components/WorkspacePinInput";
 import { useEcosimEnvironment } from "./contexts/ecosim-environment";
 import { createDocsRegistry } from "./docs/docs-registry";
@@ -904,6 +905,9 @@ function App() {
               >
                 {isSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
               </button>
+            )}
+            {!activeWorkspaceLocked && (
+              <WendooLogotype className="pointer-events-none absolute bottom-3 left-3 z-30 h-7 w-auto text-foreground/30" />
             )}
           </main>
 

@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wendoo Brand</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: oklch(0.2 0.015 260);
+    --paper: oklch(0.97 0.005 240);
+    --page: oklch(0.93 0.006 250);
+    --card: oklch(0.985 0.003 250);
+    --well: oklch(0.97 0.004 250);
+    --line: oklch(0.9 0.006 250);
+    --ultramarine: oklch(0.5 0.2 265);
+  }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font-family: "M PLUS Rounded 1c", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.55;
+  }
+  svg { display: block; }
+  main { max-width: 1200px; margin: 0 auto; padding: 48px 32px; display: flex; flex-direction: column; gap: 40px; }
+  .eyebrow { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; opacity: .6; }
+  .label { font-size: 13px; letter-spacing: .1em; text-transform: uppercase; opacity: .5; }
+  h1 { margin: 6px 0 0; font-size: 28px; font-weight: 700; line-height: 1.2; }
+  h2 { margin: 0; font-size: 20px; font-weight: 700; display: flex; align-items: baseline; gap: 16px; }
+  h2 .num { font-size: 12px; letter-spacing: .14em; opacity: .5; font-weight: 400; }
+  h3 { margin: 0; font-size: 15px; font-weight: 700; }
+  p { margin: 0; font-size: 14px; text-wrap: pretty; }
+  section { background: var(--card); border-radius: 20px; padding: 40px; display: flex; flex-direction: column; gap: 28px; }
+  .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 32px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; }
+  .stack { display: flex; flex-direction: column; gap: 14px; }
+  .row { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+  .well { background: var(--well); border-radius: 14px; padding: 32px; display: flex; justify-content: center; align-items: center; }
+  .well.dark { background: var(--ink); color: var(--paper); }
+  .ladder { display: flex; align-items: flex-end; gap: 20px; height: 96px; }
+  .rules { display: flex; flex-direction: column; gap: 8px; }
+  .swatches { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; font-size: 11px; }
+  .swatch { display: flex; flex-direction: column; gap: 6px; }
+  .swatch div { height: 56px; border-radius: 10px; }
+  .lockups { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .lockup { border-radius: 14px; height: 150px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; }
+  .type-sample { display: flex; flex-direction: column; gap: 6px; }
+  .type-sample .w700 { font-weight: 700; font-size: 32px; line-height: 1.2; }
+  .type-sample .w500 { font-weight: 500; font-size: 20px; }
+  .type-sample .w400 { font-weight: 400; font-size: 16px; }
+  .divider { border-top: 1px solid var(--line); padding-top: 24px; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="mark" viewBox="0 0 24 24"><rect x="2" y="8" width="8" height="8" rx="1.8" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="6.55" cy="11.6" r="1.9" fill="currentColor"/><path fill-rule="evenodd" fill="currentColor" d="M15.8 7h4.4a2.8 2.8 0 0 1 2.8 2.8v4.4a2.8 2.8 0 0 1-2.8 2.8h-4.4a2.8 2.8 0 0 1-2.8-2.8v-4.4a2.8 2.8 0 0 1 2.8-2.8ZM20.45 11.6a1.9 1.9 0 1 1-3.8 0a1.9 1.9 0 1 1 3.8 0Z"/></symbol>
+    <symbol id="mark-small" viewBox="0 0 16 16"><rect x="0.9" y="5.2" width="5.6" height="5.6" rx="1.17" stroke="currentColor" stroke-width="1.8" fill="none"/><circle cx="4" cy="7.7" r="1.1" fill="currentColor"/><path fill-rule="evenodd" fill="currentColor" d="M10.67 4.3h3.26a2.07 2.07 0 0 1 2.07 2.07v3.26a2.07 2.07 0 0 1-2.07 2.07h-3.26a2.07 2.07 0 0 1-2.07-2.07v-3.26a2.07 2.07 0 0 1 2.07-2.07ZM13.7 7.7a1.1 1.1 0 1 1-2.2 0a1.1 1.1 0 1 1 2.2 0Z"/></symbol>
+    <symbol id="logotype" viewBox="0 0 78 19"><g stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M3 8V14.2a1.8 1.8 0 0 0 1.8 1.8h2.4a1.8 1.8 0 0 0 1.8-1.8V11V14.2a1.8 1.8 0 0 0 1.8 1.8h2.4a1.8 1.8 0 0 0 1.8-1.8V8"/><path d="M26 16h-5.2a1.8 1.8 0 0 1-1.8-1.8v-4.4a1.8 1.8 0 0 1 1.8-1.8h4.4a1.8 1.8 0 0 1 1.8 1.8V12H19"/><path d="M31 16V9.8a1.8 1.8 0 0 1 1.8-1.8h4.4a1.8 1.8 0 0 1 1.8 1.8V16"/><path d="M51 3V14.2a1.8 1.8 0 0 1-1.8 1.8h-4.4a1.8 1.8 0 0 1-1.8-1.8v-4.4a1.8 1.8 0 0 1 1.8-1.8H51"/></g><rect x="55" y="8" width="8" height="8" rx="1.8" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="59.55" cy="11.6" r="1.9" fill="currentColor"/><path fill-rule="evenodd" fill="currentColor" d="M68.8 7h4.4a2.8 2.8 0 0 1 2.8 2.8v4.4a2.8 2.8 0 0 1-2.8 2.8h-4.4a2.8 2.8 0 0 1-2.8-2.8v-4.4a2.8 2.8 0 0 1 2.8-2.8ZM73.45 11.6a1.9 1.9 0 1 1-3.8 0a1.9 1.9 0 1 1 3.8 0Z"/></symbol>
+    <symbol id="logotype-round" viewBox="0 0 78 19"><g stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M3 8V13a3 3 0 0 0 6 0V11V13a3 3 0 0 0 6 0V8"/><path d="M19 12H27A4 4 0 1 0 25.83 14.83"/><path d="M31 16V8M31 12a4 4 0 0 1 8 0V16"/><path d="M51 3V16M51 12a4 4 0 1 0-8 0a4 4 0 1 0 8 0"/></g><rect x="55" y="8" width="8" height="8" rx="1.8" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="59.55" cy="11.6" r="1.9" fill="currentColor"/><path fill-rule="evenodd" fill="currentColor" d="M68.8 7h4.4a2.8 2.8 0 0 1 2.8 2.8v4.4a2.8 2.8 0 0 1-2.8 2.8h-4.4a2.8 2.8 0 0 1-2.8-2.8v-4.4a2.8 2.8 0 0 1 2.8-2.8ZM73.45 11.6a1.9 1.9 0 1 1-3.8 0a1.9 1.9 0 1 1 3.8 0Z"/></symbol>
+  </defs>
+</svg>
+
+<main>
+
+<header>
+  <div class="eyebrow">Wendoo - brand</div>
+  <h1>Mark, logotype, color, type</h1>
+  <p style="margin-top:10px;opacity:.7;max-width:640px">Everything on this page is one color per placement. Knockouts are evenodd geometry. Grid: 24 units for the master mark, 16 units for the small cut. The SVG files in <code>logo/</code> are the canonical assets.</p>
+</header>
+
+<!-- 1. MARK -->
+<section>
+  <h2><span class="num">01</span>Mark</h2>
+
+  <div class="grid-2">
+    <div class="stack">
+      <div class="label">Master - 24 grid - use at 24px and above</div>
+      <div class="row">
+        <svg width="192" height="192"><use href="#mark"/></svg>
+        <div class="rules">
+          <p><b>Both silhouettes 10 x 10, gap 2, radius 2.8 outer and 0.8 inner.</b> The solid tile is drawn to the hollow tile's outer edge, so WHEN and DO are equal weight. The pair spans 22 of 24.</p>
+          <p><b>Pupil r1.9, offset +0.55, at 0.46 of tile height.</b> Clearance to the ring is 0.55 units, so the eye stays an eye down to roughly 24px. The same pupil is knocked out of DO, so fill is the only difference between the two eyes.</p>
+          <p><b>Stroke 2.</b> It becomes the letter stroke of the logotype.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="label">Small cut - 16 grid - use at 20px and below</div>
+      <div class="row">
+        <svg width="160" height="160"><use href="#mark-small"/></svg>
+        <div class="rules">
+          <p><b>Tiles 7.4, gap 1.2, stroke 1.8, pupil r1.1 offset +0.3.</b> Pupil clearance is 0.5 of 16, which is half a pixel at 16px. Nothing below that survives rasterisation.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-2 divider">
+    <div class="stack">
+      <div class="label">Size ladder - master at 96, 48, 32, 24; small cut at 20 and 16</div>
+      <div class="ladder">
+        <svg width="96" height="96"><use href="#mark"/></svg>
+        <svg width="48" height="48"><use href="#mark"/></svg>
+        <svg width="32" height="32"><use href="#mark"/></svg>
+        <svg width="24" height="24"><use href="#mark"/></svg>
+        <svg width="20" height="20"><use href="#mark-small"/></svg>
+        <svg width="16" height="16"><use href="#mark-small"/></svg>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="label">App icon - same containment, dark ground</div>
+      <div class="row">
+        <svg width="96" height="96" viewBox="0 0 24 24"><rect x="1.2" y="1.2" width="21.6" height="21.6" rx="5.6" fill="#17171b"/><g transform="translate(0,0.3)" color="#fff"><use href="#mark" width="24" height="24"/></g></svg>
+        <svg width="96" height="96" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#17171b"/><g color="#fff"><use href="#mark" width="24" height="24"/></g></svg>
+        <svg width="32" height="32" viewBox="0 0 24 24"><rect x="1.2" y="1.2" width="21.6" height="21.6" rx="5.6" fill="#17171b"/><g color="#fff"><use href="#mark" width="24" height="24"/></g></svg>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 2. LOGOTYPE -->
+<section>
+  <h2><span class="num">02</span>Logotype</h2>
+  <p style="opacity:.7;max-width:720px">x-height equals tile height (10), letter stroke equals ring stroke (2), letter gap equals tile gap (2). Letter silhouettes are 10 wide, w is 14, so the tiles occupy exactly two letter slots. The viewBox is 78 x 19; at 28px tall it is 115px wide.</p>
+
+  <div class="stack">
+    <div class="row" style="gap:12px"><h3>Tile-native</h3><span style="font-size:13px;opacity:.6">every counter is the tile - the wordmark</span></div>
+    <div class="well"><svg width="546" height="133" style="max-width:100%;height:auto"><use href="#logotype"/></svg></div>
+    <div class="grid-2">
+      <div class="well" style="padding:16px 20px;justify-content:flex-start;gap:14px"><svg width="115" height="28"><use href="#logotype"/></svg><span style="font-size:12px;opacity:.5">28px header</span></div>
+      <div class="well dark" style="padding:16px 20px;justify-content:flex-start;gap:14px"><svg width="115" height="28"><use href="#logotype"/></svg><span style="font-size:12px;opacity:.5">inverted</span></div>
+    </div>
+    <p>The d's bowl is the hollow tile with a stem, so the eye has already learned "rounded square = letter" by the time it reaches the oo, and reads them as letters without hesitation. Squared counters also sit well next to code and industrial UI. The tile radius 2.8 outer / 0.8 inner becomes the whole brand's corner language.</p>
+  </div>
+
+  <div class="stack divider">
+    <div class="row" style="gap:12px"><h3>Round monoline</h3><span style="font-size:13px;opacity:.6">alternative construction, kept for comparison</span></div>
+    <div class="row">
+      <div class="well" style="padding:16px 20px"><svg width="230" height="56"><use href="#logotype-round"/></svg></div>
+      <p style="flex:1;min-width:280px">Circles for e, d, n; the tiles stay squares. Friendlier and more obviously a word, but the circles and the squares are two vocabularies, and the d bowl and the WHEN tile argue about which is the letter.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 3. COLOR -->
+<section>
+  <h2><span class="num">03</span>Color</h2>
+  <p style="opacity:.7;max-width:720px">The mark is always one color. Accents live in surfaces and UI. Ink and paper are toned, never pure. Two palettes are defined; neither has been chosen yet.</p>
+
+  <div class="grid-2">
+    <div class="stack">
+      <div class="row" style="gap:12px"><h3>Blueprint</h3><span style="font-size:13px;opacity:.6">cool ink - ultramarine - one LED amber</span></div>
+      <div class="swatches">
+        <div class="swatch"><div style="background:oklch(0.2 0.015 260)"></div><span>Ink<br><code>oklch(0.20 0.015 260)</code></span></div>
+        <div class="swatch"><div style="background:oklch(0.97 0.005 240);border:1px solid var(--line)"></div><span>Paper<br><code>oklch(0.97 0.005 240)</code></span></div>
+        <div class="swatch"><div style="background:oklch(0.5 0.2 265)"></div><span>Ultramarine<br><code>oklch(0.50 0.20 265)</code></span></div>
+        <div class="swatch"><div style="background:oklch(0.82 0.16 80)"></div><span>Amber, status only<br><code>oklch(0.82 0.16 80)</code></span></div>
+      </div>
+      <div class="lockups">
+        <div class="lockup" style="background:oklch(0.97 0.005 240);border:1px solid var(--line);color:oklch(0.2 0.015 260)"><svg width="56" height="56"><use href="#mark"/></svg><svg width="115" height="28"><use href="#logotype"/></svg></div>
+        <div class="lockup" style="background:oklch(0.2 0.015 260);color:oklch(0.97 0.005 240)"><svg width="56" height="56"><use href="#mark"/></svg><svg width="115" height="28"><use href="#logotype"/></svg></div>
+        <div class="lockup" style="background:oklch(0.5 0.2 265);color:#fff"><svg width="56" height="56"><use href="#mark"/></svg><svg width="115" height="28"><use href="#logotype"/></svg></div>
+      </div>
+      <p>Engineering drawings and the one amber LED on every microcontroller board. Ultramarine is the surface color (buttons, selection); amber is reserved for state (running, warning) and never decorates.</p>
+    </div>
+
+    <div class="stack">
+      <div class="row" style="gap:12px"><h3>Kiln</h3><span style="font-size:13px;opacity:.6">warm ink - one magenta accent</span></div>
+      <div class="swatches">
+        <div class="swatch"><div style="background:oklch(0.2 0.012 50)"></div><span>Ink<br><code>oklch(0.20 0.012 50)</code></span></div>
+        <div class="swatch"><div style="background:oklch(0.965 0.008 70);border:1px solid oklch(0.9 0.008 70)"></div><span>Paper<br><code>oklch(0.965 0.008 70)</code></span></div>
+        <div class="swatch"><div style="background:oklch(0.58 0.22 350)"></div><span>Magenta<br><code>oklch(0.58 0.22 350)</code></span></div>
+        <div class="swatch"><div style="background:oklch(0.86 0.02 70)"></div><span>Clay, dividers and disabled<br><code>oklch(0.86 0.02 70)</code></span></div>
+      </div>
+      <div class="lockups">
+        <div class="lockup" style="background:oklch(0.965 0.008 70);border:1px solid oklch(0.9 0.008 70);color:oklch(0.2 0.012 50)"><svg width="56" height="56"><use href="#mark"/></svg><svg width="115" height="28"><use href="#logotype"/></svg></div>
+        <div class="lockup" style="background:oklch(0.2 0.012 50);color:oklch(0.965 0.008 70)"><svg width="56" height="56"><use href="#mark"/></svg><svg width="115" height="28"><use href="#logotype"/></svg></div>
+        <div class="lockup" style="background:oklch(0.58 0.22 350);color:#fff"><svg width="56" height="56"><use href="#mark"/></svg><svg width="115" height="28"><use href="#logotype"/></svg></div>
+      </div>
+      <p>Fired clay tiles and a single hot indicator. Warm ink and paper feel like a printed workbook rather than a dashboard; one saturated magenta does all the accent work, so there is never a second color to misread as meaning.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 4. TYPE -->
+<section>
+  <h2><span class="num">04</span>Typography</h2>
+  <div class="grid-2">
+    <div class="type-sample">
+      <div class="w700">M PLUS Rounded 1c Bold 700</div>
+      <div class="w500">M PLUS Rounded 1c Medium 500</div>
+      <div class="w400">M PLUS Rounded 1c Regular 400</div>
+    </div>
+    <p>Loaded from Google Fonts with <code>system-ui, sans-serif</code> as the fallback stack. Headings at 700, UI labels and buttons at 500, body at 400. Monospace for code samples uses the platform stack: <code>ui-monospace, SFMono-Regular, Menlo, monospace</code>.</p>
+  </div>
+</section>
+
+</main>
+</body>
+</html>
