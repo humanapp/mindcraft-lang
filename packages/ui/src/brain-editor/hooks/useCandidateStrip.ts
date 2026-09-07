@@ -23,11 +23,15 @@ import {
   groupStripCandidates,
   mintTextLiteralCandidate,
   offersTextLiteral,
+  positionTakesLiteralOfType,
   resolveStripOffering,
   type StripCandidate,
   shouldOrderPagesFirst,
   toCandidateEntries,
 } from "../candidate-strip-model";
+import { takenLiteralNamesAround } from "../literal-naming";
+import { literalForkSeed, type StripCommand, StripCommandKinds, stripCommands } from "../strip-commands";
+import { type LiteralValueEditor, literalValueEditor } from "../tile-menu-model";
 import { resolveTileVisual } from "../tile-visual-utils";
 
 /** How many candidates the flat best-next row offers before the accordion takes over. */
@@ -47,6 +51,11 @@ export interface UseCandidateStripOptions {
   revision: string;
   /** Called after each placement the strip completes, whichever commit path made it. */
   onCommitted?: () => void;
+  /**
+   * Opens the value editor on the literal the armed position stands on, which
+   * the offering's edit command runs.
+   */
+  onEditLiteral: (editor: LiteralValueEditor, side: RuleSide, tileIndex: number) => void;
 }
 
 /** One accordion section of the offering: the whole group, plus the entries matching the filter. */
@@ -81,6 +90,13 @@ export interface CandidateStripState {
   readonly offeringOpen: boolean;
   /** True when the filter text names nothing the strip can place, as opposed to naming nothing yet. */
   readonly isUnknown: boolean;
+  /**
+   * The commands the armed position offers over the literal it stands on, in
+   * the order they lead the offering's leading row.
+   */
+  readonly commands: readonly StripCommand[];
+  /** Run `command`, which opens the value editor it names. */
+  runCommand(command: StripCommand): void;
   /** True when the armed position accepts a text literal, so a typed quote opens one. */
   readonly acceptsTextLiteral: boolean;
   /**
@@ -119,6 +135,7 @@ export function useCandidateStrip({
   availableOutputKeys,
   revision,
   onCommitted,
+  onEditLiteral,
 }: UseCandidateStripOptions): CandidateStripState {
   const editorConfig = useBrainEditorConfig();
   const { brainServices } = editorConfig;
@@ -222,6 +239,53 @@ export function useCandidateStrip({
     });
   }, [offered, visible, pagesFirst, editorConfig.projectNamespace, editorConfig.libraries]);
 
+  // The tile the offering's commands act on: the one being replaced, and the
+  // one an edit point's insert positions turn about.
+  const anchorTileIndex = target?.anchorTileIndex ?? (target?.mode === "replace" ? target.tileIndex : undefined);
+  const anchorTileDef =
+    target !== null && anchorTileIndex !== undefined
+      ? ruleDef.side(target.side).tiles().at(anchorTileIndex)
+      : undefined;
+  const anchorEditor = useMemo(
+    () =>
+      anchorTileDef === undefined
+        ? undefined
+        : literalValueEditor(
+            anchorTileDef,
+            editorConfig.customLiteralTypes,
+            brainServices?.edit.tiles,
+            ruleDef.brain()?.catalog()
+          ),
+    [anchorTileDef, editorConfig.customLiteralTypes, brainServices, ruleDef]
+  );
+  const commands = useMemo(() => {
+    if (target === null) return [];
+    return stripCommands({
+      mode: target.mode,
+      standsOnLiteral: anchorEditor !== undefined,
+      literalIsEditable: anchorEditor?.editable === true,
+      positionTakesType:
+        anchorEditor !== undefined && positionTakesLiteralOfType(candidates, anchorEditor.literalDef.valueType),
+    });
+  }, [target, anchorEditor, candidates]);
+
+  const runCommand = useCallback(
+    (command: StripCommand) => {
+      if (target === null || anchorEditor === undefined || anchorTileIndex === undefined) return;
+      if (command.kind === StripCommandKinds.Edit) {
+        onEditLiteral(anchorEditor, target.side, anchorTileIndex);
+        return;
+      }
+      const taken = takenLiteralNamesAround(
+        editorConfig.tileCatalogs,
+        ruleDef.brain()?.catalog(),
+        anchorEditor.literalDef.valueType
+      );
+      target.onTileSelected(anchorEditor.factory, literalForkSeed(anchorEditor.literalDef, taken));
+    },
+    [target, anchorEditor, anchorTileIndex, onEditLiteral, editorConfig.tileCatalogs, ruleDef]
+  );
+
   const commit = useCallback(
     (candidate: StripCandidate) => {
       if (!target) return;
@@ -279,6 +343,8 @@ export function useCandidateStrip({
   return {
     bestNext,
     sections,
+    commands,
+    runCommand,
     filter,
     offeringOpen,
     isUnknown: offering.isUnknown,

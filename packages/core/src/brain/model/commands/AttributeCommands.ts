@@ -1,9 +1,36 @@
-import type { IBrainDef, IBrainRuleDef, IBrainTileSet, RuleTriggerMode } from "../../interfaces";
+import type { IBrainDef, IBrainRuleDef, IBrainTileDef, IBrainTileSet, RuleTriggerMode } from "../../interfaces";
+import type { BrainTileLiteralDef, BrainTileLiteralEdit } from "../../tiles/literals";
 import { BrainTileVariableDef } from "../../tiles/variables";
 import type { BrainDef } from "../braindef";
 import type { BrainPageDef } from "../pagedef";
 import type { BrainRuleDef } from "../ruledef";
 import type { BrainCommand } from "./BrainCommand";
+
+/** Swap every placement of `fromTile` in `brainDef`'s rules for `toTile`, matching on tile-def identity. */
+function replaceTileInAllRules(brainDef: IBrainDef, fromTile: IBrainTileDef, toTile: IBrainTileDef): void {
+  const pages = brainDef.pages();
+  for (let pi = 0; pi < pages.size(); pi++) {
+    walkRules(pages.get(pi).children(), fromTile, toTile);
+  }
+}
+
+function walkRules(rules: ReturnType<IBrainRuleDef["children"]>, fromTile: IBrainTileDef, toTile: IBrainTileDef): void {
+  for (let ri = 0; ri < rules.size(); ri++) {
+    const rule = rules.get(ri);
+    replaceInTileSet(rule.when(), fromTile, toTile);
+    replaceInTileSet(rule.do(), fromTile, toTile);
+    walkRules(rule.children(), fromTile, toTile);
+  }
+}
+
+function replaceInTileSet(tileSet: IBrainTileSet, fromTile: IBrainTileDef, toTile: IBrainTileDef): void {
+  const tiles = tileSet.tiles();
+  for (let ti = 0; ti < tiles.size(); ti++) {
+    if (tiles.get(ti) === fromTile) {
+      tileSet.replaceTileAtIndex(ti, toTile);
+    }
+  }
+}
 
 /**
  * Command to rename a brain.
@@ -77,51 +104,57 @@ export class RenameVariableCommand implements BrainCommand {
     const catalog = this.brainDef.catalog();
     catalog.delete(this.oldTile.tileId);
     catalog.registerTileDef(this.newTile);
-    this.replaceTileInAllRules_(this.oldTile, this.newTile);
+    replaceTileInAllRules(this.brainDef, this.oldTile, this.newTile);
   }
 
   undo(): void {
     const catalog = this.brainDef.catalog();
     catalog.delete(this.newTile.tileId);
     catalog.registerTileDef(this.oldTile);
-    this.replaceTileInAllRules_(this.newTile, this.oldTile);
+    replaceTileInAllRules(this.brainDef, this.newTile, this.oldTile);
   }
 
   getDescription(): string {
     return `Rename variable from "${this.oldTile.varName}" to "${this.newTile.varName}"`;
   }
+}
 
-  private replaceTileInAllRules_(fromTile: BrainTileVariableDef, toTile: BrainTileVariableDef): void {
-    const pages = this.brainDef.pages();
-    for (let pi = 0; pi < pages.size(); pi++) {
-      this.walkRules_(pages.get(pi).children(), fromTile, toTile);
-    }
+/**
+ * Command that edits a literal carrying a unique identity in place across a
+ * brain. The replacement literal holds the submitted value and name under the
+ * same tile id, and replaces both the catalog entry and every rule placement.
+ * Undo restores the value and the name the literal held before.
+ *
+ * Throws on construction when `oldTile` carries no unique identity.
+ */
+export class EditLiteralCommand implements BrainCommand {
+  private readonly newTile: BrainTileLiteralDef;
+
+  constructor(
+    private readonly brainDef: IBrainDef,
+    private readonly oldTile: BrainTileLiteralDef,
+    edit: BrainTileLiteralEdit
+  ) {
+    this.newTile = oldTile.edited(edit);
   }
 
-  private walkRules_(
-    rules: ReturnType<IBrainRuleDef["children"]>,
-    fromTile: BrainTileVariableDef,
-    toTile: BrainTileVariableDef
-  ): void {
-    for (let ri = 0; ri < rules.size(); ri++) {
-      const rule = rules.get(ri);
-      this.replaceInTileSet_(rule.when(), fromTile, toTile);
-      this.replaceInTileSet_(rule.do(), fromTile, toTile);
-      this.walkRules_(rule.children(), fromTile, toTile);
-    }
+  execute(): void {
+    this.swapTile_(this.oldTile, this.newTile);
   }
 
-  private replaceInTileSet_(
-    tileSet: IBrainTileSet,
-    fromTile: BrainTileVariableDef,
-    toTile: BrainTileVariableDef
-  ): void {
-    const tiles = tileSet.tiles();
-    for (let ti = 0; ti < tiles.size(); ti++) {
-      if (tiles.get(ti) === fromTile) {
-        tileSet.replaceTileAtIndex(ti, toTile);
-      }
-    }
+  undo(): void {
+    this.swapTile_(this.newTile, this.oldTile);
+  }
+
+  getDescription(): string {
+    return `Edit literal "${this.newTile.displayName ?? this.newTile.valueLabel}"`;
+  }
+
+  private swapTile_(fromTile: BrainTileLiteralDef, toTile: BrainTileLiteralDef): void {
+    const catalog = this.brainDef.catalog();
+    catalog.delete(fromTile.tileId);
+    catalog.registerTileDef(toTile);
+    replaceTileInAllRules(this.brainDef, fromTile, toTile);
   }
 }
 

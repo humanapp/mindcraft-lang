@@ -111,6 +111,8 @@ function renderStrip(tileDef: IBrainTileDef, isUnknown = false): string {
     onTileSelected: () => true,
   };
   const state: CandidateStripState = {
+    commands: [],
+    runCommand: () => {},
     bestNext: entries,
     sections: [section(entries)],
     filter: isUnknown ? "nothing fits" : "",
@@ -156,6 +158,8 @@ function renderEditPointStrip(): string {
     onTileSelected: () => true,
   };
   const state: CandidateStripState = {
+    commands: [],
+    runCommand: () => {},
     bestNext: entries,
     sections: [section(entries)],
     filter: "",

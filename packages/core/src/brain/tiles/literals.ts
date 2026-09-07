@@ -1,14 +1,26 @@
 import { Error } from "../../platform/error";
-import { CoreTypeIds, NativeType, type TypeCodec, type TypeDef, type TypeId } from "../../runtime";
+import {
+  type BrainProgramValueJson,
+  brainValueFromJson,
+  brainValueToJson,
+  CoreTypeIds,
+  NativeType,
+  type TypeCodec,
+  type TypeDef,
+  type TypeId,
+  type Value,
+} from "../../runtime";
 import {
   type BrainTileDefCreateOptions,
   type BrainTileLiteralDefOptions,
   CoreLiteralFactoryId,
   type ITileCatalog,
+  type ITileMetadata,
   type LiteralDisplayFormat,
   LiteralDisplayFormats,
   mkLiteralFactoryTileId,
   mkLiteralTileId,
+  mkUniqueLiteralTileId,
   TilePlacement,
 } from "../interfaces";
 import { BrainTileDefBase } from "../model/tiledef";
@@ -22,6 +34,21 @@ export interface LiteralTileJson {
   value: unknown;
   valueLabel: string;
   displayFormat: string;
+  /** The word the literal reads by; left out entirely by a literal carrying none. */
+  displayName?: string;
+  /** The literal's own identity; left out entirely by a literal whose id follows its content. */
+  uniqueId?: string;
+}
+
+/**
+ * The fields an edit of a unique-identity literal may change. A field left
+ * undefined is carried over unchanged from the literal being edited.
+ */
+export interface BrainTileLiteralEdit {
+  /** The runtime value the edited literal holds. */
+  value?: unknown;
+  /** The word the edited literal reads by. */
+  displayName?: string;
 }
 
 import type { BrainServices } from "../services";
@@ -32,6 +59,13 @@ import { BrainTileFactoryDef } from "./factories";
 // v2: added displayFormat
 const kVersion = 2;
 
+/** The metadata a literal named `displayName` carries: the name as the tile's label and as its sentence form, over the fields `base` already holds. */
+function namedLiteralMetadata(base: ITileMetadata | undefined, displayName: string): ITileMetadata {
+  const metadata: ITileMetadata = base ? { ...base, label: displayName } : { label: displayName };
+  metadata.language = base?.language ? { ...base.language, form: displayName } : { form: displayName };
+  return metadata;
+}
+
 /** Tile definition for an immutable literal value of `valueType`, optionally formatted by {@link LiteralDisplayFormat}. */
 export class BrainTileLiteralDef extends BrainTileDefBase {
   readonly kind = "literal";
@@ -39,6 +73,13 @@ export class BrainTileLiteralDef extends BrainTileDefBase {
   readonly valueType: TypeId;
   readonly value: unknown;
   readonly displayFormat: LiteralDisplayFormat;
+  /** The word this literal reads by, and undefined for one carrying no name. Set it with {@link BrainTileLiteralDef.setDisplayName}. */
+  displayName?: string;
+  /**
+   * This literal's own identity, and undefined for one whose tile id follows
+   * its content. Where it is set, the tile id derives from it alone.
+   */
+  readonly uniqueId?: string;
   private readonly services_: BrainServices;
 
   constructor(valueType: TypeId, value: unknown, opts: BrainTileLiteralDefOptions = {}, services: BrainServices) {
@@ -46,17 +87,58 @@ export class BrainTileLiteralDef extends BrainTileDefBase {
     if (opts.persist === undefined) opts.persist = true;
     const typeDef = services.runtime.types.get(valueType);
     if (!typeDef) {
-      throw new Error(`BrainTileLiteralDef.deserialize: unknown value type ${valueType}`);
+      throw new Error(`BrainTileLiteralDef: unknown value type ${valueType}`);
     }
-    const valueStr = opts.valueLabel || (typeDef.codec as TypeCodec).stringify(value);
+    const valueStr = opts.valueLabel || opts.uniqueId || (typeDef.codec as TypeCodec).stringify(value);
     const fmt = opts.displayFormat || LiteralDisplayFormats.Default;
-    const tileId = mkLiteralTileId(valueType, valueStr, fmt);
+    const tileId =
+      opts.uniqueId === undefined ? mkLiteralTileId(valueType, valueStr, fmt) : mkUniqueLiteralTileId(opts.uniqueId);
+    if (opts.displayName !== undefined) {
+      opts.metadata = namedLiteralMetadata(opts.metadata, opts.displayName);
+    }
     super(tileId, opts);
     this.valueType = valueType;
     this.value = value;
     this.valueLabel = valueStr;
     this.displayFormat = fmt;
+    this.displayName = opts.displayName;
+    this.uniqueId = opts.uniqueId;
     this.services_ = services;
+  }
+
+  /**
+   * A literal holding `edit`'s value and name under this literal's tile id,
+   * value type, value label, and display format. A field `edit` leaves
+   * undefined is carried over from this literal.
+   *
+   * Throws when this literal carries no unique identity.
+   */
+  edited(edit: BrainTileLiteralEdit): BrainTileLiteralDef {
+    const uniqueId = this.uniqueId;
+    if (uniqueId === undefined) {
+      throw new Error(`BrainTileLiteralDef.edited: literal ${this.tileId} carries no unique identity`);
+    }
+    return new BrainTileLiteralDef(
+      this.valueType,
+      edit.value === undefined ? this.value : edit.value,
+      {
+        uniqueId,
+        valueLabel: this.valueLabel,
+        displayFormat: this.displayFormat,
+        displayName: edit.displayName === undefined ? this.displayName : edit.displayName,
+      },
+      this.services_
+    );
+  }
+
+  /**
+   * Names this literal `displayName`, which becomes the word it reads by on
+   * every surface: its `metadata.label` and its `metadata.language.form`. The
+   * tile id is unchanged.
+   */
+  setDisplayName(displayName: string): void {
+    this.displayName = displayName;
+    this.metadata = namedLiteralMetadata(this.metadata, displayName);
   }
 
   // -- JSON serialization ----------------------------------------------------
@@ -66,7 +148,7 @@ export class BrainTileLiteralDef extends BrainTileDefBase {
     if (!typeDef) {
       throw new Error(`BrainTileLiteralDef.toJson: unknown value type ${this.valueType}`);
     }
-    return {
+    const json: LiteralTileJson = {
       version: kVersion,
       kind: "literal",
       tileId: this.tileId,
@@ -75,6 +157,9 @@ export class BrainTileLiteralDef extends BrainTileDefBase {
       valueLabel: this.valueLabel,
       displayFormat: this.displayFormat,
     };
+    if (this.displayName !== undefined) json.displayName = this.displayName;
+    if (this.uniqueId !== undefined) json.uniqueId = this.uniqueId;
+    return json;
   }
 
   static fromJson(json: LiteralTileJson, catalog: ITileCatalog, services: BrainServices): BrainTileLiteralDef {
@@ -93,6 +178,8 @@ export class BrainTileLiteralDef extends BrainTileDefBase {
       {
         valueLabel: json.valueLabel,
         displayFormat: json.displayFormat,
+        displayName: json.displayName,
+        uniqueId: json.uniqueId,
       },
       services
     );
@@ -114,6 +201,9 @@ function literalValueToJson(typeDef: TypeDef, value: unknown): unknown {
     case NativeType.String:
     case NativeType.Enum:
       return value;
+    case NativeType.Struct:
+    case NativeType.Buffer:
+      return brainValueToJson(value as Value);
     default:
       throw new Error(`literalValueToJson: unsupported coreType ${typeDef.coreType} (typeId: ${typeDef.typeId})`);
   }
@@ -129,6 +219,9 @@ function literalValueFromJson(typeDef: TypeDef, json: unknown): unknown {
     case NativeType.String:
     case NativeType.Enum:
       return json;
+    case NativeType.Struct:
+    case NativeType.Buffer:
+      return brainValueFromJson(json as BrainProgramValueJson);
     default:
       throw new Error(`literalValueFromJson: unsupported coreType ${typeDef.coreType} (typeId: ${typeDef.typeId})`);
   }
@@ -162,7 +255,8 @@ function manufactureLiteralTileDef(
   }
   const varType: TypeId = (factoryTileDef.producedDataType as TypeId) || CoreTypeIds.Void;
   const displayFormat = opts.displayFormat as LiteralDisplayFormat | undefined;
-  const tileDef = new BrainTileLiteralDef(varType, varValue, { displayFormat }, services);
+  const displayName = opts.displayName as string | undefined;
+  const tileDef = new BrainTileLiteralDef(varType, varValue, { displayFormat, displayName }, services);
   return tileDef;
 }
 

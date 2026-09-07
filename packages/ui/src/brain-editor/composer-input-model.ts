@@ -22,6 +22,7 @@ import {
   decideComposerComma,
   decideComposerPeriod,
 } from "./sentence-composer";
+import type { StripCommand } from "./strip-commands";
 
 /**
  * The composer's input state: what the keyboard is aimed at, and what it has
@@ -167,6 +168,7 @@ export type ComposerInputEffect =
   | { readonly kind: "open-section"; readonly sectionKey: string }
   | { readonly kind: "close-section"; readonly sectionKey: string }
   | { readonly kind: "place-tile"; readonly candidate: StripCandidate }
+  | { readonly kind: "run-command"; readonly command: StripCommand }
   | { readonly kind: "announce-placement"; readonly label: string }
   | {
       readonly kind: "move-focus";
@@ -226,6 +228,8 @@ export interface ComposerInputFacts {
   readonly spaceCandidate: StripCandidate | undefined;
   /** The candidate the cursor stands on, or undefined when it stands on no chip. */
   readonly highlightedCandidate: StripCandidate | undefined;
+  /** The command the cursor stands on, or undefined when it stands on no command chip. */
+  readonly highlightedCommand: StripCommand | undefined;
   /**
    * The cell the offering already draws the highlight on while the cursor stands
    * on none: the chip of the lead candidate. Undefined when the offering draws no
@@ -1120,6 +1124,12 @@ export function reduceComposerInput(
       return reduceBackspace(state, facts, token.from);
     case "enter":
       if (state.textLiteral !== undefined) return commitOpenTextLiteral(state, facts);
+      if (facts.highlightedCommand !== undefined) {
+        return {
+          state,
+          effects: [{ kind: "consume-key" }, { kind: "run-command", command: facts.highlightedCommand }],
+        };
+      }
       if (facts.highlightedCandidate !== undefined) return placeCandidate(state, facts.highlightedCandidate);
       if (token.from === "band") return inert(state);
       if (facts.topCandidate !== undefined) return placeCandidate(state, facts.topCandidate);

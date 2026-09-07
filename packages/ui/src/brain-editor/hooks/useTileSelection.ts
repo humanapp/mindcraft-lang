@@ -3,7 +3,7 @@ import type { BrainRuleDef } from "@wendoo/core/brain/model";
 import type { BrainTileFactoryDef } from "@wendoo/core/brain/tiles";
 import { manufactureLiteralTile, manufactureVariableTile } from "@wendoo/core/brain/tiles";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ArmedTargetEntry } from "../ArmedTargetContext";
+import type { ArmedTargetEntry, LiteralCreationSeed } from "../ArmedTargetContext";
 import { useBrainEditorConfig } from "../BrainEditorContext";
 import { tileDefersToCreateDialog } from "../candidate-strip-model";
 import type { CaretPosition } from "../caret-run";
@@ -43,24 +43,31 @@ export function composeAfterTileCreation(
  */
 export interface TileSelectionDeferralEffects {
   deferVariableCreation(factoryTileDef: BrainTileFactoryDef, action: (tileDef: IBrainTileDef) => void): void;
-  deferLiteralCreation(factoryTileDef: BrainTileFactoryDef, action: (tileDef: IBrainTileDef) => void): void;
+  deferLiteralCreation(
+    factoryTileDef: BrainTileFactoryDef,
+    action: (tileDef: IBrainTileDef) => void,
+    seed: LiteralCreationSeed | undefined
+  ): void;
 }
 
 /**
  * Route a picked tile to its selection action. Variable and literal factory
- * tiles defer: the matching effect receives the factory tile and the pending
- * action, and false is returned so the picker stays open. Any other tile runs
- * `action` immediately and returns true (the selection completed).
+ * tiles defer: the matching effect receives the factory tile, the pending
+ * action, and for a literal the `seed` its dialog opens on, and false is
+ * returned so the picker stays open. Nothing is placed and nothing is minted
+ * until that dialog is submitted. Any other tile runs `action` immediately and
+ * returns true (the selection completed).
  */
 export function routeTileSelection(
   tileDef: IBrainTileDef,
   action: (tileDef: IBrainTileDef) => void,
-  effects: TileSelectionDeferralEffects
+  effects: TileSelectionDeferralEffects,
+  seed?: LiteralCreationSeed
 ): boolean {
   if (tileDefersToCreateDialog(tileDef)) {
     const factoryTileDef = tileDef as BrainTileFactoryDef;
     if (isVariableFactoryTileId(tileDef.tileId)) effects.deferVariableCreation(factoryTileDef, action);
-    else effects.deferLiteralCreation(factoryTileDef, action);
+    else effects.deferLiteralCreation(factoryTileDef, action, seed);
     return false;
   }
   action(tileDef);
@@ -86,6 +93,7 @@ export function useTileSelection({ ruleDef, onComplete, onCreated }: UseTileSele
   const [showCreateLiteralDialog, setShowCreateLiteralDialog] = useState(false);
   const [pendingFactoryTile, setPendingFactoryTile] = useState<BrainTileFactoryDef | null>(null);
   const [pendingTileAction, setPendingTileAction] = useState<((tileDef: IBrainTileDef) => void) | null>(null);
+  const [literalSeed, setLiteralSeed] = useState<LiteralCreationSeed | undefined>(undefined);
 
   // Store ruleDef in a ref so callbacks always access the latest value.
   // Without this, callbacks capture a stale closure over the initial ruleDef
@@ -100,21 +108,27 @@ export function useTileSelection({ ruleDef, onComplete, onCreated }: UseTileSele
   const creationOpenerRef = useRef<HTMLElement | null>(null);
 
   const handleTileSelected = useCallback(
-    (tileDef: IBrainTileDef, action: (tileDef: IBrainTileDef) => void) => {
-      const completed = routeTileSelection(tileDef, action, {
-        deferVariableCreation: (factoryTileDef, pendingAction) => {
-          creationOpenerRef.current = document.activeElement as HTMLElement | null;
-          setPendingFactoryTile(factoryTileDef);
-          setPendingTileAction(() => pendingAction);
-          setShowCreateVariableDialog(true);
+    (tileDef: IBrainTileDef, action: (tileDef: IBrainTileDef) => void, seed?: LiteralCreationSeed) => {
+      const completed = routeTileSelection(
+        tileDef,
+        action,
+        {
+          deferVariableCreation: (factoryTileDef, pendingAction) => {
+            creationOpenerRef.current = document.activeElement as HTMLElement | null;
+            setPendingFactoryTile(factoryTileDef);
+            setPendingTileAction(() => pendingAction);
+            setShowCreateVariableDialog(true);
+          },
+          deferLiteralCreation: (factoryTileDef, pendingAction, pendingSeed) => {
+            creationOpenerRef.current = document.activeElement as HTMLElement | null;
+            setPendingFactoryTile(factoryTileDef);
+            setPendingTileAction(() => pendingAction);
+            setLiteralSeed(pendingSeed);
+            setShowCreateLiteralDialog(true);
+          },
         },
-        deferLiteralCreation: (factoryTileDef, pendingAction) => {
-          creationOpenerRef.current = document.activeElement as HTMLElement | null;
-          setPendingFactoryTile(factoryTileDef);
-          setPendingTileAction(() => pendingAction);
-          setShowCreateLiteralDialog(true);
-        },
-      });
+        seed
+      );
       if (completed) {
         onComplete?.();
       }
@@ -151,12 +165,12 @@ export function useTileSelection({ ruleDef, onComplete, onCreated }: UseTileSele
   }, [onComplete]);
 
   const handleLiteralValueSubmit = useCallback(
-    (value: unknown, displayFormat?: LiteralDisplayFormat) => {
+    (value: unknown, displayFormat?: LiteralDisplayFormat, displayName?: string) => {
       if (!pendingFactoryTile || !pendingTileAction) return;
 
       const catalog = ruleDefRef.current.brain()?.catalog();
 
-      const newTileDef = manufactureLiteralTile(pendingFactoryTile, catalog, value, displayFormat);
+      const newTileDef = manufactureLiteralTile(pendingFactoryTile, catalog, value, displayFormat, displayName);
       if (newTileDef) {
         pendingTileAction(newTileDef);
       }
@@ -164,6 +178,7 @@ export function useTileSelection({ ruleDef, onComplete, onCreated }: UseTileSele
       setShowCreateLiteralDialog(false);
       setPendingFactoryTile(null);
       setPendingTileAction(null);
+      setLiteralSeed(undefined);
       completeCreation?.();
     },
     [pendingFactoryTile, pendingTileAction, completeCreation]
@@ -174,6 +189,7 @@ export function useTileSelection({ ruleDef, onComplete, onCreated }: UseTileSele
     setShowCreateLiteralDialog(false);
     setPendingFactoryTile(null);
     setPendingTileAction(null);
+    setLiteralSeed(undefined);
     onComplete?.();
   }, [onComplete]);
 
@@ -204,6 +220,7 @@ export function useTileSelection({ ruleDef, onComplete, onCreated }: UseTileSele
     showCreateLiteralDialog,
     literalDialogTitle,
     literalType,
+    literalSeed,
     handleTileSelected,
     handleVariableNameSubmit,
     handleVariableDialogClose,

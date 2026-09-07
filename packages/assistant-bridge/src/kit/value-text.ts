@@ -141,15 +141,20 @@ function bakedContainer(tile: BrainTileLiteralDef): Value | undefined {
  * catalogs that may not exist yet when the labeler is built. The catalogs are
  * read once, on the first value looked up.
  *
- * A value reads by the label of the tile baking the same contents; a
- * native-backed struct, whose contents are a host object, reads by the label of
+ * A value reads by the word the tile baking the same contents reads by; a
+ * native-backed struct, whose contents are a host object, reads by the word of
  * the tile baking that same object. Where several tiles bake one value, the
  * first catalog entry names it.
  *
  * @param catalogsOf - Catalogs to take literal tiles from.
  * @param numberText - How a number renders; pass the one the rendering uses.
+ * @param localizer - Locale the tile words are read in.
  */
-export function createValueLabeler(catalogsOf: () => readonly ITileCatalog[], numberText: NumberText): ValueLabel {
+export function createValueLabeler(
+  catalogsOf: () => readonly ITileCatalog[],
+  numberText: NumberText,
+  localizer: Localizer
+): ValueLabel {
   let byContents: Map<string, string> | undefined;
   let byHostObject: Map<unknown, string> | undefined;
   return (value: Value): string | undefined => {
@@ -165,12 +170,12 @@ export function createValueLabeler(catalogsOf: () => readonly ITileCatalog[], nu
           const baked = bakedContainer(literal);
           if (!baked) continue;
           if (baked.t === NativeType.Struct && baked.native !== undefined) {
-            if (!byHostObject.has(baked.native)) byHostObject.set(baked.native, literal.valueLabel);
+            if (!byHostObject.has(baked.native)) byHostObject.set(baked.native, tileSentenceWord(literal, localizer));
             continue;
           }
           const contents = render(baked, numberText, namesNothing);
           if (contents.opaque || byContents.has(contents.text)) continue;
-          byContents.set(contents.text, literal.valueLabel);
+          byContents.set(contents.text, tileSentenceWord(literal, localizer));
         }
       }
     }

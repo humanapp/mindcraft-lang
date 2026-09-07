@@ -24,6 +24,7 @@ import {
   RuleTriggerMode,
 } from "@wendoo/core/brain";
 import { __test__createBrainServices } from "@wendoo/core/brain/__test__";
+import { tileSentenceWord } from "@wendoo/core/brain/language-service";
 import {
   AddPageCommand,
   AddRuleCommand,
@@ -35,6 +36,7 @@ import {
   type BrainPageDef,
   BrainRuleDef,
   DeleteRuleCommand,
+  EditLiteralCommand,
   IndentRuleCommand,
   InsertRuleCommand,
   InsertTileCommand,
@@ -57,6 +59,7 @@ import {
   SetRuleTriggerCommand,
 } from "@wendoo/core/brain/model";
 import { type BrainTileFactoryDef, BrainTileLiteralDef, type BrainTileVariableDef } from "@wendoo/core/brain/tiles";
+import { createDefaultLocalizer } from "@wendoo/core/localization";
 import { CoreHostActions, CoreTypeIds, mkActuatorTileId, mkSensorTileId } from "@wendoo/core/runtime";
 
 let services: BrainServices;
@@ -102,6 +105,25 @@ function numberLiteralTile(brain: BrainDef, value: number): IBrainTileDef {
   if (existing) return existing;
   brain.catalog().registerTileDef(tileDef);
   return tileDef;
+}
+
+/** Build a number literal carrying its own identity and register it in the brain's catalog. */
+function uniqueLiteralTile(brain: BrainDef, uniqueId: string, value: number, displayName: string): BrainTileLiteralDef {
+  const tileDef = new BrainTileLiteralDef(CoreTypeIds.Number, value, { uniqueId, displayName }, services);
+  brain.catalog().registerTileDef(tileDef);
+  return tileDef;
+}
+
+/** Ids of the literal tiles the brain's own catalog holds, in sorted order. */
+function literalTileIds(brain: BrainDef): string[] {
+  const ids: string[] = [];
+  brain
+    .catalog()
+    .getAll()
+    .forEach((tileDef) => {
+      if (tileDef.kind === "literal") ids.push(tileDef.tileId);
+    });
+  return ids.sort();
 }
 
 /** Manufacture a number variable tile through its factory and register it in the brain's catalog. */
@@ -663,6 +685,72 @@ describe("rename and comment commands round-trip the document", () => {
     history.redo();
     assert.equal((brain.catalog().get(varTile.tileId) as BrainTileVariableDef).varName, "points");
     assert.equal((rule.do().tiles().get(0) as BrainTileVariableDef).varName, "points");
+  });
+
+  test("EditLiteralCommand propagates a new value to the catalog entry and every placement, reversibly", () => {
+    const brain = newBrain();
+    const rule = firstRule(brain);
+    const literal = uniqueLiteralTile(brain, "litIdentityValue", 1, "rock");
+    rule.do().appendTile(literal);
+    rule.when().appendTile(literal);
+
+    const history = new BrainCommandHistory();
+    history.executeCommand(new EditLiteralCommand(brain, literal, { value: 2 }));
+
+    const edited = brain.catalog().get(literal.tileId) as BrainTileLiteralDef;
+    assert.equal(edited.tileId, literal.tileId, "the edit stays under the literal's own id");
+    assert.equal(edited.value, 2);
+    assert.deepEqual(literalTileIds(brain), [literal.tileId], "no superseded literal is left behind");
+    assert.equal(rule.do().tiles().get(0), edited);
+    assert.equal(rule.when().tiles().get(0), edited, "every placement reads the edit");
+
+    history.undo();
+    assert.equal(brain.catalog().get(literal.tileId), literal);
+    assert.equal((brain.catalog().get(literal.tileId) as BrainTileLiteralDef).value, 1);
+    assert.equal(rule.do().tiles().get(0), literal);
+    assert.equal(rule.when().tiles().get(0), literal);
+
+    history.redo();
+    assert.equal((brain.catalog().get(literal.tileId) as BrainTileLiteralDef).value, 2);
+    assert.equal(rule.do().tiles().get(0), edited);
+  });
+
+  test("EditLiteralCommand renames a literal under its own id, and undo restores value and name together", () => {
+    const localizer = createDefaultLocalizer();
+    const brain = newBrain();
+    const rule = firstRule(brain);
+    const literal = uniqueLiteralTile(brain, "litIdentityName", 1, "rock");
+    rule.do().appendTile(literal);
+
+    const history = new BrainCommandHistory();
+    history.executeCommand(new EditLiteralCommand(brain, literal, { displayName: "stone" }));
+
+    const renamed = brain.catalog().get(literal.tileId) as BrainTileLiteralDef;
+    assert.equal(renamed.tileId, literal.tileId);
+    assert.equal(renamed.value, 1, "a name-only edit leaves the value alone");
+    assert.equal(tileSentenceWord(renamed, localizer), "stone");
+
+    history.executeCommand(new EditLiteralCommand(brain, renamed, { value: 2, displayName: "pebble" }));
+    const both = brain.catalog().get(literal.tileId) as BrainTileLiteralDef;
+    assert.equal(both.value, 2);
+    assert.equal(tileSentenceWord(both, localizer), "pebble");
+
+    history.undo();
+    const restored = brain.catalog().get(literal.tileId) as BrainTileLiteralDef;
+    assert.equal(restored.value, 1, "undo restores the value");
+    assert.equal(tileSentenceWord(restored, localizer), "stone", "undo restores the name");
+    assert.equal(rule.do().tiles().get(0), restored);
+
+    history.redo();
+    assert.equal((brain.catalog().get(literal.tileId) as BrainTileLiteralDef).value, 2);
+    assert.equal(tileSentenceWord(brain.catalog().get(literal.tileId) as BrainTileLiteralDef, localizer), "pebble");
+  });
+
+  test("EditLiteralCommand refuses a literal whose id follows its content", () => {
+    const brain = newBrain();
+    const literal = numberLiteralTile(brain, 1) as BrainTileLiteralDef;
+
+    assert.throws(() => new EditLiteralCommand(brain, literal, { value: 2 }));
   });
 });
 
@@ -1255,6 +1343,18 @@ const workingCopyIsolationCases: WorkingCopyIsolationCase[] = [
     makeCommand: (brain) => {
       const varTile = firstRule(brain).do().tiles().get(0) as BrainTileVariableDef;
       return new RenameVariableCommand(brain, varTile, "points");
+    },
+  },
+  {
+    name: "EditLiteralCommand",
+    build: (brain) => {
+      firstRule(brain)
+        .do()
+        .appendTile(uniqueLiteralTile(brain, "litIdentityCopy", 1, "rock"));
+    },
+    makeCommand: (brain) => {
+      const literal = firstRule(brain).do().tiles().get(0) as BrainTileLiteralDef;
+      return new EditLiteralCommand(brain, literal, { value: 2, displayName: "stone" });
     },
   },
   {

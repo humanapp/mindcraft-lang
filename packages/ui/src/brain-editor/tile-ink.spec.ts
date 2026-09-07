@@ -103,6 +103,8 @@ function whenAppendTarget(): ArmedTileTarget {
 function renderStrip(color: string | undefined, tileDef: IBrainTileDef): string {
   const entries = toCandidateEntries([candidate(tileDef)]);
   const state: CandidateStripState = {
+    commands: [],
+    runCommand: () => {},
     bestNext: entries,
     sections: [section(entries)],
     filter: "",

@@ -2,7 +2,6 @@ import type { IBrainTileDef, LiteralDisplayFormat, RuleSide } from "@wendoo/core
 import type { BrainCommandHistory, BrainRuleDef } from "@wendoo/core/brain/model";
 import { RenameVariableCommand, ReplaceTileCommand } from "@wendoo/core/brain/model";
 import { BrainTileLiteralDef, type BrainTileVariableDef } from "@wendoo/core/brain/tiles";
-import { CoreTypeIds } from "@wendoo/core/runtime";
 import { BookOpen, MoreHorizontal } from "lucide-react";
 import { type ReactNode, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -10,28 +9,27 @@ import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
 import { kStripPopupAttribute } from "./BrainCandidateStrip";
 import { useBrainEditorConfig } from "./BrainEditorContext";
+import { CreateLiteralDialog } from "./CreateLiteralDialog";
 import { EditLiteralFormatDialog } from "./EditLiteralFormatDialog";
+import { literalWord, takenLiteralNamesAround } from "./literal-naming";
 import { RenameVariableDialog } from "./RenameVariableDialog";
+import { literalForkSeed } from "./strip-commands";
+import {
+  buildTileMenuEntries,
+  duplicateLiteralValue,
+  editLiteralValue,
+  type LiteralValueSubmitOptions,
+  literalValueEditor,
+  type TileMenuEntry,
+  TileMenuEntryKeys,
+} from "./tile-menu-model";
 
 /** `MouseEvent.button` of the press a right-click reports. */
 const kSecondaryMouseButton = 2;
 
-/** Key of the entry opening the tile's documentation. */
-const kDocsEntryKey = "docs";
-
 /** The box the offering's position row draws the tile's own control in. */
 const kRowControlClasses =
   "inline-flex min-h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg border-2 border-brain-ink/15 bg-brain-recess/30 text-brain-ink/70 transition-colors hover:border-brain-ink/40 hover:text-brain-ink";
-
-/** One thing the menu offers to do to the tile it stands on. */
-interface TileMenuEntry {
-  /** Identifies the entry among the ones the tile offers. */
-  readonly key: string;
-  /** How the entry reads. */
-  readonly label: string;
-  /** What choosing it does. */
-  readonly run: () => void;
-}
 
 /** What a placed tile's menu is built for: the tile, and where in the rule it stands. */
 interface BrainTileMenuProps {
@@ -64,16 +62,23 @@ function useTileMenu(
 ): { entries: TileMenuEntry[]; dialogs: ReactNode } {
   const { tileDef, side, tileIndex, ruleDef, commandHistory } = props;
   const [showEditFormatDialog, setShowEditFormatDialog] = useState(false);
+  const [showEditValueDialog, setShowEditValueDialog] = useState(false);
+  const [showDuplicateValueDialog, setShowDuplicateValueDialog] = useState(false);
   const [showRenameVariableDialog, setShowRenameVariableDialog] = useState(false);
   const editorConfig = useBrainEditorConfig();
-  const { onTileDocs, brainServices } = editorConfig;
+  const { onTileDocs, brainServices, customLiteralTypes, tileCatalogs } = editorConfig;
 
-  const isNumericLiteral =
-    tileDef.kind === "literal" && (tileDef as BrainTileLiteralDef).valueType === CoreTypeIds.Number;
-  const isVariable = tileDef.kind === "variable";
+  const literalDef = tileDef.kind === "literal" ? (tileDef as BrainTileLiteralDef) : undefined;
+  const variableDef = tileDef.kind === "variable" ? (tileDef as BrainTileVariableDef) : undefined;
+  const valueEditor = literalValueEditor(
+    tileDef,
+    customLiteralTypes,
+    brainServices?.edit.tiles,
+    ruleDef.brain()?.catalog()
+  );
 
   const handleRenameVariableSubmit = (newName: string) => {
-    const varTileDef = tileDef as BrainTileVariableDef;
+    if (!variableDef) return;
     const brainDef = ruleDef.brain();
     if (!brainDef) return;
 
@@ -81,19 +86,19 @@ function useTileMenu(
     const conflict = catalog.find((td) => {
       if (td.kind !== "variable") return false;
       const vd = td as BrainTileVariableDef;
-      return vd.varName === newName && vd.varType === varTileDef.varType && vd.uniqueId !== varTileDef.uniqueId;
+      return vd.varName === newName && vd.varType === variableDef.varType && vd.uniqueId !== variableDef.uniqueId;
     });
     if (conflict) {
       toast.error("Variable already exists");
       return;
     }
 
-    commandHistory.executeCommand(new RenameVariableCommand(brainDef, varTileDef, newName));
+    commandHistory.executeCommand(new RenameVariableCommand(brainDef, variableDef, newName));
     setShowRenameVariableDialog(false);
   };
 
   const handleEditFormatSubmit = (newFormat: LiteralDisplayFormat) => {
-    const literalDef = tileDef as BrainTileLiteralDef;
+    if (!literalDef) return;
     let newTileDef: IBrainTileDef = new BrainTileLiteralDef(
       literalDef.valueType,
       literalDef.value,
@@ -116,16 +121,38 @@ function useTileMenu(
     setShowEditFormatDialog(false);
   };
 
-  const entries: TileMenuEntry[] = [];
-  if (isNumericLiteral) {
-    entries.push({ key: "format", label: "Edit Format", run: () => setShowEditFormatDialog(true) });
-  }
-  if (isVariable) {
-    entries.push({ key: "rename", label: "Rename...", run: () => setShowRenameVariableDialog(true) });
-  }
-  if (onTileDocs) {
-    entries.push({ key: kDocsEntryKey, label: "Docs", run: () => onTileDocs(tileDef) });
-  }
+  /** What either literal-value dialog's submission acts on. */
+  const submitOptions = (value: unknown, displayName?: string): LiteralValueSubmitOptions | undefined =>
+    valueEditor && { ruleDef, side, tileIndex, editor: valueEditor, value, displayName, commandHistory };
+
+  const handleEditValueSubmit = (value: unknown, _displayFormat?: LiteralDisplayFormat, displayName?: string) => {
+    const options = submitOptions(value, displayName);
+    if (options) editLiteralValue(options);
+    setShowEditValueDialog(false);
+  };
+
+  const handleDuplicateValueSubmit = (value: unknown, _displayFormat?: LiteralDisplayFormat, displayName?: string) => {
+    const options = submitOptions(value, displayName);
+    if (options) duplicateLiteralValue(options);
+    setShowDuplicateValueDialog(false);
+  };
+
+  // The seed the fork of this literal opens on, read as its dialog is built.
+  const forkSeed = () =>
+    valueEditor === undefined
+      ? undefined
+      : literalForkSeed(
+          valueEditor.literalDef,
+          takenLiteralNamesAround(tileCatalogs, ruleDef.brain()?.catalog(), valueEditor.literalDef.valueType)
+        );
+
+  const entries: TileMenuEntry[] = buildTileMenuEntries(tileDef, valueEditor, {
+    editFormat: () => setShowEditFormatDialog(true),
+    editValue: () => setShowEditValueDialog(true),
+    duplicateValue: () => setShowDuplicateValueDialog(true),
+    renameVariable: () => setShowRenameVariableDialog(true),
+    openDocs: onTileDocs ? () => onTileDocs(tileDef) : undefined,
+  });
 
   // The dialog restores the keyboard to the menu item it was opened from, which
   // stopped rendering with the menu; the trigger the menu itself opened from
@@ -139,10 +166,10 @@ function useTileMenu(
 
   const dialogs = (
     <>
-      {showEditFormatDialog && isNumericLiteral && (
+      {showEditFormatDialog && literalDef && (
         <EditLiteralFormatDialog
           isOpen={showEditFormatDialog}
-          literalDef={tileDef as BrainTileLiteralDef}
+          literalDef={literalDef}
           onOpenChange={(open) => {
             if (!open) setShowEditFormatDialog(false);
           }}
@@ -150,10 +177,38 @@ function useTileMenu(
           onSubmit={handleEditFormatSubmit}
         />
       )}
-      {showRenameVariableDialog && isVariable && (
+      {showEditValueDialog && valueEditor && (
+        <CreateLiteralDialog
+          isOpen={showEditValueDialog}
+          title="Edit Value"
+          literalType={valueEditor.literalDef.valueType}
+          initialValue={valueEditor.literalDef.value}
+          initialName={literalWord(valueEditor.literalDef)}
+          onOpenChange={(open) => {
+            if (!open) setShowEditValueDialog(false);
+          }}
+          onCloseAutoFocus={handleCloseAutoFocus}
+          onSubmit={handleEditValueSubmit}
+        />
+      )}
+      {showDuplicateValueDialog && valueEditor && (
+        <CreateLiteralDialog
+          isOpen={showDuplicateValueDialog}
+          title="Duplicate"
+          literalType={valueEditor.literalDef.valueType}
+          initialValue={valueEditor.literalDef.value}
+          initialName={forkSeed()?.displayName}
+          onOpenChange={(open) => {
+            if (!open) setShowDuplicateValueDialog(false);
+          }}
+          onCloseAutoFocus={handleCloseAutoFocus}
+          onSubmit={handleDuplicateValueSubmit}
+        />
+      )}
+      {showRenameVariableDialog && variableDef && (
         <RenameVariableDialog
           isOpen={showRenameVariableDialog}
-          initialName={(tileDef as BrainTileVariableDef).varName}
+          initialName={variableDef.varName}
           onOpenChange={(open) => {
             if (!open) setShowRenameVariableDialog(false);
           }}
@@ -237,7 +292,7 @@ export function BrainTileMenuButton(props: BrainTileMenuProps) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const { entries, dialogs } = useTileMenu(props, () => triggerRef.current);
   if (entries.length === 0) return null;
-  const docsOnly = entries.length === 1 && entries[0].key === kDocsEntryKey ? entries[0] : undefined;
+  const docsOnly = entries.length === 1 && entries[0].key === TileMenuEntryKeys.Docs ? entries[0] : undefined;
   if (docsOnly) {
     return (
       <button

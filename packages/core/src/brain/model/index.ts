@@ -4,6 +4,7 @@ export * from "./brain-json-persisted";
 export * from "./brain-json-rename";
 export * from "./braindef";
 export * from "./commands";
+export * from "./document-id";
 export * from "./pagedef";
 export * from "./ruledef";
 export * from "./tileset";

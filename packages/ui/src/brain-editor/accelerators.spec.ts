@@ -160,6 +160,7 @@ before(() => {
       topCandidate: candidate,
       spaceCandidate: candidate,
       highlightedCandidate: undefined,
+      highlightedCommand: undefined,
       leadCursor: { kind: "chip", optionId: "opt-lead" },
       acceptsTextLiteral: true,
       pendingTextLiteral: candidate,

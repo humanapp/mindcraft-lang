@@ -4,6 +4,7 @@ import {
   fixedFormat,
   type IBrainTileDef,
   isCoreLiteralFactoryTileId,
+  isLiteralFactoryTileId,
   isVariableFactoryTileId,
   type LiteralDisplayFormat,
   LiteralDisplayFormats,
@@ -30,6 +31,7 @@ import {
   type TypeId,
 } from "@wendoo/core/runtime";
 import type { ArmedTileTarget } from "./ArmedTargetContext";
+import type { StripCommand } from "./strip-commands";
 import { groupTilesByLibrary, type TileSourceLibrary, tileSourceNamespace } from "./tile-library-groups";
 
 /** The category a candidate is filed under in the strip's accordion. */
@@ -185,13 +187,13 @@ export interface StripCandidate {
 
 /**
  * True when choosing `tileDef` opens a create dialog: the variable factories and
- * the core literal factories, each of which manufactures the tile the dialog
- * names. Nothing is placed until that dialog is submitted, and abandoning it
- * places nothing at all.
+ * the literal factories, whichever package registered them, each of which
+ * manufactures the tile the dialog names. Nothing is placed until that dialog is
+ * submitted, and abandoning it places nothing at all.
  */
 export function tileDefersToCreateDialog(tileDef: IBrainTileDef): boolean {
   if (tileDef.kind !== "factory") return false;
-  return isVariableFactoryTileId(tileDef.tileId) || isCoreLiteralFactoryTileId(tileDef.tileId);
+  return isVariableFactoryTileId(tileDef.tileId) || isLiteralFactoryTileId(tileDef.tileId);
 }
 
 const suggestedOrigin: CandidateOrigin = { kind: "suggested" };
@@ -672,6 +674,19 @@ function findDirectLiteralFactoryOfType(
 }
 
 /**
+ * True when the armed position takes a literal of `dataType` as it stands,
+ * through a literal factory of any provenance it offers directly. A position
+ * that reaches the type only through a conversion takes none.
+ */
+export function positionTakesLiteralOfType(candidates: readonly StripCandidate[], dataType: TypeId): boolean {
+  return candidates.some((candidate) => {
+    const tileDef = candidate.tileDef;
+    if (candidate.viaConversion || tileDef.kind !== "factory" || !isLiteralFactoryTileId(tileDef.tileId)) return false;
+    return (tileDef as BrainTileFactoryDef).producedDataType === dataType;
+  });
+}
+
+/**
  * True when the armed position takes a text literal as it is, so a typed quote
  * opens one there. A position that reaches text only through a conversion takes
  * none.
@@ -1142,6 +1157,8 @@ export const kBestNextBandKey = "best";
 export interface StripOptionBand {
   /** Identity of the band, unique among the bands of one render. */
   readonly key: string;
+  /** The command chips the band leads with, before the tiles it offers. */
+  readonly commands?: readonly StripCommand[];
   /** The chips the band renders, in display order. */
   readonly entries: readonly CandidateEntry[];
 }
@@ -1152,7 +1169,7 @@ export interface StripOption {
   readonly optionId: string;
   /** Band the chip renders in. */
   readonly bandKey: string;
-  /** Key of the candidate the chip commits. */
+  /** Key of what the chip runs: a candidate's, or a command's. */
   readonly candidateKey: string;
 }
 
@@ -1197,11 +1214,19 @@ export function stripSectionHeadingId(stripId: string, sectionKey: string): stri
 
 /**
  * Every chip the strip renders, in the order the highlight walks them: the
- * best-next row first, then the chips of each open section in band order.
+ * best-next row first, then the chips of each open section in band order. A
+ * band's command chips lead its tiles.
  */
 export function visibleStripOptions(stripId: string, bands: readonly StripOptionBand[]): StripOption[] {
   const options: StripOption[] = [];
   for (const band of bands) {
+    for (const command of band.commands ?? []) {
+      options.push({
+        optionId: stripOptionId(stripId, band.key, command.key),
+        bandKey: band.key,
+        candidateKey: command.key,
+      });
+    }
     for (const entry of band.entries) {
       options.push({
         optionId: stripOptionId(stripId, band.key, entry.candidate.key),

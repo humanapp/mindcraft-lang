@@ -534,11 +534,6 @@ async function rehearse(
     environment.replaceActionBundle(request.actionBundle);
   }
   const numberText: NumberText = (value) => environment.appServices.numerics.formatNumber(value);
-  const recorder = new SubjectRecorder(
-    createTileNamer(() => environment.tileCatalogs(), environment.appServices.localizer),
-    numberText,
-    createValueLabeler(() => environment.tileCatalogs(), numberText)
-  );
 
   const subjectBrain = environment.deserializeBrainJson(
     brainJsonWithRulesEmptied(request.brainDef.toJson() as BrainJson, request.excludedRules ?? [])
@@ -547,6 +542,13 @@ async function rehearse(
   if (unresolved.length > 0) {
     throw new RehearsalRejection(RehearsalRejectionCode.TilesUnresolved, [], unresolved);
   }
+
+  const localizer = environment.appServices.localizer;
+  const recorder = new SubjectRecorder(
+    createTileNamer(() => environment.tileCatalogs(), localizer),
+    numberText,
+    createValueLabeler(() => [...environment.tileCatalogs(), subjectBrain.catalog()], numberText, localizer)
+  );
   recorder.bindRuleIds(ruleFuncIdRuleIds(environment, subjectBrain));
 
   const world = await driver.stage({

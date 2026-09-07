@@ -81,6 +81,8 @@ function markerLocalizer(calls: TrCall[]): Localizer {
 /** An open offering holding no candidates, which is all these renders need. */
 function stripState(): CandidateStripState {
   return {
+    commands: [],
+    runCommand: () => {},
     bestNext: [],
     sections: [],
     filter: "",

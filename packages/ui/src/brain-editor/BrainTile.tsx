@@ -1,5 +1,4 @@
 import { type IBrainTileDef, isActionTileDef, RuleSide } from "@wendoo/core/brain";
-import type { BrainTileFactoryDef, BrainTileParameterDef } from "@wendoo/core/brain/tiles";
 import { CircleAlert, ClockFading } from "lucide-react";
 import { type ButtonHTMLAttributes, forwardRef, useLayoutEffect, useState } from "react";
 import { staticAssetUrl } from "../asset-url";
@@ -8,7 +7,7 @@ import { BrainBadge } from "./BrainBadge";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { kRuleChromeLayer, kRuleContentLayer } from "./editor-layers";
 import { kPageGridSelectionAttribute } from "./page-grid-selection";
-import { TileValue } from "./TileValue";
+import { customLiteralValueNode, TileValue } from "./TileValue";
 import type { TileBadge } from "./tile-badges";
 import {
   kDefaultTileHue,
@@ -24,6 +23,12 @@ interface BrainTileProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "
   side: RuleSide;
   badge?: TileBadge;
 }
+
+/**
+ * Attribute marking the frame a value tile draws its value text inside, valued
+ * empty. A tile whose value type draws its own node stands no frame.
+ */
+export const kTileValueFrameAttribute = "data-tile-value-frame";
 
 /** The font a tile's label is laid out in, which its measurement reproduces. */
 const kTileLabelFontSize = "0.875rem";
@@ -74,7 +79,7 @@ function measureTileLabelWidth(label: string): number {
 export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
   ({ tileDef, side, badge, className = "", style, ...props }, ref) => {
     const editorConfig = useBrainEditorConfig();
-    const { dataTypeIcons, dataTypeNames } = editorConfig;
+    const { customLiteralTypes } = editorConfig;
     const [isOverflowing, setIsOverflowing] = useState(false);
     const [isHovered, setIsHovered] = useState(false);
     const [labelBasedWidth, setLabelBasedWidth] = useState<number | undefined>(undefined);
@@ -88,21 +93,12 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
 
     const category = tileVisualCategory(tileDef);
     const isValueTile = category === "value";
-    const isParamTile = category === "parameter";
+    // A value type drawing its own node draws it unframed, and the tile keeps
+    // its label line clear for the word the value reads by.
+    const drawsOwnValue = isValueTile && customLiteralValueNode(tileDef, customLiteralTypes) !== undefined;
     const isFactoryTile = category === "factory";
     const isActionTile = isActionTileDef(tileDef);
     const isAsyncAction = isActionTile && tileDef.action.isAsync === true;
-    let tileTypeIcon: string | undefined;
-    let tileTypeName: string | undefined;
-
-    if (isParamTile) {
-      tileTypeIcon = dataTypeIcons.get((tileDef as BrainTileParameterDef).dataType);
-      tileTypeName = dataTypeNames.get((tileDef as BrainTileParameterDef).dataType);
-    }
-    if (isFactoryTile) {
-      tileTypeIcon = dataTypeIcons.get((tileDef as BrainTileFactoryDef).producedDataType);
-      tileTypeName = dataTypeNames.get((tileDef as BrainTileFactoryDef).producedDataType);
-    }
 
     const lighterColor2 = adjustColor(baseColor, 0.4);
     const darkerColor = adjustColor(baseColor, 0);
@@ -193,17 +189,24 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
           )}
           <div className={`flex-1 flex flex-col items-center justify-center relative ${kRuleContentLayer}`}>
             {isValueTile ? (
-              <div className="min-h-16 flex-1 flex items-center justify-center text-lg font-semibold text-center px-2 overflow-hidden w-full">
-                <div
-                  className="truncate border-[3px] rounded px-2 py-1 shadow-inner"
-                  style={{
-                    backgroundColor: lighterColor2,
-                    borderColor: "white",
-                    boxShadow: "inset 0 0 0 1px #363535",
-                  }}
-                >
+              <div
+                className={`${drawsOwnValue ? "min-h-0" : "min-h-16"} flex-1 flex items-center justify-center text-lg font-semibold text-center px-2 overflow-hidden w-full`}
+              >
+                {drawsOwnValue ? (
                   <TileValue tileDef={tileDef} />
-                </div>
+                ) : (
+                  <div
+                    {...{ [kTileValueFrameAttribute]: "" }}
+                    className="truncate border-[3px] rounded px-2 py-1 shadow-inner"
+                    style={{
+                      backgroundColor: lighterColor2,
+                      borderColor: "white",
+                      boxShadow: "inset 0 0 0 1px #363535",
+                    }}
+                  >
+                    <TileValue tileDef={tileDef} />
+                  </div>
+                )}
               </div>
             ) : (
               <img
@@ -214,7 +217,7 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
               />
             )}
             <span
-              className={`flex-1 flex items-end w-full text-sm ${isOverflowing ? "overflow-visible justify-start" : "overflow-hidden justify-center"}`}
+              className={`${drawsOwnValue ? "shrink-0" : "flex-1"} flex items-end w-full text-sm ${isOverflowing ? "overflow-visible justify-start" : "overflow-hidden justify-center"}`}
             >
               <span
                 className="whitespace-nowrap inline-block font-mono font-semibold"

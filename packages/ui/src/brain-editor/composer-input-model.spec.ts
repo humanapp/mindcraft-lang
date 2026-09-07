@@ -469,6 +469,7 @@ class ComposerTrace {
       topCandidate: decideCandidateCommit(visible, this.state.filter, "enter", foldText),
       spaceCandidate: decideCandidateCommit(visible, this.state.filter, "space", foldText),
       highlightedCandidate: visible.find((candidate) => candidate.key === activeOption?.candidateKey),
+      highlightedCommand: undefined,
       leadCursor: this.leadCursor(),
       options: this.options(),
       cellGeometry: this.layOutGrid(),

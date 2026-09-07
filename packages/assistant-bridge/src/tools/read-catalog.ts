@@ -320,7 +320,7 @@ export function readCatalog(workspace: AuthoringWorkspace, input: ToolInput<"rea
     return tile && tile.kind === "parameter" ? (tile as BrainTileParameterDef).dataType : undefined;
   };
   const numberText = (value: number) => workspace.environment.appServices.numerics.formatNumber(value);
-  const labelOf = createValueLabeler(() => tileCatalogsOf(workspace.catalogs).toArray(), numberText);
+  const labelOf = createValueLabeler(() => tileCatalogsOf(workspace.catalogs).toArray(), numberText, localizer);
   const values: ValueRendering = {
     value: (value: Value) => renderValue(value, numberText, labelOf),
     number: numberText,

@@ -70,6 +70,7 @@ import { decideHistoryShortcut } from "./history-shortcut";
 import type { CandidateStripSection, CandidateStripState } from "./hooks/useCandidateStrip";
 import { kPageGridCellAttribute, pageGridCellKey, type RuleMoveDirection } from "./page-grid-model";
 import { kSentenceTypeClasses } from "./sentence-type";
+import { type StripCommand, type StripCommandKind, StripCommandKinds } from "./strip-commands";
 import { tileSourceNamespace } from "./tile-library-groups";
 import { kDefaultTileHue, resolveTileVisual, tileBorderColor } from "./tile-visual-utils";
 
@@ -165,6 +166,9 @@ const kPanelKeyboardTargets = "button, input, [tabindex]";
 /** The accordion an open text value shows: none, since only its own chip is offered. */
 const noSections: readonly CandidateStripSection[] = [];
 
+/** The commands an open text value offers: none. */
+const noCommands: readonly StripCommand[] = [];
+
 /** The run of a strip armed at nothing, which stands on no rule at all. */
 const noCaretRun: readonly CaretPosition[] = [];
 
@@ -203,16 +207,20 @@ function revealFilterInput(input: HTMLElement | null): void {
 }
 
 /**
- * The chip bands in display order: the best-next row when it holds a chip, then
- * every section `isOpen` accepts, in section order.
+ * The chip bands in display order: the best-next row when it holds a chip or a
+ * command, then every section `isOpen` accepts, in section order. The commands
+ * lead the best-next row.
  */
 function buildStripBands(
+  commands: readonly StripCommand[],
   bestNext: readonly CandidateEntry[],
   sections: readonly CandidateStripSection[],
   isOpen: (sectionKey: string) => boolean
 ): StripOptionBand[] {
   const list: StripOptionBand[] = [];
-  if (bestNext.length > 0) list.push({ key: kBestNextBandKey, entries: bestNext });
+  if (bestNext.length > 0 || commands.length > 0) {
+    list.push({ key: kBestNextBandKey, commands, entries: bestNext });
+  }
   for (const section of sections) {
     if (isOpen(section.key)) list.push({ key: section.key, entries: section.entries });
   }
@@ -384,6 +392,77 @@ function CandidateChip({ entry, side, optionId, isActive, onCommit, libraryName 
           {mintedTypeName}
         </span>
       )}
+    </button>
+  );
+}
+
+/** How each command chip reads to assistive technology. */
+const stripCommandNames: Record<StripCommandKind, string> = {
+  [StripCommandKinds.Edit]: "edit this value",
+  [StripCommandKinds.Duplicate]: "duplicate this value",
+};
+
+/** The word each command chip carries. */
+const stripCommandWords: Record<StripCommandKind, string> = {
+  [StripCommandKinds.Edit]: "edit",
+  [StripCommandKinds.Duplicate]: "duplicate",
+};
+
+/** The glyph each command chip carries: a pencil for editing, stacked sheets for duplicating. */
+function StripCommandIcon({ kind }: { kind: StripCommandKind }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      className="h-4 w-4 shrink-0"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {kind === StripCommandKinds.Edit ? (
+        <path d="M11.5 2.5 L13.5 4.5 L5.5 12.5 L2.8 13.2 L3.5 10.5 Z" />
+      ) : (
+        <>
+          <rect x="5" y="5" width="9" height="9" rx="1.5" />
+          <path d="M11 3 H4 A1.5 1.5 0 0 0 2.5 4.5 V11.5" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+interface CommandChipProps {
+  command: StripCommand;
+  /** DOM id the active-descendant highlight addresses this chip by. */
+  optionId: string;
+  /** True while the keyboard highlight rests on this chip. */
+  isActive: boolean;
+  onRun: (command: StripCommand) => void;
+}
+
+/**
+ * One command as a chip leading the offering: the command's glyph and its word,
+ * drawn in the app's secondary fill.
+ */
+function CommandChip({ command, optionId, isActive, onRun }: CommandChipProps) {
+  return (
+    <button
+      type="button"
+      role="option"
+      id={optionId}
+      aria-selected={isActive}
+      aria-label={stripCommandNames[command.kind]}
+      tabIndex={-1}
+      onClick={() => onRun(command)}
+      data-strip-command={command.kind}
+      className={`inline-flex min-h-11 max-w-full cursor-pointer items-center gap-2 rounded-full border-2 border-secondary-foreground/20 bg-secondary px-3 py-1.5 text-secondary-foreground shadow-sm transition-[filter,transform] hover:brightness-110 active:scale-95 ${
+        isActive ? "ring-2 ring-brain-ink ring-offset-2 ring-offset-brain-desk-to brightness-110" : ""
+      }`}
+    >
+      <StripCommandIcon kind={command.kind} />
+      <span className="truncate font-mono text-sm font-semibold">{stripCommandWords[command.kind]}</span>
     </button>
   );
 }
@@ -779,6 +858,7 @@ export function useCandidateStripSurface({
   );
   const shownBestNext = openTextLiteral === undefined ? state.bestNext : pendingTextEntries;
   const shownSections = openTextLiteral === undefined ? state.sections : noSections;
+  const shownCommands = openTextLiteral === undefined ? state.commands : noCommands;
 
   // The filter box takes the keyboard for every position the strip is armed at,
   // not only the first: a menu re-arming an open strip must move the keyboard
@@ -896,8 +976,8 @@ export function useCandidateStripSurface({
   }, [shownSections, isFiltering, openSectionKey]);
 
   const bands = useMemo(
-    () => buildStripBands(shownBestNext, shownSections, (key) => openSectionKeys.has(key)),
-    [shownBestNext, shownSections, openSectionKeys]
+    () => buildStripBands(shownCommands, shownBestNext, shownSections, (key) => openSectionKeys.has(key)),
+    [shownCommands, shownBestNext, shownSections, openSectionKeys]
   );
 
   const options = useMemo(() => visibleStripOptions(stripId, bands), [stripId, bands]);
@@ -917,6 +997,11 @@ export function useCandidateStripSurface({
     }
     return map;
   }, [bands]);
+  const commandsByKey = useMemo(() => {
+    const map = new Map<string, StripCommand>();
+    for (const command of shownCommands) map.set(command.key, command);
+    return map;
+  }, [shownCommands]);
   const matchCount = useMemo(
     () =>
       openTextLiteral === undefined
@@ -989,6 +1074,10 @@ export function useCandidateStripSurface({
         measure({ kind: "chip", optionId }, optionId);
       }
     };
+    for (const command of shownCommands) {
+      const optionId = stripOptionId(stripId, kBestNextBandKey, command.key);
+      measure({ kind: "chip", optionId }, optionId);
+    }
     measureChips(kBestNextBandKey, shownBestNext);
     for (const section of shownSections) {
       if (section.entries.length === 0) continue;
@@ -1043,6 +1132,9 @@ export function useCandidateStripSurface({
     get highlightedCandidate() {
       return activeOption ? candidatesByKey.get(activeOption.candidateKey) : undefined;
     },
+    get highlightedCommand() {
+      return activeOption ? commandsByKey.get(activeOption.candidateKey) : undefined;
+    },
     get leadCursor() {
       return leadStripCursor(options, leadCandidateKey);
     },
@@ -1088,6 +1180,9 @@ export function useCandidateStripSurface({
           break;
         case "place-tile":
           state.commit(effect.candidate);
+          break;
+        case "run-command":
+          state.runCommand(effect.command);
           break;
         case "announce-placement":
           placedLabelRef.current = effect.label;
@@ -1221,6 +1316,21 @@ export function useCandidateStripSurface({
       focusTarget.kind === "band" && focusTarget.bandKey === bandKey ? activeOption?.optionId : undefined,
     onKeyDown: handleBandKeyDown,
   });
+
+  /** The command chips leading the offering, each addressed by the option id the highlight walks it by. */
+  const renderCommandChips = (commands: readonly StripCommand[]) =>
+    commands.map((command) => {
+      const optionId = stripOptionId(stripId, kBestNextBandKey, command.key);
+      return (
+        <CommandChip
+          key={command.key}
+          command={command}
+          optionId={optionId}
+          isActive={activeOption?.optionId === optionId}
+          onRun={state.runCommand}
+        />
+      );
+    });
 
   /** The chips of one band, each addressed by the option id the highlight walks it by. */
   const renderChips = (bandKey: string, entries: readonly CandidateEntry[]) =>
@@ -1532,13 +1642,14 @@ export function useCandidateStripSurface({
       )}
 
       <div id={candidatesId} className="flex flex-col gap-3">
-        {shownBestNext.length > 0 && (
+        {(shownBestNext.length > 0 || shownCommands.length > 0) && (
           <div
             role="listbox"
             {...bandListboxProps(kBestNextBandKey)}
             aria-label="Best next tiles"
             className={`flex flex-wrap gap-2 ${browsedBandClasses}`}
           >
+            {renderCommandChips(shownCommands)}
             {renderChips(kBestNextBandKey, shownBestNext)}
           </div>
         )}

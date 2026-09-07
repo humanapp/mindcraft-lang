@@ -1,4 +1,5 @@
 export {
+  EditLiteralCommand,
   RenameBrainCommand,
   RenamePageCommand,
   RenameVariableCommand,

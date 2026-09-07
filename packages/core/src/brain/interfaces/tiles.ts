@@ -208,6 +208,20 @@ export function parseDisplayFormat(fmt: LiteralDisplayFormat): { kind: string; d
 export type BrainTileLiteralDefOptions = BrainTileDefCreateOptions & {
   valueLabel?: string;
   displayFormat?: LiteralDisplayFormat;
+  /**
+   * The word the literal reads by, which becomes both its `metadata.label` and
+   * its `metadata.language.form` over whatever `metadata` also carries. It takes
+   * no part in the tile id, so two literals may share a name. Left out, the
+   * literal reads by its value.
+   */
+  displayName?: string;
+  /**
+   * The literal's own identity, minted from the document id source. Given one,
+   * the tile id derives from it alone, so two literals holding identical
+   * content are separate tiles. The value label defaults to it. Left out, the
+   * tile id derives from the value.
+   */
+  uniqueId?: string;
 };
 
 // ----------------------------------------------------
@@ -291,6 +305,11 @@ export function mkLiteralTileId(valueType: TypeId, valueStr: string, displayForm
     return mkTileId("literal", `${base}[${displayFormat}]`);
   }
   return mkTileId("literal", base);
+}
+
+/** Tile id of a literal carrying the unique identity `uniqueId`, derived from that identity alone. */
+export function mkUniqueLiteralTileId(uniqueId: string): string {
+  return mkTileId("literal", uniqueId);
 }
 
 export function mkLiteralFactoryTileId(factoryId: string): string {
@@ -406,4 +425,13 @@ export const CoreLiteralFactoryTileIds: string[] = [
 
 export function isCoreLiteralFactoryTileId(tileId: string): boolean {
   return CoreLiteralFactoryTileIds.includes(tileId);
+}
+
+/**
+ * Whether `tileId` names a literal factory tile: an id in the area
+ * {@link mkLiteralFactoryTileId} builds, whichever package registered the
+ * factory. Any other tile id, and any text that is not a tile id, reads false.
+ */
+export function isLiteralFactoryTileId(tileId: string): boolean {
+  return SU.startsWith(tileId, "tile.lit.factory->");
 }

@@ -1,5 +1,11 @@
 import { List } from "@wendoo/core";
-import { type IBrainTileDef, type ITileCatalog, RuleSide, RuleTriggerMode } from "@wendoo/core/brain";
+import {
+  type IBrainTileDef,
+  type ITileCatalog,
+  type LiteralDisplayFormat,
+  RuleSide,
+  RuleTriggerMode,
+} from "@wendoo/core/brain";
 import type { TypecheckResult } from "@wendoo/core/brain/compiler";
 import { availableTriggerModes } from "@wendoo/core/brain/language-service";
 import type { BrainCommand, BrainCommandHistory, BrainRuleDef, RulePlacement } from "@wendoo/core/brain/model";
@@ -32,6 +38,7 @@ import {
   type ArmedTileTarget,
   armedTargetForRule,
   isAppendTargetForRule,
+  type LiteralCreationSeed,
   useArmedTargetActions,
   useArmedTargetController,
 } from "./ArmedTargetContext";
@@ -56,6 +63,7 @@ import { kGrabbedRuleMarkerLayer, kRuleChromeLayer, kRuleContentLayer } from "./
 import { useCandidateStrip } from "./hooks/useCandidateStrip";
 import { useRuleCapabilities, useRuleOutputKeys } from "./hooks/useRuleCapabilities";
 import { composeAfterTileCreation, useTileSelection } from "./hooks/useTileSelection";
+import { literalNameBase, literalWord, takenLiteralNamesAround, unusedNumberedName } from "./literal-naming";
 import { usePageGrid } from "./PageGridContext";
 import {
   decidePageGridGrab,
@@ -95,6 +103,7 @@ import {
   importTileFromClipboard,
   peekTileInClipboard,
 } from "./tile-clipboard";
+import { editLiteralValue, type LiteralValueEditor } from "./tile-menu-model";
 import { positionOffersTile, sideOffersAppendedTile } from "./tile-offering";
 import { triggerModeLabel, triggerSwitchName, triggerSwitchState } from "./trigger-mode";
 
@@ -235,6 +244,16 @@ function editPointCommand(
   }
 }
 
+/** The placed literal a rule's value-editor dialog stands open on. */
+interface LiteralEditTarget {
+  /** The value editor that literal offers. */
+  readonly editor: LiteralValueEditor;
+  /** The side of the rule holding it. */
+  readonly side: RuleSide;
+  /** Its place among the tiles of that side, counting from zero. */
+  readonly tileIndex: number;
+}
+
 /** The up-pointing wedge a rule handle's movement marker is drawn as, in the overlay's user space. */
 const kRuleMoveMarkerPath = ruleMoveMarkerPath(kRuleMoveMarkerShape);
 
@@ -291,7 +310,7 @@ function BrainRuleEditorCard({
   commandHistory,
   stripTarget,
 }: BrainRuleEditorCardProps) {
-  const { brainServices, tileCatalogs, isBrokenTile } = useBrainEditorConfig();
+  const { brainServices, tileCatalogs, isBrokenTile, customLiteralTypes, dataTypeNames } = useBrainEditorConfig();
   const localizer = useLocalizer();
   // The cells this rule stands in the page's selection grid.
   const pageGrid = usePageGrid();
@@ -399,6 +418,15 @@ function BrainRuleEditorCard({
     });
   }, [composerCaret, commandHistory]);
 
+  // The literal the offering's edit command is editing the value of, and the
+  // element the keyboard came from, which takes it back as the dialog closes.
+  const [literalEdit, setLiteralEdit] = useState<LiteralEditTarget | undefined>(undefined);
+  const literalEditOpenerRef = useRef<HTMLElement | null>(null);
+  const openLiteralEditor = useCallback((editor: LiteralValueEditor, side: RuleSide, tileIndex: number) => {
+    literalEditOpenerRef.current = document.activeElement as HTMLElement | null;
+    setLiteralEdit({ editor, side, tileIndex });
+  }, []);
+
   const candidateStrip = useCandidateStrip({
     ruleDef,
     target: stripTarget,
@@ -407,6 +435,7 @@ function BrainRuleEditorCard({
     availableOutputKeys,
     revision,
     onCommitted: recordComposerCommit,
+    onEditLiteral: openLiteralEditor,
   });
 
   // The side whose add-tile button has the strip's panel standing under it.
@@ -450,6 +479,7 @@ function BrainRuleEditorCard({
     showCreateLiteralDialog,
     literalDialogTitle,
     literalType,
+    literalSeed,
     handleTileSelected: handleTileSelectedWithVariable,
     handleVariableNameSubmit,
     handleVariableDialogClose,
@@ -544,11 +574,15 @@ function BrainRuleEditorCard({
         side,
         mode: "append",
         entry: "tray",
-        onTileSelected: (tileDef: IBrainTileDef) =>
-          handleTileSelectedWithVariable(tileDef, (tile) => {
-            const command = new AddTileCommand(ruleDef, side, tile);
-            commandHistory.executeCommand(command);
-          }),
+        onTileSelected: (tileDef: IBrainTileDef, seed?: LiteralCreationSeed) =>
+          handleTileSelectedWithVariable(
+            tileDef,
+            (tile) => {
+              const command = new AddTileCommand(ruleDef, side, tile);
+              commandHistory.executeCommand(command);
+            },
+            seed
+          ),
       });
     },
     [armedTarget, ruleDef, handleTileSelectedWithVariable, commandHistory]
@@ -570,10 +604,14 @@ function BrainRuleEditorCard({
         tileIndex: arming.mode === "append" ? undefined : arming.tileIndex,
         anchorTileIndex,
         entry,
-        onTileSelected: (tileDef: IBrainTileDef) =>
-          handleTileSelectedWithVariable(tileDef, (tile) => {
-            commandHistory.executeCommand(editPointCommand(arming, ruleDef, side, tile));
-          }),
+        onTileSelected: (tileDef: IBrainTileDef, seed?: LiteralCreationSeed) =>
+          handleTileSelectedWithVariable(
+            tileDef,
+            (tile) => {
+              commandHistory.executeCommand(editPointCommand(arming, ruleDef, side, tile));
+            },
+            seed
+          ),
       });
     },
     [armedTarget, ruleDef, handleTileSelectedWithVariable, commandHistory]
@@ -598,17 +636,21 @@ function BrainRuleEditorCard({
         tileIndex: intent.mode === "append" ? undefined : intent.tileIndex,
         caret: position,
         entry,
-        onTileSelected: (tileDef: IBrainTileDef) =>
-          handleTileSelectedWithVariable(tileDef, (tile) => {
-            commandHistory.executeCommand(editPointCommand(arming, ruleDef, side, tile));
-            // The tile stands where the arming addressed, except for an append,
-            // which stands it at the side's new end.
-            placedCaretRef.current = {
-              kind: "gap",
-              side,
-              tileIndex: arming.mode === "append" ? ruleDef.side(side).tiles().size() : arming.tileIndex + 1,
-            };
-          }),
+        onTileSelected: (tileDef: IBrainTileDef, seed?: LiteralCreationSeed) =>
+          handleTileSelectedWithVariable(
+            tileDef,
+            (tile) => {
+              commandHistory.executeCommand(editPointCommand(arming, ruleDef, side, tile));
+              // The tile stands where the arming addressed, except for an append,
+              // which stands it at the side's new end.
+              placedCaretRef.current = {
+                kind: "gap",
+                side,
+                tileIndex: arming.mode === "append" ? ruleDef.side(side).tiles().size() : arming.tileIndex + 1,
+              };
+            },
+            seed
+          ),
       });
     },
     [armedTarget, ruleDef, handleTileSelectedWithVariable, commandHistory]
@@ -875,6 +917,45 @@ function BrainRuleEditorCard({
 
   const handleTilePickerCancel = () => {
     armedTarget.disarm();
+  };
+
+  /**
+   * The word the create-literal dialog's name field opens holding: the one a
+   * seeded creation carries, and otherwise the first free default name of the
+   * type being created. A type standing no name field takes none.
+   */
+  const openedLiteralName = (): string | undefined => {
+    if (literalSeed !== undefined) return literalSeed.displayName;
+    const customType = customLiteralTypes.find((candidate) => candidate.typeId === literalType);
+    if (customType === undefined) return undefined;
+    const taken = takenLiteralNamesAround(tileCatalogs, ruleDef.brain()?.catalog(), literalType);
+    return unusedNumberedName(literalNameBase(literalType, customType, dataTypeNames), taken);
+  };
+
+  /** Puts the submitted value and name on the literal the value editor stands open on. */
+  const handleLiteralEditSubmit = (value: unknown, _displayFormat?: LiteralDisplayFormat, displayName?: string) => {
+    if (literalEdit === undefined) return;
+    editLiteralValue({
+      ruleDef,
+      side: literalEdit.side,
+      tileIndex: literalEdit.tileIndex,
+      editor: literalEdit.editor,
+      value,
+      displayName,
+      commandHistory,
+    });
+    setLiteralEdit(undefined);
+  };
+
+  // Hands the keyboard back to the chip the value editor was opened from. A
+  // chip no longer rendering leaves the hand-back to the dialog's own
+  // restoration.
+  const handleLiteralEditCloseAutoFocus = (event: Event) => {
+    const returnTo = literalEditOpenerRef.current;
+    literalEditOpenerRef.current = null;
+    if (returnTo === null || !returnTo.isConnected) return;
+    event.preventDefault();
+    returnTo.focus({ preventScroll: true });
   };
 
   // The strip's two pieces: the input this rule's sentence hosts while it is
@@ -1297,11 +1378,27 @@ function BrainRuleEditorCard({
             isOpen={showCreateLiteralDialog}
             title={literalDialogTitle}
             literalType={literalType}
+            initialValue={literalSeed?.value}
+            initialName={openedLiteralName()}
             onOpenChange={(open) => {
               if (!open) handleLiteralDialogClose();
             }}
             onCloseAutoFocus={handleCreateDialogCloseAutoFocus}
             onSubmit={handleLiteralValueSubmit}
+          />
+        )}
+        {literalEdit && (
+          <CreateLiteralDialog
+            isOpen
+            title="Edit Value"
+            literalType={literalEdit.editor.literalDef.valueType}
+            initialValue={literalEdit.editor.literalDef.value}
+            initialName={literalWord(literalEdit.editor.literalDef)}
+            onOpenChange={(open) => {
+              if (!open) setLiteralEdit(undefined);
+            }}
+            onCloseAutoFocus={handleLiteralEditCloseAutoFocus}
+            onSubmit={handleLiteralEditSubmit}
           />
         )}
       </div>

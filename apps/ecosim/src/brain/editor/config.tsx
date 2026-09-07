@@ -31,6 +31,14 @@ const vector2LiteralType: CustomLiteralType = {
     return new Vector2(x, y);
   },
 
+  toInputState(value: unknown): Record<string, string> {
+    if (value && typeof value === "object" && "X" in value && "Y" in value) {
+      const v = value as { X: number; Y: number };
+      return { x: String(v.X), y: String(v.Y) };
+    }
+    return {};
+  },
+
   renderInputFields(
     state: Record<string, string>,
     onChange: (key: string, value: string) => void,

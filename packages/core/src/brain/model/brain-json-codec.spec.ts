@@ -317,6 +317,54 @@ describe("persisted brain JSON codec", () => {
     assert.equal(restoredEntry.valueType, modeTypeId);
   });
 
+  test("a named literal catalog entry carries its name through the persisted document", () => {
+    const literal = new BrainTileLiteralDef(modeTypeId, "fast", { valueLabel: "fast", displayName: "quick" }, services);
+    const brainDef = brainWith([literal]);
+    brainDef.catalog().registerTileDef(literal);
+
+    const persisted = encodePersistedBrainJson(brainDef, NS);
+    const literalEntry = persisted.catalog.find((entry) => entry.kind === "literal");
+    assert.equal(literalEntry?.kind === "literal" ? literalEntry.displayName : undefined, "quick");
+
+    const restoredEntry = roundTrip(brainDef, NS).catalog().get(literal.tileId) as BrainTileLiteralDef;
+    assert.equal(restoredEntry.displayName, "quick");
+    assert.equal(restoredEntry.metadata?.language?.form, "quick");
+  });
+
+  test("a unique-identity literal keeps its own tile id through the persisted document", () => {
+    const literal = new BrainTileLiteralDef(
+      modeTypeId,
+      "fast",
+      { uniqueId: "litIdentityA", displayName: "quick" },
+      services
+    );
+    const brainDef = brainWith([literal]);
+    brainDef.catalog().registerTileDef(literal);
+
+    const persisted = encodePersistedBrainJson(brainDef, NS);
+    assert.deepEqual(whenRefs(persisted), [literal.tileId], "its id carries no namespace, so it persists as itself");
+    assert.deepEqual(
+      persisted.catalog.find((entry) => entry.kind === "literal"),
+      {
+        version: 2,
+        kind: "literal",
+        valueType: { k: "named", t: "enum", name: "/mode.ts::Mode", ns: undefined },
+        value: "fast",
+        valueLabel: "litIdentityA",
+        displayFormat: "default",
+        displayName: "quick",
+        uniqueId: "litIdentityA",
+      }
+    );
+
+    const restored = roundTrip(brainDef, NS);
+    assert.deepEqual(whenTileIds(restored), [literal.tileId]);
+    const restoredEntry = restored.catalog().get(literal.tileId) as BrainTileLiteralDef;
+    assert.equal(restoredEntry.uniqueId, "litIdentityA");
+    assert.equal(restoredEntry.displayName, "quick");
+    assert.equal(restoredEntry.value, "fast");
+  });
+
   test("variable catalog entries serialize their type and re-mint their tile id from uniqueId", () => {
     const own = new BrainTileVariableDef(mkVariableTileId("v1"), "own", posTypeId, "v1");
     const foreign = new BrainTileVariableDef(mkVariableTileId("v2"), "foreign", foreignPosTypeId, "v2");

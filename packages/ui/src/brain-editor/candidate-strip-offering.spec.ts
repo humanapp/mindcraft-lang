@@ -198,6 +198,8 @@ function offeredEntries(): CandidateEntry[] {
 
 function stripState(overrides: Partial<CandidateStripState>): CandidateStripState {
   return {
+    commands: [],
+    runCommand: () => {},
     bestNext: [],
     sections: [],
     filter: "",

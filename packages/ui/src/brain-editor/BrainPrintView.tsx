@@ -1,6 +1,5 @@
 import { type IBrainTileDef, RuleSide } from "@wendoo/core/brain";
 import type { BrainDef, BrainPageDef, BrainRuleDef } from "@wendoo/core/brain/model";
-import type { BrainTileFactoryDef, BrainTileParameterDef } from "@wendoo/core/brain/tiles";
 import { staticAssetUrl } from "../asset-url";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { BrainPrintRuleSentence } from "./BrainRuleSentence";
@@ -16,7 +15,6 @@ interface PrintTileProps {
 
 function PrintTile({ tileDef, side }: PrintTileProps) {
   const editorConfig = useBrainEditorConfig();
-  const { dataTypeIcons } = editorConfig;
 
   const visual = resolveTileVisual(editorConfig, tileDef);
   const label = visual.label;
@@ -28,15 +26,6 @@ function PrintTile({ tileDef, side }: PrintTileProps) {
   const category = tileVisualCategory(tileDef);
   const isValueTile = category === "value";
   const isFactoryTile = category === "factory";
-  const isParamTile = category === "parameter";
-  let tileTypeIcon: string | undefined;
-
-  if (isParamTile) {
-    tileTypeIcon = dataTypeIcons.get((tileDef as BrainTileParameterDef).dataType);
-  }
-  if (isFactoryTile) {
-    tileTypeIcon = dataTypeIcons.get((tileDef as BrainTileFactoryDef).producedDataType);
-  }
 
   return (
     <div className="brain-print-tile" style={{ borderColor: baseColor }}>

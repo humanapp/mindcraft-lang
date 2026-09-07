@@ -42,13 +42,14 @@ import {
   mkLiteralTileId,
   mkOutputTileId,
   mkPageTileId,
+  mkUniqueLiteralTileId,
   mkVariableTileId,
 } from "../interfaces";
 import type { BrainServices } from "../services";
 import type { BrainTileAccessorDef } from "../tiles/accessors";
 import type { BrainTileActuatorDef } from "../tiles/actuators";
 import type { CatalogTileJson } from "../tiles/catalog";
-import type { BrainTileLiteralDef } from "../tiles/literals";
+import type { BrainTileLiteralDef, LiteralTileJson } from "../tiles/literals";
 import type { BrainTileModifierDef } from "../tiles/modifiers";
 import type { BrainTileOutputDef } from "../tiles/outputs";
 import type { PageTileJson } from "../tiles/pagetiles";
@@ -58,6 +59,7 @@ import type {
   PersistedBrainJson,
   PersistedCatalogTileJson,
   PersistedIdRef,
+  PersistedLiteralTileJson,
   PersistedPageJson,
   PersistedPageTileJson,
   PersistedRuleJson,
@@ -263,6 +265,7 @@ class BrainJsonEncoder {
       }
       case "literal": {
         const literalDef = tileDef as BrainTileLiteralDef;
+        if (literalDef.uniqueId !== undefined) return this.plainId(tileDef.tileId, "literal tile id");
         const typeRef = this.encodeTypeRefById(literalDef.valueType, "literal value type");
         if (TypeUtils.isString(typeRef)) return this.plainId(tileDef.tileId, "literal tile id");
         return {
@@ -293,8 +296,8 @@ class BrainJsonEncoder {
 
   encodeCatalogEntry(entry: CatalogTileJson): PersistedCatalogTileJson {
     switch (entry.kind) {
-      case "literal":
-        return {
+      case "literal": {
+        const result: PersistedLiteralTileJson = {
           version: entry.version,
           kind: "literal",
           valueType: this.encodeTypeRefById(entry.valueType as TypeId, "literal value type"),
@@ -302,6 +305,10 @@ class BrainJsonEncoder {
           valueLabel: entry.valueLabel,
           displayFormat: entry.displayFormat,
         };
+        if (entry.displayName !== undefined) result.displayName = entry.displayName;
+        if (entry.uniqueId !== undefined) result.uniqueId = entry.uniqueId;
+        return result;
+      }
       case "variable":
         return {
           version: entry.version,
@@ -530,19 +537,26 @@ class BrainJsonDecoder {
     switch (entry.kind) {
       case "literal": {
         const typeId = this.decodeTypeRef(entry.valueType).typeId;
-        return {
+        const tileId =
+          entry.uniqueId === undefined
+            ? mkLiteralTileId(
+                typeId,
+                entry.valueLabel,
+                entry.displayFormat === LiteralDisplayFormats.Default ? undefined : entry.displayFormat
+              )
+            : mkUniqueLiteralTileId(entry.uniqueId);
+        const result: LiteralTileJson = {
           version: entry.version,
           kind: "literal",
-          tileId: mkLiteralTileId(
-            typeId,
-            entry.valueLabel,
-            entry.displayFormat === LiteralDisplayFormats.Default ? undefined : entry.displayFormat
-          ),
+          tileId,
           valueType: typeId,
           value: entry.value,
           valueLabel: entry.valueLabel,
           displayFormat: entry.displayFormat,
         };
+        if (entry.displayName !== undefined) result.displayName = entry.displayName;
+        if (entry.uniqueId !== undefined) result.uniqueId = entry.uniqueId;
+        return result;
       }
       case "variable":
         return {

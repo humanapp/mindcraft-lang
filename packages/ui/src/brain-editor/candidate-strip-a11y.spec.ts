@@ -163,6 +163,8 @@ function section(entries: readonly CandidateEntry[]): CandidateStripSection {
 
 function stripState(overrides: Partial<CandidateStripState>): CandidateStripState {
   return {
+    commands: [],
+    runCommand: () => {},
     bestNext: [],
     sections: [],
     filter: "",

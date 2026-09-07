@@ -1,7 +1,9 @@
 /**
  * How a rehearsal renders the values a brain dispatches: two values that differ
- * read differently, a value a literal tile bakes reads by that tile's label, and
- * every rendering stays inside the bound a trace summary allows it.
+ * read differently, a value a literal tile bakes reads by the word that tile
+ * reads by, a literal the document's own catalog holds names its value as an
+ * environment literal does, and every rendering stays inside the bound a trace
+ * summary allows it.
  */
 
 import assert from "node:assert/strict";
@@ -18,6 +20,8 @@ import {
   mkTypeId,
   NativeType,
 } from "@wendoo/core/app";
+import type { BrainServices, ITileCatalog } from "@wendoo/core/brain";
+import { BrainDef } from "@wendoo/core/brain/model";
 import { mkBufferValueFromHex, TARGET_TYPE_ATOM_BASE } from "@wendoo/core/runtime";
 import { createRehearsalEnvironment, createSeededRng } from "./environment.js";
 import type { NumberText } from "./value-text.js";
@@ -81,7 +85,23 @@ function toneModule(): WendooModule {
 /** Render `value` against the catalogs the tone module installs. */
 function rendered(value: Value): string {
   const environment = createRehearsalEnvironment({ modules: [toneModule()], rng: createSeededRng(1) });
-  const labelOf = createValueLabeler(() => environment.tileCatalogs(), numberText);
+  const labelOf = createValueLabeler(() => environment.tileCatalogs(), numberText, environment.appServices.localizer);
+  return renderValue(value, numberText, labelOf);
+}
+
+/** Identity a document literal of these fixtures is minted under. */
+const kDrawnLiteralId = "0123456789abcdef";
+
+/** Render `value` against the tone module's catalogs followed by a document catalog `mint` has filled. */
+function renderedWithDocument(value: Value, mint: (services: BrainServices, catalog: ITileCatalog) => void): string {
+  const environment = createRehearsalEnvironment({ modules: [toneModule()], rng: createSeededRng(1) });
+  const brainDef = BrainDef.emptyBrainDef(environment.brainServices, "document brain");
+  mint(environment.brainServices, brainDef.catalog());
+  const labelOf = createValueLabeler(
+    () => [...environment.tileCatalogs(), brainDef.catalog()],
+    numberText,
+    environment.appServices.localizer
+  );
   return renderValue(value, numberText, labelOf);
 }
 
@@ -136,5 +156,44 @@ describe("rendering a dispatched value", () => {
 
   test("renders one value the same way every time", () => {
     assert.equal(rendered(tones(12, 3)), rendered(tones(12, 3)));
+  });
+});
+
+describe("rendering a value the document's own catalog bakes", () => {
+  test("names it by the word its literal reads by, not by the literal's minted identity", () => {
+    const drawn = tone(7, "0f0f");
+
+    const text = renderedWithDocument(drawn, (services, catalog) => {
+      catalog.registerTileDef(
+        new BrainTileLiteralDef(kToneTypeId, drawn, { uniqueId: kDrawnLiteralId, displayName: "rock" }, services)
+      );
+    });
+
+    assert.equal(text, "rock");
+  });
+
+  test("leaves a value no catalog bakes reading as its contents", () => {
+    const drawn = tone(7, "0f0f");
+
+    const text = renderedWithDocument(tone(8, "0f0f"), (services, catalog) => {
+      catalog.registerTileDef(
+        new BrainTileLiteralDef(kToneTypeId, drawn, { uniqueId: kDrawnLiteralId, displayName: "rock" }, services)
+      );
+    });
+
+    assert.ok(text.startsWith(`${kToneTypeId}(8,`), text);
+    assert.ok(!text.includes("rock"), text);
+  });
+
+  test("lets the environment's tile name a value the document bakes a second literal of", () => {
+    const shared = tone(2, "00ff");
+
+    const text = renderedWithDocument(shared, (services, catalog) => {
+      catalog.registerTileDef(
+        new BrainTileLiteralDef(kToneTypeId, shared, { uniqueId: kDrawnLiteralId, displayName: "rock" }, services)
+      );
+    });
+
+    assert.equal(text, "high");
   });
 });

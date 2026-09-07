@@ -14,6 +14,7 @@
 
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
+import { List } from "@wendoo/core";
 import type { BrainServices, IBrainTileDef } from "@wendoo/core/brain";
 import {
   CoreLiteralFactoryId,
@@ -25,27 +26,42 @@ import {
 import { __test__createBrainServices } from "@wendoo/core/brain/__test__";
 import { AddTileCommand, BrainCommandHistory, BrainDef, type BrainRuleDef } from "@wendoo/core/brain/model";
 import type { BrainTileFactoryDef, BrainTileVariableDef } from "@wendoo/core/brain/tiles";
+import { registerLiteralFactoryTileDef } from "@wendoo/core/brain/tiles";
+import { TARGET_TYPE_ATOM_BASE } from "@wendoo/core/runtime";
 import type { CaretPosition } from "../caret-run";
 import { composeAfterTileCreation, routeTileSelection, type TileSelectionDeferralEffects } from "./useTileSelection";
+
+/** Factory id of the literal factory these specs register outside the core set. */
+const kSwatchFactoryId = "swatch";
 
 let services: BrainServices;
 
 before(() => {
   services = __test__createBrainServices();
+  const swatchTypeId = services.runtime.types.addStructType("Swatch", {
+    atomId: TARGET_TYPE_ATOM_BASE,
+    fields: List.empty(),
+  });
+  registerLiteralFactoryTileDef(kSwatchFactoryId, swatchTypeId, {}, services);
 });
 
-function coreTile(tileId: string): IBrainTileDef {
+function registeredTile(tileId: string): IBrainTileDef {
   const tileDef = services.edit.tiles.get(tileId);
-  assert.ok(tileDef, `core tile not registered: ${tileId}`);
+  assert.ok(tileDef, `tile not registered: ${tileId}`);
   return tileDef;
 }
 
 function variableFactoryTile(): BrainTileFactoryDef {
-  return coreTile(mkVariableFactoryTileId(CoreVariableFactoryId.Number)) as BrainTileFactoryDef;
+  return registeredTile(mkVariableFactoryTileId(CoreVariableFactoryId.Number)) as BrainTileFactoryDef;
 }
 
 function literalFactoryTile(): BrainTileFactoryDef {
-  return coreTile(mkLiteralFactoryTileId(CoreLiteralFactoryId.Number)) as BrainTileFactoryDef;
+  return registeredTile(mkLiteralFactoryTileId(CoreLiteralFactoryId.Number)) as BrainTileFactoryDef;
+}
+
+/** The literal factory registered outside the core set, as an application registers one. */
+function appLiteralFactoryTile(): BrainTileFactoryDef {
+  return registeredTile(mkLiteralFactoryTileId(kSwatchFactoryId)) as BrainTileFactoryDef;
 }
 
 interface RecordedDeferral {
@@ -91,6 +107,24 @@ describe("routeTileSelection", () => {
     assert.equal(deferrals.length, 1);
     assert.equal(deferrals[0].kind, "literal");
     assert.equal(deferrals[0].factoryTileDef, literalFactoryTile());
+  });
+
+  test("a literal factory tile registered outside the core set defers the same way", () => {
+    const deferrals: RecordedDeferral[] = [];
+    const actionCalls: IBrainTileDef[] = [];
+    const completed = routeTileSelection(
+      appLiteralFactoryTile(),
+      (tileDef) => {
+        actionCalls.push(tileDef);
+      },
+      recordingEffects(deferrals)
+    );
+
+    assert.equal(completed, false);
+    assert.equal(actionCalls.length, 0, "nothing is placed until the dialog manufactures the tile");
+    assert.equal(deferrals.length, 1);
+    assert.equal(deferrals[0].kind, "literal");
+    assert.equal(deferrals[0].factoryTileDef, appLiteralFactoryTile());
   });
 
   test("a non-factory tile runs the action immediately and completes", () => {

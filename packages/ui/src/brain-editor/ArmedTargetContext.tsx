@@ -7,6 +7,14 @@ import type { EditorMode } from "./editor-mode";
 /** How the armed target consumes the chosen tile: append to a side, insert before a tile, or replace a tile. */
 export type ArmedTargetMode = "append" | "insert" | "replace";
 
+/** The value and name a deferred literal creation opens its editor on. */
+export interface LiteralCreationSeed {
+  /** The value the editor's fields open seeded from. */
+  readonly value: unknown;
+  /** The word the name field opens holding. */
+  readonly displayName: string;
+}
+
 /**
  * Where the arming happened, which selects where the candidate strip's filter
  * input renders: in the strip's own tray, or inline at the position the rule's
@@ -45,8 +53,12 @@ export interface ArmedTileTarget {
   caret?: CaretPosition;
   /** Where the arming happened; defaults to `tray` when omitted. */
   entry?: ArmedTargetEntry;
-  /** Receives the chosen tile; returns true when the selection completed and the picker should close. */
-  onTileSelected: (tileDef: IBrainTileDef) => boolean;
+  /**
+   * Receives the chosen tile, and for a literal factory whose create dialog the
+   * choice defers to, the seed that dialog opens on. Returns true when the
+   * selection completed and the picker should close.
+   */
+  onTileSelected: (tileDef: IBrainTileDef, seed?: LiteralCreationSeed) => boolean;
 }
 
 /**

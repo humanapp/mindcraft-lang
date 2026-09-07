@@ -90,14 +90,127 @@ Host apps supply a `BrainEditorConfig` object with:
 
 ### CustomLiteralType
 
-Each entry defines a custom literal that the `CreateLiteralDialog` can create:
+Each entry defines a custom literal that `CreateLiteralDialog` names the value of,
+both for a new tile and for one being edited in place:
 
-| Field          | Type                                                      | Purpose                                                     |
-| -------------- | --------------------------------------------------------- | ----------------------------------------------------------- |
-| `typeId`       | `string`                                                  | The brain type system type ID                               |
-| `label`        | `string`                                                  | Display label in the dialog                                 |
-| `fields`       | `{ name, label, placeholder }[]`                          | Input fields for the literal value                          |
-| `createTileId` | `(values: Record<string, string>) => string \| undefined` | Builds a tile ID from field values, or undefined if invalid |
+| Field               | Type                                                                                  | Purpose                                                    |
+| ------------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `typeId`            | `string`                                                                              | The brain type system type ID                              |
+| `description`       | `string`                                                                              | Description shown in the dialog                            |
+| `nameBase`          | `string`                                                                              | Optional. The word this type's default names are numbered from ("image" -> "image 1"); falls back to the `dataTypeNames` entry, then to a generic word |
+| `isValid`           | `(state: Record<string, string>) => boolean`                                          | Whether the current input state can be submitted           |
+| `parseValue`        | `(state: Record<string, string>) => unknown`                                          | The runtime value the input state names                    |
+| `toInputState`      | `(value: unknown) => Record<string, string>`                                          | The input state an existing value opens seeded with        |
+| `renderInputFields` | `(state, onChange: (key, value) => void, onSubmit: () => void) => ReactNode`          | The input fields for this literal type                     |
+| `formatValue`       | `(value: unknown) => string`                                                          | How the value reads in a tile                              |
+| `renderValue`       | `(value: unknown) => ReactNode`                                                       | Optional. What a placed literal's value box draws instead of the `formatValue` text; `undefined`, as omitting it does, draws that text |
+
+A placed literal offers value entries in its tile menu when a
+`customLiteralTypes` entry matches its value type AND the edit-time tile catalog
+holds a literal factory producing that type. `literalValueEditor` resolves that
+pair and reads one more thing from the brain's own catalog: `editable`, true
+only for a literal that catalog holds. The model behind the entries is
+`brain-editor/tile-menu-model.ts`, and it offers two:
+
+- **Edit Value...**, on an `editable` literal alone. `editLiteralValue` puts the
+  submitted value and name on the literal: one carrying a `uniqueId` is edited
+  in place through `EditLiteralCommand`, so the catalog entry and EVERY
+  placement move together under one tile id and undo restores value and name
+  everywhere; one whose id follows its content is replaced by a freshly minted
+  literal, leaving other placements as they stand.
+- **Duplicate...**, on both populations. `duplicateLiteralValue` always mints
+  through the factory and replaces the placement, so a literal an environment
+  catalog provides is forked rather than changed.
+
+Every literal of a `customLiteralTypes` type also takes a NAME, which the dialog
+stands its own field for (`literalTypeTakesName` decides, and the built-in text
+and number forms take none). That field is REQUIRED: `literalNameAccepted`
+refuses a name of nothing but whitespace, and the dialog takes no submission
+while it does. What the field holds is trimmed on the way out --
+`submittedLiteralName` drops the surrounding whitespace, so " rock " names
+"rock" -- and a name that trims to nothing is unreachable, since the accept gate
+above already refuses it. Hosts opening the dialog seed the field: an edit with the literal's current
+word, and both a creation and a duplicate with `unusedNumberedName`
+(`brain-editor/literal-naming.ts`) -- over the type's base word for a creation,
+over the forked literal's own word for a duplicate. That one function is the
+whole naming rule, and it is flat the way a filesystem is: it stems its word by
+dropping a single trailing run of digits ("image 1" -> "image", "rock v2"
+unchanged), then appends the smallest free number, counting from 2 where the
+bare stem is itself taken and from 1 where it is not. So a creation is offered
+"image 1", a fork of "rock" is offered "rock 2", and a fork of "image 1" is
+offered "image 2" -- never "image 1 2", and a freed number is reused rather than
+counted past. `takenLiteralNames` scans the environment catalogs AND the brain's
+own, since a default name has to be free of both; `takenLiteralNamesAround`
+takes those two apart -- the host config's `tileCatalogs` and the brain's own
+catalog -- and is what every host calls, so no surface can scan one and forget
+the other. Duplicate names are legal -- the defaults only steer toward unique
+ones.
+
+The dialog's description is the type's own prose for a custom-typed literal, and
+it renders VISUALLY HIDDEN there (`sr-only`), reaching the screen reader alone;
+the built-in text and number forms still show theirs.
+
+The name travels as the third argument of the dialog's `onSubmit` into
+`manufactureLiteralTile`, which sets it on the literal it resolves to -- so a
+factory ignoring the `displayName` manufacture option still yields a named
+literal, and a name submitted for content the catalog already holds renames that
+literal in place. Two facts bind anything touching this:
+
+- **The name never takes part in the tile id.** `mkLiteralTileId` reads the
+  value type, the value label and the display format alone, so renaming keeps a
+  literal's identity and two literals may share one name.
+- **The name is the literal's `metadata.label` AND its `metadata.language.form`.**
+  The form is what `tileSentenceWord` reads, which is the word the sentence
+  projection and the assistant see; the label is what `resolveTileVisualFrom`
+  reads, which is the word the candidate strip's chips, the tile captions and
+  the assistant transcript's chips show. Setting one without the other splits
+  the word the reader sees from the word the model reads.
+
+`renderValue` is resolved by the literal's value type alone, so a literal the
+environment catalog provides and one a document catalog holds draw the same.
+`TileValue` is the only surface that consults it, which covers the value box of
+a placed tile and of a printed one; the candidate strip's chips and the
+assistant transcript's chips carry a tile's label rather than its value box.
+`customLiteralValueNode` (exported from `TileValue.tsx`) is the shared reading
+of it, and `BrainTile` calls it for two more decisions about the same tile:
+
+- **A node implies frameless.** The white text-literal frame -- the element
+  marked `kTileValueFrameAttribute` -- is drawn only where the value box draws
+  text. There is no separate opt-out.
+- **A node reserves the tile's label line.** A framed value box carries
+  `min-h-16` and the label line grows into what is left, which is how text
+  literals have always been laid out. A tile drawing a node instead lets the
+  value box shrink (`min-h-0`) and holds the label line at its own line height
+  (`shrink-0`), so the word the literal reads by is legible under the drawing.
+  The tile height is fixed at `h-24`, which leaves the node roughly 54px of
+  height once the label line has its own; a taller node is clipped by the value
+  box, not allowed to push the label out.
+
+### The candidate strip's command chips
+
+The offering leads with chips that act on the literal the armed position stands
+on rather than placing a tile: `brain-editor/strip-commands.ts` decides which,
+`useCandidateStrip` resolves the anchor tile and runs them, and
+`BrainCandidateStrip` draws them at the head of the best-next listbox in the
+app's `secondary` tokens, which is what separates them from the tile chips.
+
+- `stripCommands` offers **edit** in replace mode over an `editable` literal
+  alone, and **duplicate** in every mode -- replace unconditionally, insert and
+  append only where the position takes a literal of that value type as it stands
+  (`positionTakesLiteralOfType`). A position standing on no such literal offers
+  none, which is why a built-in image tile shows duplicate and nothing else.
+- **Duplicate is deferred.** It hands the value type's factory and a
+  `LiteralCreationSeed` to the armed target's `onTileSelected`, which
+  `routeTileSelection` turns into the same create-dialog deferral a factory tile
+  gets. Nothing is minted, placed, or recorded on the command history until that
+  dialog is submitted, so abandoning it leaves the brain byte-identical.
+- The chips are options of the best-next band: `StripOptionBand.commands`, which
+  `visibleStripOptions` emits ahead of that band's tiles, so the cursor walks
+  them first. Enter over one runs it through the reducer's `highlightedCommand`
+  fact and `run-command` effect; the lead highlight still rests on the first
+  tile chip, so Enter with nothing browsed still places a tile.
+- The chips are additive. The tile menu's own entries stay, and they carry the
+  keyboard path for a position the strip is not armed on.
 
 ## Color Token Contract
 

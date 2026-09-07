@@ -18,10 +18,23 @@ export interface CustomLiteralType {
   typeId: string;
   /** Human-readable description shown in the create-literal dialog. */
   description: string;
+  /**
+   * The word the default names of this type's literals are numbered from
+   * ("image" yields "image 1", "image 2"). Left out, the type's entry in
+   * {@link BrainEditorConfig.dataTypeNames} supplies the word, and a type named
+   * by neither is numbered from a generic one.
+   */
+  nameBase?: string;
   /** Returns true when the current input state is valid. */
   isValid: (state: Record<string, string>) => boolean;
   /** Parse the input state into the runtime value. */
   parseValue: (state: Record<string, string>) => unknown;
+  /**
+   * The input state that renders `value` back into the fields, which the
+   * create-literal dialog seeds itself with when it opens on an existing
+   * literal. A value of another shape yields an empty state.
+   */
+  toInputState: (value: unknown) => Record<string, string>;
   /** Render the input fields for this literal type. */
   renderInputFields: (
     state: Record<string, string>,
@@ -30,6 +43,12 @@ export interface CustomLiteralType {
   ) => ReactNode;
   /** Format a value for display in tiles. */
   formatValue: (value: unknown) => string;
+  /**
+   * Draws `value` in the value box of a placed literal of this type, in place
+   * of its {@link CustomLiteralType.formatValue} text. Returning `undefined`,
+   * as leaving the field out does, draws that text.
+   */
+  renderValue?: (value: unknown) => ReactNode;
 }
 
 /**
